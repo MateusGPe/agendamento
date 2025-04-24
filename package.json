@@ -1,0 +1,16 @@
+{
+  "name": "agendamento",
+  "version": "1.0.0",
+  "main": "Código.gs",
+  "scripts": {
+    "push": "clasp push",
+    "pull": "clasp pull"
+  },
+  "author": "Mateus G. Pereira",
+  "license": "MIT",
+  "description": "",
+  "devDependencies": {
+    "@google/clasp": "^3.0.3-alpha",
+    "@types/google-apps-script": "^1.0.97"
+  }
+}

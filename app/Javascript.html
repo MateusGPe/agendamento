@@ -1,0 +1,598 @@
+<script>
+    // Função de callback para google.script.run (sempre necessária) - Espera string JSON
+    function onBackendResponse(jsonStringResponse) {
+        hideLoading();
+        const messageDiv = document.getElementById('message');
+        messageDiv.textContent = ''; // Limpa mensagens anteriores
+        messageDiv.className = 'message'; // Reseta classes
+
+        let response;
+        try {
+            response = JSON.parse(jsonStringResponse); // PARSEA a string JSON
+            console.log("Parsed backend response:", response);
+        } catch (e) {
+            console.error("Erro ao parsear resposta JSON do backend:", e, jsonStringResponse);
+            messageDiv.textContent = 'Erro ao processar a resposta do servidor.';
+            messageDiv.className = 'message error';
+            return; // Sai se não conseguir parsear
+        }
+
+        if (!response || !response.success) {
+            // Se a resposta parseada for nula ou não indicar sucesso
+            const errorMessage = (response && response.message) ? response.message : 'Ocorreu um erro desconhecido.';
+            console.error("Backend operation failed:", errorMessage, response);
+            messageDiv.textContent = errorMessage;
+            messageDiv.className = 'message error';
+        } else {
+            // Se a resposta parseada indicar sucesso
+            messageDiv.textContent = response.message || 'Operação concluída com sucesso.';
+            messageDiv.className = 'message success';
+
+            // Lógica adicional para sucesso na reserva (esconder formulário, etc.)
+            document.getElementById('reposicao-form').style.display = 'none';
+            document.getElementById('substituicao-form').style.display = 'none';
+            // Opcional: recarregar a lista de slots disponíveis após uma reserva? Depende do fluxo.
+            // reloadSlots(); // Chamar uma função que recarrega (requer armazenar o tipo de slot sendo visualizado)
+        }
+    }
+
+    // Função de callback para carregar slots - AGORA ESPERA UMA STRING JSON E GERA TABELA
+    function onSlotsLoaded(jsonStringResponse, type) {
+        console.log("onSlotsLoaded chamada para tipo:", type);
+        console.log("Raw JSON string response:", jsonStringResponse); // Loga a string recebida
+
+        hideLoading();
+
+        const slotsContainer = document.getElementById(type.toLowerCase() + '-slots'); // Container div
+        const messageDiv = document.getElementById('message');
+        messageDiv.textContent = '';
+        messageDiv.className = 'message';
+
+        if (!slotsContainer) {
+            console.error("Container de slots não encontrado para tipo:", type);
+            messageDiv.textContent = 'Erro interno: Container de exibição de horários não encontrado.';
+            messageDiv.className = 'message error';
+            return;
+        }
+        slotsContainer.innerHTML = ''; // Limpa o container
+
+        let response;
+        try {
+            response = JSON.parse(jsonStringResponse);
+            console.log("Parsed response data:", response);
+        } catch (e) {
+            console.error("Erro ao parsear JSON de slots:", e, jsonStringResponse);
+            messageDiv.textContent = 'Erro ao processar dados de horários recebidos.';
+            messageDiv.className = 'message error';
+            slotsContainer.innerHTML = '<p class="error-message">Erro ao carregar horários.</p>'; // Mensagem dentro do container
+            return; // Sai se não conseguir parsear
+        }
+        // --- Fim Parse ---
+
+
+        if (!response || !response.success) {
+            // Se a resposta parseada for nula ou não indicar sucesso (captura erros do backend também)
+            const errorMessage = (response && response.message) ? response.message : 'Erro desconhecido ao carregar horários.';
+            console.error("Falha ao carregar slots:", errorMessage, response);
+            messageDiv.textContent = errorMessage;
+            messageDiv.className = 'message error';
+            slotsContainer.innerHTML = '<p class="error-message">' + errorMessage + '</p>';
+            return;
+        }
+
+        const slots = response.data; // ACESSA O ARRAY AQUI!
+
+        // Agora verifica se o array de dados está vazio (verificação mais robusta)
+        if (!Array.isArray(slots) || slots.length === 0) { // Verifica se é array e se está vazio
+            const infoMessage = response.message || `Nenhum horário disponível encontrado para ${type.toLowerCase()}.`;
+            messageDiv.textContent = infoMessage; // Mensagem de sucesso mas lista vazia
+            messageDiv.className = 'message success'; // Indica que a chamada foi um sucesso, mas a lista está vazia
+            slotsContainer.innerHTML = '<p class="info-message">Nenhum horário disponível encontrado.</p>'; // Mensagem dentro do container
+            console.log("Slots array is empty or not array:", slots);
+            return;
+        }
+
+        // Mensagem de sucesso será definida após criar a tabela
+
+        // --- Criação da Tabela ---
+        const table = document.createElement('table');
+        table.classList.add('slots-table'); // Adiciona classe para estilização
+
+        // Cabeçalho da Tabela
+        const thead = table.createTHead();
+        const headerRow = thead.insertRow();
+        const headers = ['Data', 'Hora', 'Dia', 'Turma', 'Professor', 'Tipo', 'Status'];
+        headers.forEach(text => {
+            const th = document.createElement('th');
+            th.textContent = text;
+            headerRow.appendChild(th);
+        });
+
+        // Corpo da Tabela
+        const tbody = table.createTBody();
+
+        slots.forEach(slot => {
+            // Validação básica para garantir que o slot tem os campos mínimos necessários
+            // Inclui professorPrincipal na validação
+            if (slot && slot.idInstancia && slot.data && slot.horaInicio && slot.diaSemana && slot.turma && slot.tipoOriginal && slot.statusOcupacao && slot.hasOwnProperty('professorPrincipal')) {
+                const row = tbody.insertRow();
+                row.classList.add('slot-row'); // Classe para a linha
+                row.setAttribute('data-id-instancia', slot.idInstancia);
+                row.setAttribute('data-type', type);
+
+                // Cria string de informação combinada para passar ao selectSlot e para acessibilidade/tooltip (opcional)
+                let slotInfoText = `${slot.data} ${slot.horaInicio} (${slot.diaSemana}) - Turma: ${slot.turma}`;
+                let professorDisplay = '-'; // Padrão se não for Fixo ou não tiver professor
+                if (slot.tipoOriginal === 'Fixo' && slot.professorPrincipal && slot.professorPrincipal !== '') {
+                    slotInfoText += ` - Prof: ${slot.professorPrincipal}`;
+                    professorDisplay = slot.professorPrincipal;
+                }
+                slotInfoText += ` - Tipo: ${slot.tipoOriginal}, Status: ${slot.statusOcupacao}`;
+
+                // Define o evento de clique para a linha inteira
+                row.onclick = () => selectSlot(slot.idInstancia, type, slotInfoText); // Atualiza info na seleção
+
+                // Cria e popula as células (td)
+                const cellData = row.insertCell();
+                cellData.textContent = slot.data;
+
+                const cellHora = row.insertCell();
+                cellHora.textContent = slot.horaInicio;
+
+                const cellDia = row.insertCell();
+                cellDia.textContent = slot.diaSemana;
+
+                const cellTurma = row.insertCell();
+                cellTurma.textContent = slot.turma;
+
+                const cellProfessor = row.insertCell();
+                cellProfessor.textContent = professorDisplay; // Usa a variável definida acima
+
+                const cellTipo = row.insertCell();
+                cellTipo.textContent = slot.tipoOriginal;
+
+                const cellStatus = row.insertCell();
+                cellStatus.textContent = slot.statusOcupacao;
+
+            } else {
+                console.warn("Slot inválido encontrado nos dados recebidos (faltando campos?):", slot);
+            }
+        });
+
+        slotsContainer.appendChild(table); // Adiciona a tabela completa ao container
+
+        // Mensagem de sucesso apenas se a tabela foi criada e populada
+        messageDiv.textContent = response.message || 'Horários carregados com sucesso.';
+        messageDiv.className = 'message success';
+    }
+
+    // Mostra a tela de loading
+    function showLoading() {
+        const loadingDiv = document.getElementById('loading');
+        if (loadingDiv) loadingDiv.style.display = 'flex';
+        const messageDiv = document.getElementById('message');
+        if (messageDiv) {
+            messageDiv.textContent = ''; // Limpa mensagens anteriores
+            messageDiv.className = 'message'; // Reseta classes
+        }
+    }
+
+    // Esconde a tela de loading
+    function hideLoading() {
+        const loadingDiv = document.getElementById('loading');
+        if (loadingDiv) loadingDiv.style.display = 'none';
+    }
+
+    // Carrega horários disponíveis do backend
+    function loadAvailableSlots(type) {
+        showLoading();
+        // Limpa formulários e slots anteriores ao buscar novos
+        const reposicaoForm = document.getElementById('reposicao-form');
+        const substituicaoForm = document.getElementById('substituicao-form');
+        const reposicaoSlots = document.getElementById('reposicao-slots');
+        const substituicaoSlots = document.getElementById('substituicao-slots');
+
+        if (reposicaoForm) reposicaoForm.style.display = 'none';
+        if (substituicaoForm) substituicaoForm.style.display = 'none';
+        if (reposicaoSlots) reposicaoSlots.innerHTML = ''; // Limpa container
+        if (substituicaoSlots) substituicaoSlots.innerHTML = ''; // Limpa container
+
+
+        google.script.run
+            .withSuccessHandler(responseString => onSlotsLoaded(responseString, type)) // Passa a STRING JSON para onSlotsLoaded
+            .withFailureHandler(error => {
+                hideLoading();
+                const messageDiv = document.getElementById('message');
+                messageDiv.textContent = 'Erro na comunicação com o servidor: ' + error.message; // Erro antes de chamar withSuccessHandler
+                messageDiv.className = 'message error';
+                // Limpar a lista de slots também em caso de falha completa na comunicação
+                const slotsDiv = document.getElementById(type.toLowerCase() + '-slots');
+                if (slotsDiv) slotsDiv.innerHTML = '<p class="error-message">Erro ao carregar horários.</p>'; // Mensagem dentro do container
+            })
+            .getAvailableSlots(type); // Chama a função do backend
+    }
+
+    // Seleciona um slot (linha da tabela) e mostra o formulário de reserva
+    // AJUSTADO para selecionar TR ao invés de .slot-item
+    // slotInfo agora é uma string formatada que inclui a turma e professor (se fixo)
+    function selectSlot(idInstancia, type, slotInfo) {
+        // Remove a classe 'selected' de todas as linhas em AMBAS as tabelas (se existirem)
+        document.querySelectorAll('.slots-table tbody tr.selected').forEach(item => item.classList.remove('selected'));
+
+        // Adiciona a classe 'selected' à linha clicada
+        const selectedRow = document.querySelector(`.slots-table tbody tr[data-id-instancia="${idInstancia}"][data-type="${type}"]`);
+        if (selectedRow) {
+            selectedRow.classList.add('selected');
+        }
+
+        const formDiv = document.getElementById(type.toLowerCase() + '-form');
+        const slotIdInput = document.getElementById(type.toLowerCase() + '-selected-slot-id');
+        const slotInfoSpan = document.getElementById(type.toLowerCase() + '-selected-slot-info');
+
+        if (slotIdInput) slotIdInput.value = idInstancia;
+        if (slotInfoSpan) slotInfoSpan.textContent = slotInfo; // slotInfo já inclui a Turma e Prof Principal (se fixo)
+
+        // Resetar campos do formulário e definir required (se necessário)
+        if (type === 'Reposicao') {
+            const alunoInput = document.getElementById('reposicao-aluno');
+            const professorSelect = document.getElementById('reposicao-professor-real');
+            const disciplinaSelect = document.getElementById('reposicao-disciplina');
+            //const turmaSelect = document.getElementById('reposicao-turma-agendada');
+
+            if (alunoInput) { alunoInput.value = ''; alunoInput.required = false; } // Aluno(s) opcional
+            if (professorSelect) { professorSelect.value = ''; professorSelect.required = true; }
+            if (disciplinaSelect) { disciplinaSelect.value = ''; disciplinaSelect.required = true; }
+            //if(turmaSelect) { turmaSelect.value = ''; turmaSelect.required = true; }
+
+        } else if (type === 'Substituicao') {
+            // Professor Original input/select foi removido do HTML
+            const realSelect = document.getElementById('substituicao-professor-real');
+            const disciplinaSelect = document.getElementById('substituicao-disciplina');
+            //const turmaSelect = document.getElementById('substituicao-turma-agendada');
+
+            if (realSelect) { realSelect.value = ''; realSelect.required = true; }
+            if (disciplinaSelect) { disciplinaSelect.value = ''; disciplinaSelect.required = true; }
+            //if(turmaSelect) { turmaSelect.value = ''; turmaSelect.required = true; }
+        }
+
+        if (formDiv) formDiv.style.display = 'block';
+        document.getElementById('message').textContent = '';
+        document.getElementById('message').className = 'message';
+
+    }
+
+    // Cancela a exibição do formulário de reserva
+    // AJUSTADO para desselecionar TR
+    function cancelBookingForm(type) {
+        const formDiv = document.getElementById(type.toLowerCase() + '-form');
+        if (formDiv) formDiv.style.display = 'none';
+        // Remove a classe 'selected' de todas as linhas da tabela relevante
+        document.querySelectorAll(`#${type.toLowerCase()}-slots .slots-table tbody tr.selected`).forEach(item => item.classList.remove('selected'));
+        document.getElementById('message').textContent = '';
+        document.getElementById('message').className = 'message';
+    }
+
+
+    // Envia os detalhes da reserva para o backend - AGORA ENVIA STRING JSON
+    // Professor Original não é enviado do frontend para Substituição
+    function bookSlot(type) {
+        showLoading();
+        const slotIdInput = document.getElementById(type.toLowerCase() + '-selected-slot-id');
+        const slotId = slotIdInput ? slotIdInput.value : null;
+
+        const bookingDetails = {
+            idInstancia: slotId,
+            tipoReserva: type
+        };
+
+        if (type === 'Reposicao') {
+            //const alunoInput = document.getElementById('reposicao-aluno');
+            const professorSelect = document.getElementById('reposicao-professor-real');
+            const disciplinaSelect = document.getElementById('reposicao-disciplina');
+            //const turmaSelect = document.getElementById('reposicao-turma-agendada');
+
+            //bookingDetails.alunos = alunoInput ? alunoInput.value.trim() : ''; // Aluno(s) - Opcional
+            bookingDetails.professorReal = professorSelect ? professorSelect.value : ''; // Professor Real (quem repôs) - Obrigatório
+            bookingDetails.disciplinaReal = disciplinaSelect ? disciplinaSelect.value : ''; // Disciplina - Obrigatório (agora vem de dropdown)
+            //bookingDetails.turmasAgendada = turmaSelect ? turmaSelect.value : ''; // Turma(s) Agendada - Obrigatório (agora vem de dropdown)
+
+            // Validação no frontend (Aluno(s) removido da validação, Disciplina e Turma vêm de selects)
+            if (!bookingDetails.professorReal || bookingDetails.professorReal === '' || !bookingDetails.disciplinaReal || bookingDetails.disciplinaReal === '' /*|| !bookingDetails.turmasAgendada || bookingDetails.turmasAgendada === ''*/) {
+                hideLoading();
+                const messageDiv = document.getElementById('message');
+                messageDiv.textContent = 'Por favor, preencha todos os campos obrigatórios para reposição (Professor, Disciplina).'; // Removido Turma(s) da msg
+                messageDiv.className = 'message error';
+                return;
+            }
+        } else if (type === 'Substituicao') {
+            // Professor Original input/select foi removido do HTML, não lemos mais
+            const realSelect = document.getElementById('substituicao-professor-real'); // Professor Substituto
+            const disciplinaSelect = document.getElementById('substituicao-disciplina'); // +++ SELECT Disciplina +++
+            //const turmaSelect = document.getElementById('substituicao-turma-agendada');
+
+            // Professor Original NÃO é enviado, o backend vai ler da instância
+            // bookingDetails.professorOriginal = originalSelect ? originalSelect.value : ''; // Removido
+            bookingDetails.professorReal = realSelect ? realSelect.value : ''; // Professor Substituto - Obrigatório
+            bookingDetails.disciplinaReal = disciplinaSelect ? disciplinaSelect.value : ''; // Disciplina - Obrigatório (agora vem de dropdown)
+            //bookingDetails.turmasAgendada = turmaSelect ? turmaSelect.value : ''; // Turma(s) Agendada - Obrigatório (agora vem de dropdown)
+
+
+            // Validação no frontend (Professor Original removido da validação)
+            if (!bookingDetails.professorReal || bookingDetails.professorReal === '' || !bookingDetails.disciplinaReal || bookingDetails.disciplinaReal === '' /*|| !bookingDetails.turmasAgendada || bookingDetails.turmasAgendada === ''*/) {
+                hideLoading();
+                const messageDiv = document.getElementById('message');
+                messageDiv.textContent = 'Por favor, preencha todos os campos obrigatórios para substituição (Professor Substituto, Disciplina).'; // Removido Turma(s) da msg
+                messageDiv.className = 'message error';
+                return;
+            }
+        } else {
+            hideLoading();
+            const messageDiv = document.getElementById('message');
+            messageDiv.textContent = 'Tipo de agendamento desconhecido.';
+            messageDiv.className = 'message error';
+            return;
+        }
+
+        const jsonBookingDetailsString = JSON.stringify(bookingDetails);
+        console.log("Sending booking details as JSON:", jsonBookingDetailsString);
+
+
+        google.script.run
+            .withSuccessHandler(onBackendResponse) // onBackendResponse vai parsear a resposta
+            .withFailureHandler(error => {
+                hideLoading();
+                const messageDiv = document.getElementById('message');
+                messageDiv.textContent = 'Erro na comunicação ao agendar: ' + error.message;
+                messageDiv.className = 'message error';
+            })
+            .bookSlot(jsonBookingDetailsString); // Chama a função do backend com a STRING JSON
+    }
+
+    // --- Função auxiliar para popular um dropdown (select) ---
+    function populateDropdown(selectId, optionsArray) {
+        const selectElement = document.getElementById(selectId);
+        if (!selectElement) {
+            console.warn("Dropdown com ID '" + selectId + "' não encontrado.");
+            return;
+        }
+
+        // Limpa opções atuais, mantendo a primeira ("-- Selecione --")
+        // Começa do final para evitar problemas com índices durante a remoção
+        for (let i = selectElement.options.length - 1; i >= 0; i--) {
+            // Verifica se a opção tem value, para não remover a opção padrão "-- Selecione --" (value="")
+            if (selectElement.options[i].value !== "") {
+                selectElement.remove(i);
+            }
+        }
+        // Após remover as opções existentes, garante que a primeira opção seja a padrão "-- Selecione --"
+        if (selectElement.options.length === 0 || selectElement.options[0].value !== "") {
+            const defaultOption = document.createElement('option');
+            defaultOption.value = "";
+            defaultOption.textContent = "-- Selecione --";
+            defaultOption.disabled = true; // Opcional: desabilitar a opção padrão
+            defaultOption.selected = true; // Garante que seja a selecionada inicialmente
+            selectElement.insertBefore(defaultOption, selectElement.firstChild); // Adiciona no início
+        } else {
+            // Se a opção padrão já existe, apenas garante que está selecionada
+            selectElement.selectedIndex = 0;
+        }
+
+
+        if (optionsArray && Array.isArray(optionsArray)) {
+            optionsArray.forEach(optionValue => {
+                if (optionValue && optionValue.trim() !== '') { // Evita adicionar opções vazias
+                    const option = document.createElement('option');
+                    option.value = optionValue; // O valor e texto serão o mesmo (nome/turma/disciplina)
+                    option.textContent = optionValue;
+                    selectElement.appendChild(option);
+                }
+            });
+        }
+        console.log("Dropdown '" + selectId + "' populado com " + (optionsArray ? optionsArray.length : 0) + " opções (além da padrão).");
+
+        // Remove a opção temporária "Carregando..." se ela existir e a lista foi populada
+        // Verifica se a segunda opção (índice 1) é a temporária
+        if (selectElement.options.length > 1 && selectElement.options[1] && selectElement.options[1].textContent.startsWith("-- Carregando ")) {
+            selectElement.remove(1); // Remove a segunda opção se for a temporária
+        }
+        // Garante que a opção padrão esteja selecionada se nenhuma outra for
+        if (selectElement.selectedIndex === -1 || selectElement.selectedIndex === 1 && selectElement.options[1].textContent.startsWith("-- Carregando ")) {
+            selectElement.selectedIndex = 0;
+        }
+    }
+
+
+    // Inicialização - Carrega informações essenciais ao carregar a página
+    document.addEventListener('DOMContentLoaded', function () {
+        console.log("DOM completamente carregado. Iniciando aplicação.");
+        showLoading(); // Mostra loading ao carregar a página
+
+        // --- Chamar funções de inicialização em paralelo e usar um contador ---
+        let completedCalls = 0;
+        const totalCalls = 4; // AGORA SÃO 4 CHAMADAS: getUserRole, getProfessorsList, getTurmasList, getDisciplinesList
+        let userResponse = null; // Para armazenar a resposta raw da chamada getUserRole
+        let hasInitializationError = false; // Flag para rastrear erros
+
+
+        // Callback genérico de sucesso
+        function handleSuccess(jsonStringResponse, callType) {
+            completedCalls++;
+            console.log(`Call ${callType} completed successfully.`);
+
+            let response;
+            try {
+                response = JSON.parse(jsonStringResponse);
+                console.log(`${callType} parsed response:`, response);
+            } catch (e) {
+                console.error(`Erro ao parsear JSON de ${callType}:`, e, jsonStringResponse);
+                handleError({ message: `Erro ao processar dados de ${callType}.` }, callType); // Passa objeto de erro simulado
+                return;
+            }
+
+            if (!response || !response.success) {
+                const errorMsg = response && response.message ? `Falha ao carregar ${callType}: ${response.message}` : `Falha desconhecida ao carregar ${callType}.`;
+                console.error(`Falha reportada pelo backend para ${callType}:`, errorMsg, response);
+                handleError({ message: errorMsg }, callType); // Passa objeto de erro simulado
+                return;
+            }
+
+            // --- Processar dados com base no tipo de chamada (SUCESSO) ---
+            if (callType === 'getUserRole') {
+                userResponse = response; // Armazena a resposta raw (com message, success, data {role, email})
+                // A UI será atualizada em checkAllCallsCompleted
+            } else if (callType === 'getProfessorsList') {
+                const professors = Array.isArray(response.data) ? response.data : [];
+                populateDropdown('reposicao-professor-real', professors);
+                populateDropdown('substituicao-professor-real', professors); // Professor Substituto
+            } else if (callType === 'getTurmasList') { // Mantido mas comentado no HTML
+                const turmas = Array.isArray(response.data) ? response.data : [];
+                // populateDropdown('reposicao-turma-agendada', turmas);
+                // populateDropdown('substituicao-turma-agendada', turmas);
+            } else if (callType === 'getDisciplinesList') {
+                const disciplines = Array.isArray(response.data) ? response.data : [];
+                populateDropdown('reposicao-disciplina', disciplines);
+                populateDropdown('substituicao-disciplina', disciplines);
+            }
+            // Mensagens de sucesso individuais não mostradas na UI principal aqui.
+
+            checkAllCallsCompleted(); // Verifica se todas as chamadas terminaram
+        }
+
+        // Callback genérico de falha (erro de comunicação ou falha reportada pelo backend via handleSuccess)
+        function handleError(error, callType) {
+            if (completedCalls < totalCalls) completedCalls++; // Incrementa mesmo em erro para checkAllCallsCompleted funcionar
+            hasInitializationError = true; // Marca que houve um erro
+            console.error(`Call ${callType} failed:`, error);
+
+            const messageDiv = document.getElementById('message');
+            // Usa a mensagem de erro do objeto 'error' se existir, senão uma padrão
+            const errorMessage = `Erro na inicialização (${callType}): ${error.message || 'Erro desconhecido'}.`;
+            console.error(errorMessage);
+
+            // Atualiza a mensagem principal APENAS se for o primeiro erro ou se não houver msg ainda
+            if (messageDiv && (!messageDiv.textContent || messageDiv.className !== 'message error')) {
+                messageDiv.textContent = "Ocorreu um erro durante a inicialização. Verifique o console para detalhes."; // Mensagem genérica na UI
+                messageDiv.className = 'message error';
+            }
+
+            // Se a obtenção de listas falhou, limpar o dropdown correspondente
+            if (callType === 'getProfessorsList') {
+                populateDropdown('reposicao-professor-real', []); // Popula com lista vazia para limpar "Carregando..."
+                populateDropdown('substituicao-professor-real', []);
+            } else if (callType === 'getTurmasList') { // Mantido mas comentado no HTML
+                // populateDropdown('reposicao-turma-agendada', []);
+                // populateDropdown('substituicao-turma-agendada', []);
+            } else if (callType === 'getDisciplinesList') {
+                populateDropdown('reposicao-disciplina', []);
+                populateDropdown('substituicao-disciplina', []);
+            }
+
+            checkAllCallsCompleted(); // Verifica se todas as chamadas terminaram
+        }
+
+
+        // Verifica se todas as chamadas google.script.run de inicialização terminaram
+        function checkAllCallsCompleted() {
+            console.log(`checkAllCallsCompleted: ${completedCalls}/${totalCalls} calls completed.`);
+            if (completedCalls === totalCalls) {
+                hideLoading(); // Esconde o loading principal
+
+                const messageDiv = document.getElementById('message');
+                const userEmailSpan = document.getElementById('user-email');
+                const userRoleSpan = document.getElementById('user-role');
+                const reposicaoSection = document.getElementById('reposicao-section');
+                const substituicaoSection = document.getElementById('substituicao-section');
+
+                // Processar o papel e email SOMENTE se a chamada getUserRole foi bem sucedida
+                const userRole = userResponse && userResponse.success && userResponse.data ? userResponse.data.role : null;
+                const userEmail = userResponse && userResponse.success && userResponse.data ? userResponse.data.email : null;
+
+                if (userEmailSpan) userEmailSpan.textContent = userEmail || 'N/A';
+                if (userRoleSpan) userRoleSpan.textContent = userRole || 'Não Determinado';
+
+                if (hasInitializationError) {
+                    // Se houve QUALQUER erro na inicialização, garante que a mensagem de erro permaneça
+                    if (messageDiv && messageDiv.className !== 'message error') {
+                        messageDiv.textContent = "Ocorreram erros durante a inicialização. Funcionalidades podem estar limitadas.";
+                        messageDiv.className = 'message error';
+                    }
+                    // Esconder seções principais em caso de erro grave de inicialização? Opcional.
+                    // if(reposicaoSection) reposicaoSection.style.display = 'none';
+                    // if(substituicaoSection) substituicaoSection.style.display = 'none';
+                    console.warn("Initialization completed with errors.");
+
+                    // Tenta exibir seções mesmo com erro, se o papel foi obtido
+                    if (userRole) {
+                        if (reposicaoSection) reposicaoSection.style.display = (userRole === 'Admin' || userRole === 'Professor' || userRole === 'Aluno') ? 'block' : 'none';
+                        if (substituicaoSection) substituicaoSection.style.display = (userRole === 'Admin' || userRole === 'Professor') ? 'block' : 'none';
+                    } else {
+                        // Se nem o papel foi obtido, esconde tudo
+                        if (reposicaoSection) reposicaoSection.style.display = 'none';
+                        if (substituicaoSection) substituicaoSection.style.display = 'none';
+                        if (userRoleSpan) userRoleSpan.textContent = 'Erro ao Obter';
+                        if (messageDiv) { // Mensagem mais específica se o erro foi obter papel
+                            messageDiv.textContent = (userResponse && userResponse.message) || 'Falha ao obter informações do usuário. Acesso negado.';
+                            messageDiv.className = 'message error';
+                        }
+                    }
+
+                } else {
+                    // NENHUM erro de inicialização
+                    if (userRole) {
+                        // Mostrar seções baseadas no papel
+                        if (reposicaoSection) {
+                            reposicaoSection.style.display = (userRole === 'Admin' || userRole === 'Professor' || userRole === 'Aluno') ? 'block' : 'none';
+                        }
+                        if (substituicaoSection) {
+                            substituicaoSection.style.display = (userRole === 'Admin' || userRole === 'Professor') ? 'block' : 'none';
+                        }
+
+                        // Se não houve erros, mostrar mensagem de sucesso da obtenção de papel (se houver) ou limpar
+                        if (messageDiv) {
+                            messageDiv.textContent = userResponse.message || ''; // Ex: "Papel do usuário obtido."
+                            messageDiv.className = userResponse.message ? 'message success' : 'message'; // Define a classe para verde se houver mensagem
+                        }
+                        console.log("Initialization completed successfully.");
+
+                    } else {
+                        // Caso MUITO raro: Nenhuma chamada falhou, mas getUserRole não retornou sucesso ou papel
+                        if (messageDiv) {
+                            messageDiv.textContent = (userResponse && userResponse.message) || 'Não foi possível determinar seu acesso. Entre em contato com o administrador.';
+                            messageDiv.className = 'message error';
+                        }
+                        if (reposicaoSection) reposicaoSection.style.display = 'none';
+                        if (substituicaoSection) substituicaoSection.style.display = 'none';
+                        if (userRoleSpan) userRoleSpan.textContent = 'Acesso Indefinido';
+                        console.warn("Initialization completed without errors, but user role could not be determined.");
+                    }
+                }
+                console.log("checkAllCallsCompleted finished.");
+            }
+        }
+
+
+        // Iniciar as chamadas google.script.run em paralelo
+        google.script.run
+            .withSuccessHandler(responseString => handleSuccess(responseString, 'getUserRole'))
+            .withFailureHandler(error => handleError(error, 'getUserRole'))
+            .getUserRole(); // Chama a função do backend
+
+        google.script.run
+            .withSuccessHandler(responseString => handleSuccess(responseString, 'getProfessorsList'))
+            .withFailureHandler(error => handleError(error, 'getProfessorsList'))
+            .getProfessorsList(); // Chama a função do backend
+
+        google.script.run
+            .withSuccessHandler(responseString => handleSuccess(responseString, 'getTurmasList'))
+            .withFailureHandler(error => handleError(error, 'getTurmasList'))
+            .getTurmasList(); // Chama a função do backend (mesmo se dropdown não usado, pode ser útil no futuro)
+
+        google.script.run // +++ NOVA CHAMADA PARA DISCIPLINAS +++
+            .withSuccessHandler(responseString => handleSuccess(responseString, 'getDisciplinesList'))
+            .withFailureHandler(error => handleError(error, 'getDisciplinesList'))
+            .getDisciplinesList(); // +++ Chama a nova função do backend +++
+
+
+    }); // Fim DOMContentLoaded
+
+</script>

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <?!= include('Stylesheet'); ?>
+</head>
+<body>
+  <div class="container">
+    <h1>Agendamento de Aulas</h1>
+    <p>Usuário: <span id="user-email">Carregando...</span> | Papel: <span id="user-role">Carregando...</span></p>
+
+    <div id="reposicao-section" class="section" style="display: none;">
+      <h2>Agendar Reposição</h2>
+      <p>Reposições só podem ser feitas em horários vagos e disponíveis.</p>
+      <button onclick="loadAvailableSlots('Reposicao')">Buscar Horários Vagos Disponíveis</button>
+
+      <div id="reposicao-slots" class="slots-list">
+        <!-- Tabela de horários disponíveis para reposição será carregada aqui -->
+      </div>
+
+      <div id="reposicao-form" class="booking-form" style="display: none;">
+        <h3>Detalhes da Reposição</h3>
+        <p>Slot Selecionado: <span id="reposicao-selected-slot-info"></span></p>
+        <input type="hidden" id="reposicao-selected-slot-id">
+
+        <!-- Aluno(s) opcional, pode ser removido se não for mais usado
+        <label for="reposicao-aluno">Aluno(s):</label>
+        <input type="text" id="reposicao-aluno" placeholder="Nome do Aluno ou lista (Opcional)">
+        -->
+
+        <label for="reposicao-professor-real">Professor que irá repor:</label>
+        <select id="reposicao-professor-real" required>
+             <option value="" disabled selected>-- Professores --</option>
+        </select>
+
+        <label for="reposicao-disciplina">Disciplina da Reposição:</label>
+        <select id="reposicao-disciplina" required>
+            <option value="" disabled selected>-- Disciplinas --</option>
+        </select>
+
+        <!-- Turma comentada conforme código JS
+        <label for="reposicao-turma-agendada">Turma(s) da Reposição:</label>
+        <select id="reposicao-turma-agendada" required>
+            <option value="" disabled selected>-- Carregando Turmas --</option>
+        </select>
+        -->
+
+        <button onclick="bookSlot('Reposicao')">Confirmar Agendamento de Reposição</button>
+        <button type="button" onclick="cancelBookingForm('Reposicao')">Cancelar</button> <!-- Adicionado type="button" -->
+      </div>
+    </div>
+
+    <hr>
+
+    <div id="substituicao-section" class="section" style="display: none;">
+      <h2>Agendar Substituição</h2>
+      <p>Substituições só podem ser feitas em horários fixos que não estejam ocupados por reposições.</p>
+      <button onclick="loadAvailableSlots('Substituicao')">Buscar Horários Fixos Disponíveis</button>
+
+      <div id="substituicao-slots" class="slots-list">
+        <!-- Tabela de horários disponíveis para substituição será carregada aqui -->
+      </div>
+
+      <div id="substituicao-form" class="booking-form" style="display: none;">
+        <h3>Detalhes da Substituição</h3>
+         <p>Slot Selecionado: <span id="substituicao-selected-slot-info"></span></p>
+        <input type="hidden" id="substituicao-selected-slot-id">
+
+        <label for="substituicao-professor-real">Professor Substituto:</label>
+        <select id="substituicao-professor-real" required>
+             <option value="" disabled selected>-- Professores --</option>
+        </select>
+
+        <label for="substituicao-disciplina">Disciplina da Substituição:</label>
+        <select id="substituicao-disciplina" required>
+             <option value="" disabled selected>-- Disciplinas --</option>
+        </select>
+
+        <!-- Turma comentada conforme código JS
+        <label for="substituicao-turma-agendada">Turma(s) da Substituição:</label>
+        <select id="substituicao-turma-agendada" required>
+             <option value="" disabled selected>-- Carregando Turmas --</option>
+        </select>
+        -->
+
+        <button onclick="bookSlot('Substituicao')">Confirmar Agendamento de Substituição</button>
+        <button type="button" onclick="cancelBookingForm('Substituicao')">Cancelar</button> <!-- Adicionado type="button" -->
+      </div>
+    </div>
+
+    <div id="loading" class="loading" style="display: none;">Carregando...</div>
+    <div id="message" class="message"></div>
+  </div>
+
+  <?!= include('Javascript'); ?>
+</body>
+</html>
