@@ -1,3 +1,28 @@
+/*
+    MIT License
+
+    Copyright (c) 2025 Mateus G. Pereira
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+*/
+
+// Obs: Comentários gerados por IA.
 // Obtém o ID da planilha Google Sheets atualmente ativa onde o script está sendo executado.
 const SPREADSHEET_ID = SpreadsheetApp.getActiveSpreadsheet().getId();
 
@@ -5,7 +30,7 @@ const SPREADSHEET_ID = SpreadsheetApp.getActiveSpreadsheet().getId();
 // Isso torna o código mais legível e fácil de manter, evitando erros de digitação nos nomes das planilhas.
 const SHEETS = {
     CONFIG: 'Configuracoes', // Aba para configurações gerais do sistema.
-    AUTHORIZED_USERS: 'Usuarios Autorizados', // Aba para listar usuários e seus papéis (Admin, Professor, Aluno).
+    AUTHORIZED_USERS: 'Usuarios Autorizados', // Aba para listar usuários e seus papéis (Admin, Professor).
     BASE_SCHEDULES: 'Horarios Base', // Aba com os horários "modelo" ou "template" que se repetem.
     SCHEDULE_INSTANCES: 'Instancias de Horarios', // Aba onde as ocorrências futuras dos horários base são geradas.
     BOOKING_DETAILS: 'Reservas Detalhadas', // Aba para registrar os detalhes de cada reserva feita.
@@ -24,7 +49,7 @@ const HEADERS = {
     AUTHORIZED_USERS: {
         EMAIL: 0, // Coluna A: Email do usuário
         NOME: 1,  // Coluna B: Nome do usuário
-        PAPEL: 2 // Coluna C: Papel/Função do usuário (Admin, Professor, Aluno)
+        PAPEL: 2 // Coluna C: Papel/Função do usuário (Admin, Professor)
     },
     // Índices das colunas na aba 'Horarios Base'
     BASE_SCHEDULES: {
@@ -108,11 +133,11 @@ function formatValueToDate(rawValue) {
         if (rawValue.getFullYear() === 1899 && rawValue.getMonth() === 11 && rawValue.getDate() === 30) {
             // Mesmo sendo 30/12/1899, se tiver hora, minuto ou segundo, poderia ser uma hora válida, mas a lógica atual retorna null.
             // Se for exatamente meia-noite (00:00:00), definitivamente deve ser null.
-             if (rawValue.getHours() === 0 && rawValue.getMinutes() === 0 && rawValue.getSeconds() === 0) {
-                 return null; // Retorna null para a data "zero" exata.
-             }
-             // Considerando que 30/12/1899 geralmente indica um problema de formatação, retorna null mesmo se houver horas/minutos.
-             return null;
+            if (rawValue.getHours() === 0 && rawValue.getMinutes() === 0 && rawValue.getSeconds() === 0) {
+                return null; // Retorna null para a data "zero" exata.
+            }
+            // Considerando que 30/12/1899 geralmente indica um problema de formatação, retorna null mesmo se houver horas/minutos.
+            return null;
         }
         // Se for uma data válida e não for 30/12/1899, retorna o objeto Date.
         return rawValue;
@@ -157,7 +182,7 @@ function formatValueToHHMM(rawValue, timeZone) {
         const minutes = totalMinutes % 60;
         // Valida se a hora e o minuto calculados são válidos.
         if (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
-             // Retorna a string formatada com zero à esquerda.
+            // Retorna a string formatada com zero à esquerda.
             return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
         }
     }
@@ -169,7 +194,7 @@ function formatValueToHHMM(rawValue, timeZone) {
  * Obtém o papel (role) de um usuário específico buscando seu email na planilha 'Usuarios Autorizados'.
  * Esta é uma função interna, chamada por outras funções.
  * @param {string} userEmail O email do usuário a ser procurado.
- * @returns {string|null} O papel do usuário ('Admin', 'Professor', 'Aluno') ou null se não encontrado ou inválido.
+ * @returns {string|null} O papel do usuário ('Admin', 'Professor') ou null se não encontrado ou inválido.
  */
 function getUserRolePlain(userEmail) {
     // Acessa a planilha de usuários autorizados pelo nome definido em SHEETS.
@@ -195,7 +220,7 @@ function getUserRolePlain(userEmail) {
             const role = data[i][HEADERS.AUTHORIZED_USERS.PAPEL];
 
             // Verifica se o papel encontrado é um dos papéis válidos definidos.
-            if (['Admin', 'Professor', 'Aluno'].includes(role)) {
+            if (['Admin', 'Professor'].includes(role)) {
                 return role; // Retorna o papel válido encontrado.
             } else {
                 // Se o papel na planilha for inválido, registra um log.
@@ -225,7 +250,7 @@ function getConfigValue(configName) {
 
     // Obtém todos os dados da planilha.
     const data = sheet.getDataRange().getValues();
-     // Verifica se há dados além do cabeçalho.
+    // Verifica se há dados além do cabeçalho.
     if (data.length <= 1) {
         Logger.log(`Planilha "${SHEETS.CONFIG}" vazia ou apenas cabeçalho.`);
         return null;
@@ -233,7 +258,7 @@ function getConfigValue(configName) {
 
     // Itera pelas linhas de dados (a partir da segunda linha).
     for (let i = 1; i < data.length; i++) {
-         // Verifica se a linha existe, tem colunas suficientes e se o nome na coluna NOME corresponde ao solicitado.
+        // Verifica se a linha existe, tem colunas suficientes e se o nome na coluna NOME corresponde ao solicitado.
         if (data[i] && data[i].length > HEADERS.CONFIG.VALOR && data[i][HEADERS.CONFIG.NOME] === configName) {
             // Retorna o valor da coluna VALOR, convertido para string e sem espaços extras.
             // Usa '' como fallback caso a célula esteja vazia (null ou undefined) antes de chamar trim().
@@ -400,7 +425,7 @@ function getTurmasList() {
         return JSON.stringify({ success: true, message: 'Lista de turmas (config) obtida.', data: turmasArray });
 
     } catch (e) {
-         // Em caso de erro inesperado.
+        // Em caso de erro inesperado.
         Logger.log('Erro em getTurmasList: ' + e.message + ' Stack: ' + e.stack);
         // Retorna JSON indicando falha.
         return JSON.stringify({ success: false, message: 'Ocorreu um erro ao obter a lista de turmas: ' + e.message, data: [] });
@@ -433,7 +458,7 @@ function getDisciplinesList() {
         // Verifica se há dados além do cabeçalho.
         if (disciplinesData.length <= 1) {
             Logger.log(`Planilha "${SHEETS.DISCIPLINES}" vazia ou apenas cabeçalho.`);
-             // Retorna JSON indicando sucesso, mas com lista vazia.
+            // Retorna JSON indicando sucesso, mas com lista vazia.
             return JSON.stringify({ success: true, message: `Nenhuma disciplina cadastrada na planilha "${SHEETS.DISCIPLINES}".`, data: [] });
         }
 
@@ -597,8 +622,8 @@ function getAvailableSlots(tipoReserva) {
                 continue;
             }
             if (instanceStatus !== STATUS_OCUPACAO.DISPONIVEL && instanceStatus !== STATUS_OCUPACAO.REPOSICAO_AGENDADA && instanceStatus !== STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) {
-                 Logger.log(`Skipping row ${rowIndex} due to invalid Status Ocupação: "${instanceStatus}". Raw: ${instanceStatusRaw}`);
-                 continue;
+                Logger.log(`Skipping row ${rowIndex} due to invalid Status Ocupação: "${instanceStatus}". Raw: ${instanceStatusRaw}`);
+                continue;
             }
 
             // Compara a data da instância (sem a hora) com a data atual (sem a hora).
@@ -629,7 +654,7 @@ function getAvailableSlots(tipoReserva) {
                 // Para Substituição, o horário deve ser do tipo FIXO.
                 // E NÃO pode estar com status REPOSICAO_AGENDADA (pois uma reposição já ocupou esse slot).
                 // Pode estar DISPONIVEL ou já ter uma SUBSTITUICAO_AGENDADA (permitindo talvez reagendar, mas a lógica de bookSlot trata isso).
-                 if (originalType === TIPOS_HORARIO.FIXO && instanceStatus !== STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
+                if (originalType === TIPOS_HORARIO.FIXO && instanceStatus !== STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
                     // Adiciona o horário à lista de disponíveis para substituição.
                     availableSlots.push({
                         idInstancia: instanceId,
@@ -806,7 +831,7 @@ function bookSlot(jsonBookingDetailsString) {
 
         // --- Lógica de Validação Específica por Tipo de Reserva (VERIFICAÇÃO DE CONCORRÊNCIA) ---
         if (bookingType === TIPOS_RESERVA.REPOSICAO) {
-             // Para REPOSICAO, a instância deve ser do tipo VAGO e estar DISPONIVEL no momento da reserva.
+            // Para REPOSICAO, a instância deve ser do tipo VAGO e estar DISPONIVEL no momento da reserva.
             if (originalType !== TIPOS_HORARIO.VAGO || currentStatus !== STATUS_OCUPACAO.DISPONIVEL) {
                 lock.releaseLock();
                 // Mensagem indicando que o status mudou desde que o usuário viu a lista.
@@ -825,13 +850,13 @@ function bookSlot(jsonBookingDetailsString) {
                 lock.releaseLock();
                 return JSON.stringify({ success: false, message: 'Este horário não é um horário fixo e não pode ser substituído.', data: null });
             }
-             // Não pode ser substituído se já houver uma REPOSICAO agendada nele.
+            // Não pode ser substituído se já houver uma REPOSICAO agendada nele.
             if (currentStatus === STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
                 lock.releaseLock();
                 return JSON.stringify({ success: false, message: 'Este horário fixo está sendo usado para uma reposição e não pode ser substituído.', data: null });
             }
-             // Deve estar DISPONIVEL ou já marcado como SUBSTITUICAO_AGENDADA (permitindo reagendar/atualizar a substituição).
-             // Se o status for qualquer outro (ex: algum status futuro inválido), a reserva falha.
+            // Deve estar DISPONIVEL ou já marcado como SUBSTITUICAO_AGENDADA (permitindo reagendar/atualizar a substituição).
+            // Se o status for qualquer outro (ex: algum status futuro inválido), a reserva falha.
             if (currentStatus !== STATUS_OCUPACAO.DISPONIVEL && currentStatus !== STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) {
                 lock.releaseLock();
                 return JSON.stringify({ success: false, message: 'Este horário fixo não está disponível para substituição neste momento (concorrência).', data: null });
@@ -919,12 +944,12 @@ function bookSlot(jsonBookingDetailsString) {
 
         // --- Adiciona a Linha à Planilha de Reservas ---
         try {
-             // Verificação extra para garantir o número correto de colunas antes de adicionar.
-             if (newBookingRow.length !== numColsBooking) {
-                 Logger.log(`Erro interno: newBookingRow tem ${newBookingRow.length} colunas, esperado ${numColsBooking}. Ajustando...`);
-                 // Ajusta o array se necessário (embora a inicialização acima deva prevenir isso).
-                 while (newBookingRow.length < numColsBooking) newBookingRow.push('');
-                 if (newBookingRow.length > numColsBooking) newBookingRow.length = numColsBooking;
+            // Verificação extra para garantir o número correto de colunas antes de adicionar.
+            if (newBookingRow.length !== numColsBooking) {
+                Logger.log(`Erro interno: newBookingRow tem ${newBookingRow.length} colunas, esperado ${numColsBooking}. Ajustando...`);
+                // Ajusta o array se necessário (embora a inicialização acima deva prevenir isso).
+                while (newBookingRow.length < numColsBooking) newBookingRow.push('');
+                if (newBookingRow.length > numColsBooking) newBookingRow.length = numColsBooking;
             }
             // Adiciona a nova linha ao final da planilha de reservas.
             bookingsSheet.appendRow(newBookingRow);
@@ -943,7 +968,7 @@ function bookSlot(jsonBookingDetailsString) {
         try {
             // Obtém o ID do calendário da planilha de configurações.
             const calendarId = getConfigValue('ID do Calendario');
-             // Se o ID não estiver configurado, pula a criação do evento.
+            // Se o ID não estiver configurado, pula a criação do evento.
             if (!calendarId || calendarId === '') {
                 Logger.log('ID do Calendário não configurado. Pulando criação de evento.');
                 lock.releaseLock();
@@ -952,11 +977,11 @@ function bookSlot(jsonBookingDetailsString) {
             }
             // Tenta obter o objeto Calendar usando o ID.
             const calendar = CalendarApp.getCalendarById(calendarId);
-             // Se o calendário não for encontrado ou o script não tiver permissão.
+            // Se o calendário não for encontrado ou o script não tiver permissão.
             if (!calendar) {
                 Logger.log(`Calendário com ID "${calendarId}" não encontrado ou acessível. Pulando criação/atualização de evento.`);
                 lock.releaseLock();
-                 // Retorna sucesso, mas informa sobre o problema com o calendário.
+                // Retorna sucesso, mas informa sobre o problema com o calendário.
                 return JSON.stringify({ success: true, message: `Reserva agendada com sucesso, mas o calendário "${calendarId}" não foi encontrado ou não está acessível. Evento não criado/atualizado.`, data: { bookingId: bookingId, eventId: null } });
             }
 
@@ -1060,7 +1085,7 @@ function bookSlot(jsonBookingDetailsString) {
 
             // Se não havia evento existente ou a busca/atualização falhou.
             if (!event) {
-                 // Cria um novo evento.
+                // Cria um novo evento.
                 const eventOptions = { description: eventDescription };
                 // Adiciona convidados se houver.
                 if (guests.length > 0) {
@@ -1083,12 +1108,12 @@ function bookSlot(jsonBookingDetailsString) {
             calendarEventId = event.getId();
 
         } catch (calendarError) {
-             // Se ocorrer um erro durante a interação com o Google Calendar.
+            // Se ocorrer um erro durante a interação com o Google Calendar.
             Logger.log('Erro crítico no Calendar: ' + calendarError.message + ' Stack: ' + calendarError.stack);
             // Libera o bloqueio.
             lock.releaseLock();
-             // Retorna sucesso na reserva da planilha, mas informa sobre o erro no Calendar.
-             // A reserva está feita no sistema, mas o evento pode estar ausente ou incorreto.
+            // Retorna sucesso na reserva da planilha, mas informa sobre o erro no Calendar.
+            // A reserva está feita no sistema, mas o evento pode estar ausente ou incorreto.
             return JSON.stringify({ success: true, message: `Reserva agendada com sucesso, mas houve um erro ao criar/atualizar o evento no Google Calendar: ${calendarError.message}. Verifique os logs.`, data: { bookingId: bookingId, eventId: null } });
         }
 
@@ -1369,9 +1394,9 @@ function createScheduleInstances() {
             instancesSheet.getRange(instancesSheet.getLastRow() + 1, 1, newInstances.length, numColsInstance).setValues(newInstances);
             Logger.log(`Geradas ${newInstances.length} novas instâncias de horários salvas.`);
         } catch (e) {
-             // Se ocorrer um erro durante a inserção em lote.
+            // Se ocorrer um erro durante a inserção em lote.
             Logger.log(`Erro ao salvar novas instâncias na planilha "${SHEETS.SCHEDULE_INSTANCES}": ${e.message} Stack: ${e.stack}`);
-             // Lança um erro para que o gatilho (se houver) registre a falha.
+            // Lança um erro para que o gatilho (se houver) registre a falha.
             throw new Error(`Erro ao salvar novas instâncias: ${e.message}`);
         }
     } else {
@@ -1380,191 +1405,3 @@ function createScheduleInstances() {
     }
     Logger.log('*** createScheduleInstances finalizada ***');
 }
-
-
-// --- Funções Adicionais (Exemplo de Cancelamento - Mantido Comentado) ---
-/*
-function cancelBooking(bookingId) {
-   const lock = LockService.getScriptLock();
-   lock.waitLock(5000); // Espera no máximo 5 segundos
-
-   const userEmail = Session.getActiveUser().getEmail();
-   const userRole = getUserRolePlain(userEmail);
-
-   if (!userRole) {
-     lock.releaseLock();
-     return JSON.stringify({ success: false, message: 'Usuário não autorizado a cancelar.', data: null });
-   }
-
-    try {
-        const ss = SpreadsheetApp.getActiveSpreadsheet();
-        const instancesSheet = ss.getSheetByName(SHEETS.SCHEDULE_INSTANCES);
-        const bookingsSheet = ss.getSheetByName(SHEETS.BOOKING_DETAILS);
-        const calendarId = getConfigValue('ID do Calendario');
-        let calendar = null;
-         if (calendarId) {
-             try { calendar = CalendarApp.getCalendarById(calendarId.trim()); } catch(e) { Logger.log("Calendar not found for cancellation: " + e); }
-         }
-
-        // 1. Encontrar a reserva na planilha Reservas Detalhadas
-        const bookingsData = bookingsSheet.getDataRange().getValues();
-        let bookingRowIndex = -1; // Índice da linha no Sheets (baseado em 1)
-        let bookingDetails = null; // Array da linha da reserva
-
-        if (bookingsData.length <= 1) {
-             lock.releaseLock();
-             return JSON.stringify({ success: false, message: 'Reserva não encontrada (planilha de reservas vazia).', data: null });
-        }
-
-        for (let i = 1; i < bookingsData.length; i++) { // Começa do 1 para pular cabeçalho
-            const row = bookingsData[i];
-             if (row && row.length > HEADERS.BOOKING_DETAILS.ID_RESERVA) {
-                const currentBookingId = (typeof row[HEADERS.BOOKING_DETAILS.ID_RESERVA] === 'string' || typeof row[HEADERS.BOOKING_DETAILS.ID_RESERVA] === 'number') ? String(row[HEADERS.BOOKING_DETAILS.ID_RESERVA]).trim() : null;
-
-                if (currentBookingId && currentBookingId === bookingId) {
-                    bookingRowIndex = i + 1; // Índice da linha no Sheets
-                    bookingDetails = row; // Salva o array da linha completa
-                    break;
-                }
-             }
-        }
-
-        if (bookingRowIndex === -1 || !bookingDetails) {
-             lock.releaseLock();
-            return JSON.stringify({ success: false, message: 'Reserva non trovata.', data: null }); // Corrigido italiano
-        }
-
-         // Opcional: Verificar se o usuário logado tem permissão para cancelar esta reserva
-         // Ex: Apenas o criador, o professor envolvido, o admin.
-         // const createdBy = (bookingDetails.length > HEADERS.BOOKING_DETAILS.CRIADO_POR) ? String(bookingDetails[HEADERS.BOOKING_DETAILS.CRIADO_POR] || '').trim() : '';
-         // const professorReal = (bookingDetails.length > HEADERS.BOOKING_DETAILS.PROFESSOR_REAL) ? String(bookingDetails[HEADERS.BOOKING_DETAILS.PROFESSOR_REAL] || '').trim() : '';
-         // if (userRole !== 'Admin' && createdBy !== userEmail && professorReal !== userEmail) {
-         //     lock.releaseLock();
-         //     return JSON.stringify({ success: false, message: 'Você não tem permissão para cancelar esta reserva.', data: null });
-         // }
-
-        // Verifica se a reserva já está cancelada
-        const currentBookingStatus = (bookingDetails.length > HEADERS.BOOKING_DETAILS.STATUS_RESERVA) ? String(bookingDetails[HEADERS.BOOKING_DETAILS.STATUS_RESERVA] || '').trim() : '';
-         if (currentBookingStatus === 'Cancelada') {
-              lock.releaseLock();
-              return JSON.stringify({ success: true, message: `Reserva ${bookingId} já estava cancelada.`, data: null }); // Considera sucesso se já cancelada
-         }
-
-
-        // 2. Encontrar a instância de horário correspondente na planilha Instancias de Horarios
-        const instanceId = (bookingDetails.length > HEADERS.BOOKING_DETAILS.ID_INSTANCIA) ? String(bookingDetails[HEADERS.BOOKING_DETAILS.ID_INSTANCIA] || '').trim() : null;
-
-        let instanceRowIndex = -1; // Índice da linha no Sheets (baseado em 1)
-        let instanceDetails = null; // Array da linha da instância
-
-        if (!instanceId || instanceId === '') {
-             Logger.log(`Reserva ${bookingId} não tem ID de instância vinculado.`);
-             // Continua cancelamento da reserva e Calendar (se ID Calendar existir direto na reserva?), mas avisa
-        } else {
-             // Busca a instância
-             const instancesData = instancesSheet.getDataRange().getValues();
-              // Need to check column count here too based on new headers
-             const minInstanceCols = HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR + 1;
-
-              if (instancesData.length > 1 && instancesData[0].length >= minInstanceCols) {
-                  for (let i = 1; i < instancesData.length; i++) { // Começa do 1 para pular cabeçalho
-                       const row = instancesData[i];
-                       const currentInstanceId = (row.length > HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA) ? String(row[HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA] || '').trim() : null;
-                       if (currentInstanceId && currentInstanceId === instanceId) {
-                           instanceRowIndex = i + 1; // Índice da linha no Sheets
-                           instanceDetails = row; // Salva o array da linha completa
-                           break;
-                       }
-                  }
-              }
-
-             if (instanceRowIndex === -1 || !instanceDetails) {
-                 Logger.log(`Instância de horário ${instanceId} não encontrada na planilha Instancias de Horarios para a reserva ${bookingId} durante o cancelamento.`);
-                 // Continua o cancelamento da reserva e do Calendar
-             } else {
-                  // 3. Resetar o status da instância de horário para 'Disponivel'
-                  // Verifica se o status atual da instância ainda corresponde a esta reserva antes de resetar
-                   const currentInstanceBookingId = (instanceDetails.length > HEADERS.SCHEDULE_INSTANCES.ID_RESERVA) ? String(instanceDetails[HEADERS.SCHEDULE_INSTANCES.ID_RESERVA] || '').trim() : null;
-
-                 if (currentInstanceBookingId && currentInstanceBookingId === bookingId) {
-                      // Reseta para Disponivel (ou o status original para horários fixos se apropriado)
-                      // Lê o tipo original da instância para decidir para qual status voltar
-                      const originalType = (instanceDetails.length > HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL) ? String(instanceDetails[HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL] || '').trim() : null;
-                      let newStatus = STATUS_OCUPACAO.DISPONIVEL; // Padrão para Vago
-                      if (originalType === TIPOS_HORARIO.FIXO) {
-                          // Para Fixo, pode voltar para Disponivel (pronto para substituicao) ou outro status padrão se tiver
-                          newStatus = STATUS_OCUPACAO.DISPONIVEL; // Assumindo que Fixo cancelado volta a ser Disponível para substituição
-                      }
-
-
-                      // Verifica se a linha da instância tem colunas suficientes antes de escrever
-                       if(instanceDetails.length > HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO && instanceDetails.length > HEADERS.SCHEDULE_INSTANCES.ID_RESERVA) {
-                          instancesSheet.getRange(instanceRowIndex, HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO + 1).setValue(newStatus);
-                          instancesSheet.getRange(instanceRowIndex, HEADERS.SCHEDULE_INSTANCES.ID_RESERVA + 1).setValue(''); // Limpa o link para a reserva
-                           Logger.log(`Status da instância ${instanceId} na linha ${instanceRowIndex} resetado para '${newStatus}'.`);
-                       } else {
-                            Logger.log(`Warning: Instância ${instanceId} na linha ${instanceRowIndex} não tem colunas suficientes para resetar status/ID Reserva.`);
-                       }
-
-
-                       // Opcional: Limpar o ID do evento do Calendar na instância se necessário, ou se o evento for excluído abaixo
-                       // if(instanceDetails.length > HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR) {
-                       //     instancesSheet.getRange(instanceRowIndex, HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR + 1).setValue('');
-                       // }
-                 } else {
-                     Logger.log(`Instância ${instanceId} na linha ${instanceRowIndex} já não estava vinculada à reserva ${bookingId}. Status não alterado.`);
-                 }
-             }
-        }
-
-
-        // 4. Excluir o evento no Google Calendar (se existir)
-         let eventId = null;
-         if (instanceDetails && instanceDetails.length > HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR) {
-              eventId = (typeof instanceDetails[HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR] === 'string' || typeof instanceDetails[HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR] === 'number') ? String(instanceDetails[HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR] || '').trim() : null;
-         }
-         // Poderia também haver um Calendar ID armazenado diretamente na Reserva Detalhada se a vinculação da Instância falhou no agendamento.
-
-         if (calendar && eventId && eventId !== '') {
-              try {
-                  const event = calendar.getEventById(eventId);
-                   if (event) {
-                       event.deleteEvent(); // Exclui o evento
-                        // Limpa o ID do evento na planilha Instancias de Horarios (se não fez acima e instanceDetails foi encontrado)
-                        if (instanceRowIndex !== -1 && instanceDetails.length > HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR) {
-                             instancesSheet.getRange(instanceRowIndex, HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR + 1).setValue('');
-                        }
-                       Logger.log(`Evento do Calendar ${eventId} excluído.`);
-                   } else {
-                       Logger.log(`Evento do Calendar ${eventId} não encontrado para exclusão.`);
-                   }
-              } catch (e) {
-                   Logger.log(`Erro ao excluir evento do Calendar ${eventId}: ${e.message}`);
-              }
-         }
-
-
-        // 5. Marcar a reserva como cancelada na planilha Reservas Detalhadas
-        // Use setValue para atualizar a célula específica de status
-         if (bookingDetails.length > HEADERS.BOOKING_DETAILS.STATUS_RESERVA) {
-             bookingsSheet.getRange(bookingRowIndex, HEADERS.BOOKING_DETAILS.STATUS_RESERVA + 1).setValue('Cancelada');
-              Logger.log(`Reserva ${bookingId} na linha ${bookingRowIndex} marcada como 'Cancelada'.`);
-         } else {
-             Logger.log(`Warning: Reserva ${bookingId} na linha ${bookingRowIndex} não tem coluna de Status Reserva.`);
-         }
-
-
-        lock.releaseLock();
-        let calendarMessage = calendar ? '' : ' (ID do Calendário não configurado ou inválido, verifique as Configurações)';
-        let instanceMessage = (instanceRowIndex === -1) ? ' (Instância de horário associada não encontrada)' : '';
-        return JSON.stringify({ success: true, message: `Reserva ${bookingId} cancelada com sucesso!${instanceMessage}${calendarMessage}`, data: null });
-
-    } catch (e) {
-       if (lock.hasLock()) {
-         lock.releaseLock();
-       }
-       Logger.log('Erro no cancelBooking: ' + e.message + ' Stack: ' + e.stack);
-       return JSON.stringify({ success: false, message: 'Ocorreu um erro ao cancelar a reserva: ' + e.message, data: null });
-    }
-}
-*/
