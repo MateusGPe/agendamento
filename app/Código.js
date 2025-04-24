@@ -5,21 +5,21 @@
 
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to
-   deal in the Software without restriction, including without limitation the
-   rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
-   sell copies of the Software, and to permit persons to whom the Software is
+    deal in the Software without restriction, including without limitation the
+    rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+    sell copies of the Software, and to permit persons to whom the Software is
     furnished to do so, subject to the following conditions:
 
     The above copyright notice and this permission notice shall be included in
-   all copies or substantial portions of the Software.
+    all copies or substantial portions of the Software.
 
     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
     AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
-   IN THE SOFTWARE.
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+    IN THE SOFTWARE.
 */
 
 // Obs: Comentários gerados por IA.
@@ -384,7 +384,11 @@ function getConfigValue(configName) {
             // Retorna o valor da coluna VALOR, convertido para string e sem espaços
             // extras. Usa '' como fallback caso a célula esteja vazia (null ou
             // undefined) antes de chamar trim().
-            return String(data[i][HEADERS.CONFIG.VALOR] || '').trim();
+            let value = data[i][HEADERS.CONFIG.VALOR]
+            if (value instanceof Date) {
+                return value;
+            }
+            return String(value || '').trim();
         }
     }
     // Se o loop terminar sem encontrar a configuração, registra um log.
@@ -2028,7 +2032,7 @@ function cleanOldScheduleInstances() {
 
         // 2. Obtém e valida a data limite para limpeza da configuração
         const cleanupDateString = getConfigValue('Data Limite');
-        if (!cleanupDateString || cleanupDateString.trim() === '') {
+        if (!cleanupDateString) {
             Logger.log(
                 `Erro: Configuração "Data Limite" não encontrada ou vazia na planilha "${SHEETS.CONFIG}".`);
             Logger.log(
@@ -2126,7 +2130,7 @@ function cleanOldScheduleInstances() {
             if (!keepRow) {
                 // Se a linha não foi marcada para manter, ela será apagada (inclui
                 // inválidas e antigas)
-                // deletedCount++; // Já contabilizado acima, evite duplicar
+                deletedCount++;
             }
         }
 
