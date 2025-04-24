@@ -1,3 +1,4 @@
+<!-- Javascript.html -->
 <script>
     function onBackendResponse(jsonStringResponse) {
         hideLoading();
@@ -459,7 +460,10 @@
                 const userRole = userResponse && userResponse.success && userResponse.data ? userResponse.data.role : null;
                 const userEmail = userResponse && userResponse.success && userResponse.data ? userResponse.data.email : null;
 
-                if (userEmailSpan) userEmailSpan.textContent = userEmail || 'N/A';
+                if (userEmailSpan) {
+                    userEmailSpan.textContent = userEmail || 'N/A';
+                    userEmailSpan.href = userEmail ? `mailto:${userEmail}` : '#';
+                }
                 if (userRoleSpan) userRoleSpan.textContent = userRole || 'Não Determinado';
 
                 if (hasInitializationError) {

@@ -1,3 +1,4 @@
+<!-- Index.html -->
 <!DOCTYPE html>
 <html>
 
@@ -9,7 +10,8 @@
 <body>
   <div class="container">
     <h1>Agendamento de Aulas</h1>
-    <p>Usuário: <span id="user-email">Carregando...</span> | Papel: <span id="user-role">Carregando...</span></p>
+    <p>Usuário: <a id="user-email" href="#">Carregando...</a> | Papel: <strong id="user-role">Carregando...</strong></p>
+    <p><a href="<?= ScriptApp.getService().getUrl() ?>?page=scheduleView">Visualizar Agendamentos</a></p>
 
     <div id="reposicao-section" class="section" style="display: none;">
       <h2>Agendar Reposição</h2>

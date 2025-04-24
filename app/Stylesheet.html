@@ -58,6 +58,7 @@
   .section:last-of-type {
     border-bottom: none;
   }
+
   button {
     background-color: #1a73e8;
     color: white;
@@ -97,6 +98,7 @@
     cursor: not-allowed;
     box-shadow: none;
   }
+
   .slots-list {
     margin-top: 15px;
     max-height: 450px;
@@ -107,6 +109,7 @@
     position: relative;
     background-color: #fff;
   }
+
   .slots-table {
     width: 100%;
     border-collapse: collapse;
@@ -166,6 +169,7 @@
   .slots-table tbody tr.selected td {
     color: #174ea6;
   }
+
   .slots-list p {
     padding: 25px 20px;
     margin: 0;
@@ -184,6 +188,7 @@
     color: #137333;
     background-color: #e6f4ea;
   }
+
   .booking-form {
     margin-top: 25px;
     padding: 20px;
@@ -243,6 +248,7 @@
     border-color: #1a73e8;
     box-shadow: 0 0 0 1px #1a73e8;
   }
+
   .loading {
     position: fixed;
     inset: 0;
@@ -254,6 +260,7 @@
     color: #1a73e8;
     z-index: 1000;
   }
+
   .loading::before {
     content: '';
     display: block;
@@ -304,6 +311,7 @@
     border: none;
     border-top: 1px solid #e0e0e0;
   }
+
   @media screen and (max-width: 768px) {
     .container {
       padding: 15px 10px;
@@ -321,12 +329,14 @@
     h3 {
       font-size: 1.1em;
     }
+
     .section>button:first-of-type {
       width: 100%;
       margin-right: 0;
       margin-bottom: 15px;
       box-sizing: border-box;
     }
+
     .booking-form button {
       width: 100%;
       margin-right: 0;
@@ -337,6 +347,7 @@
     .booking-form button:last-of-type {
       margin-bottom: 0;
     }
+
     .slots-list {
       max-height: none;
       overflow-y: visible;
@@ -361,6 +372,7 @@
       background-color: #fff;
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
     }
+
     .slots-table tbody tr:hover {
       background-color: #f8f9fa;
     }
@@ -392,6 +404,7 @@
     .slots-table tbody td:last-child {
       border-bottom: none;
     }
+
     .slots-table tbody td::before {
       content: attr(data-label);
       font-weight: bold;
@@ -401,11 +414,13 @@
       flex-basis: 40%;
       flex-shrink: 0;
     }
+
     .booking-form input[type="text"],
     .booking-form select {
       font-size: 1em;
     }
   }
+
   .filter-section {
     margin-bottom: 20px;
     padding: 15px;
@@ -480,7 +495,7 @@
     border: 1px solid #e0e0e0;
     padding: 8px 10px;
     text-align: center;
-    vertical-align: top;
+    vertical-align: middle;
     width: 12.5%;
     min-width: 80px;
     white-space: pre-wrap;
@@ -498,12 +513,14 @@
   }
 
   .schedule-grid-table td {
+    vertical-align: middle;
     background-color: #fff;
   }
 
   .schedule-grid-table tbody tr:nth-child(even) td {
     background-color: #f9f9f9;
   }
+
   .schedule-grid-table td.hour-cell {
     background-color: #e8f0fe;
     font-weight: bold;
@@ -513,11 +530,13 @@
     position: sticky;
     left: 0;
     z-index: 1;
-    text-align: left;
+    text-align: center;
   }
+
   .schedule-grid-table tbody tr:nth-child(even) td.hour-cell {
     background-color: #d2e3fc;
   }
+
   .slot-cell {
     min-height: 40px;
   }
@@ -557,11 +576,37 @@
     color: #d93025;
     border-left: 3px solid #ea4335;
   }
+
   .slot-unknown-status {
     background-color: #fef7e0;
     color: #f79c00;
     border-left: 3px solid #fcc934;
   }
+
+  .container a {
+    color: #1a73e8;
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.2s ease-in-out, text-decoration 0.2s ease-in-out;
+  }
+
+  .container a:hover,
+  .container a:focus {
+    color: #1558b3;
+    text-decoration: underline;
+    outline: none;
+  }
+
+  .container a:focus-visible {
+    outline: 2px solid #1a73e8;
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  .container a .back-arrow {
+    margin-right: 4px;
+  }
+
   @media screen and (max-width: 768px) {
 
     .schedule-grid-table th,

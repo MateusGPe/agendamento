@@ -22,6 +22,7 @@
     IN THE SOFTWARE.
 */
 
+// Code.gs
 // Obs: Comentários gerados por IA.
 // Obtém o ID da planilha Google Sheets atualmente ativa onde o script está
 // sendo executado.
