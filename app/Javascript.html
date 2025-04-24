@@ -40,137 +40,138 @@
 
     function onSlotsLoaded(jsonStringResponse, type) {
         console.log("onSlotsLoaded chamada para tipo:", type);
-        console.log("Raw JSON string response:", jsonStringResponse);
+        console.log("Raw JSON string response:", jsonStringResponse); // Loga a string recebida
+
         hideLoading();
 
-        const slotsContainer = document.getElementById(
-            type.toLowerCase() + "-slots"
-        );
-        const messageDiv = document.getElementById("message");
-        messageDiv.textContent = "";
-        messageDiv.className = "message";
+        const slotsContainer = document.getElementById(type.toLowerCase() + '-slots'); // Container div
+        const messageDiv = document.getElementById('message');
+        messageDiv.textContent = '';
+        messageDiv.className = 'message';
 
         if (!slotsContainer) {
             console.error("Container de slots não encontrado para tipo:", type);
-            messageDiv.textContent =
-                "Erro interno: Container de exibição de horários não encontrado.";
-            messageDiv.className = "message error";
+            messageDiv.textContent = 'Erro interno: Container de exibição de horários não encontrado.';
+            messageDiv.className = 'message error';
             return;
         }
+        slotsContainer.innerHTML = ''; // Limpa o container
 
-        slotsContainer.innerHTML = "";
         let response;
         try {
             response = JSON.parse(jsonStringResponse);
             console.log("Parsed response data:", response);
         } catch (e) {
             console.error("Erro ao parsear JSON de slots:", e, jsonStringResponse);
-            messageDiv.textContent = "Erro ao processar dados de horários recebidos.";
-            messageDiv.className = "message error";
-            slotsContainer.innerHTML =
-                '<p class="error-message">Erro ao carregar horários.</p>';
-            return;
+            messageDiv.textContent = 'Erro ao processar dados de horários recebidos.';
+            messageDiv.className = 'message error';
+            slotsContainer.innerHTML = '<p class="error-message">Erro ao carregar horários.</p>'; // Mensagem dentro do container
+            return; // Sai se não conseguir parsear
         }
+        // --- Fim Parse ---
+
+
         if (!response || !response.success) {
-            const errorMessage =
-                response && response.message
-                    ? response.message
-                    : "Erro desconhecido ao carregar horários.";
+            // Se a resposta parseada for nula ou não indicar sucesso (captura erros do backend também)
+            const errorMessage = (response && response.message) ? response.message : 'Erro desconhecido ao carregar horários.';
             console.error("Falha ao carregar slots:", errorMessage, response);
             messageDiv.textContent = errorMessage;
-            messageDiv.className = "message error";
-            slotsContainer.innerHTML =
-                '<p class="error-message">' + errorMessage + "</p>";
+            messageDiv.className = 'message error';
+            slotsContainer.innerHTML = '<p class="error-message">' + errorMessage + '</p>';
             return;
         }
 
-        const slots = response.data;
-        if (!Array.isArray(slots) || slots.length === 0) {
-            const infoMessage =
-                response.message ||
-                `Nenhum horário disponível encontrado para ${type.toLowerCase()}.`;
-            messageDiv.textContent = infoMessage;
-            messageDiv.className = "message success";
-            slotsContainer.innerHTML =
-                '<p class="info-message">Nenhum horário disponível encontrado.</p>';
+        const slots = response.data; // ACESSA O ARRAY AQUI!
+
+        // Agora verifica se o array de dados está vazio (verificação mais robusta)
+        if (!Array.isArray(slots) || slots.length === 0) { // Verifica se é array e se está vazio
+            const infoMessage = response.message || `Nenhum horário disponível encontrado para ${type.toLowerCase()}.`;
+            messageDiv.textContent = infoMessage; // Mensagem de sucesso mas lista vazia
+            messageDiv.className = 'message success'; // Indica que a chamada foi um sucesso, mas a lista está vazia
+            slotsContainer.innerHTML = '<p class="info-message">Nenhum horário disponível encontrado.</p>'; // Mensagem dentro do container
             console.log("Slots array is empty or not array:", slots);
             return;
         }
 
-        const table = document.createElement("table");
-        table.classList.add("slots-table");
+        // Mensagem de sucesso será definida após criar a tabela
 
+        // --- Criação da Tabela ---
+        const table = document.createElement('table');
+        table.classList.add('slots-table'); // Adiciona classe para estilização
+
+        // Cabeçalho da Tabela
         const thead = table.createTHead();
         const headerRow = thead.insertRow();
-        const headers = [
-            "Data",
-            "Hora",
-            "Dia",
-            "Turma",
-            "Professor",
-            "Tipo",
-            "Status",
-        ];
-        headers.forEach((text) => {
-            const th = document.createElement("th");
+        // *** IMPORTANTE: Mantenha a ordem e texto exatos para os data-labels ***
+        const headers = ['Data', 'Hora', 'Dia', 'Turma', 'Professor', 'Tipo', 'Status'];
+        headers.forEach(text => {
+            const th = document.createElement('th');
             th.textContent = text;
             headerRow.appendChild(th);
         });
-        
+
+        // Corpo da Tabela
         const tbody = table.createTBody();
-        slots.forEach((slot) => {
-            if (
-                slot &&
-                slot.idInstancia &&
-                slot.data &&
-                slot.horaInicio &&
-                slot.diaSemana &&
-                slot.turma &&
-                slot.tipoOriginal &&
-                slot.statusOcupacao &&
-                slot.hasOwnProperty("professorPrincipal")
-            ) {
+
+        slots.forEach(slot => {
+            // Validação básica para garantir que o slot tem os campos mínimos necessários
+            if (slot && slot.idInstancia && slot.data && slot.horaInicio && slot.diaSemana && slot.turma && slot.tipoOriginal && slot.statusOcupacao && slot.hasOwnProperty('professorPrincipal')) {
                 const row = tbody.insertRow();
-                row.classList.add("slot-row");
-                row.setAttribute("data-id-instancia", slot.idInstancia);
-                row.setAttribute("data-type", type);
+                row.classList.add('slot-row'); // Classe para a linha
+                row.setAttribute('data-id-instancia', slot.idInstancia);
+                row.setAttribute('data-type', type);
+
+                // Cria string de informação combinada para passar ao selectSlot e para acessibilidade/tooltip (opcional)
                 let slotInfoText = `${slot.data} ${slot.horaInicio} (${slot.diaSemana}) - Turma: ${slot.turma}`;
-                let professorDisplay = "-";
-                if (
-                    slot.tipoOriginal === "Fixo" &&
-                    slot.professorPrincipal &&
-                    slot.professorPrincipal !== ""
-                ) {
+                let professorDisplay = '-'; // Padrão se não for Fixo ou não tiver professor
+                if (slot.tipoOriginal === 'Fixo' && slot.professorPrincipal && slot.professorPrincipal !== '') {
                     slotInfoText += ` - Prof: ${slot.professorPrincipal}`;
                     professorDisplay = slot.professorPrincipal;
                 }
                 slotInfoText += ` - Tipo: ${slot.tipoOriginal}, Status: ${slot.statusOcupacao}`;
-                row.onclick = () => selectSlot(slot.idInstancia, type, slotInfoText);
+
+                // Define o evento de clique para a linha inteira
+                row.onclick = () => selectSlot(slot.idInstancia, type, slotInfoText); // Atualiza info na seleção
+
+                // Cria e popula as células (td) E ADICIONA DATA-LABEL
                 const cellData = row.insertCell();
                 cellData.textContent = slot.data;
+                cellData.setAttribute('data-label', headers[0]); // Data
+
                 const cellHora = row.insertCell();
                 cellHora.textContent = slot.horaInicio;
+                cellHora.setAttribute('data-label', headers[1]); // Hora
+
                 const cellDia = row.insertCell();
                 cellDia.textContent = slot.diaSemana;
+                cellDia.setAttribute('data-label', headers[2]); // Dia
+
                 const cellTurma = row.insertCell();
                 cellTurma.textContent = slot.turma;
+                cellTurma.setAttribute('data-label', headers[3]); // Turma
+
                 const cellProfessor = row.insertCell();
-                cellProfessor.textContent = professorDisplay;
+                cellProfessor.textContent = professorDisplay; // Usa a variável definida acima
+                cellProfessor.setAttribute('data-label', headers[4]); // Professor
+
                 const cellTipo = row.insertCell();
                 cellTipo.textContent = slot.tipoOriginal;
+                cellTipo.setAttribute('data-label', headers[5]); // Tipo
+
                 const cellStatus = row.insertCell();
                 cellStatus.textContent = slot.statusOcupacao;
+                cellStatus.setAttribute('data-label', headers[6]); // Status
+
             } else {
-                console.warn(
-                    "Slot inválido encontrado nos dados recebidos (faltando campos?):",
-                    slot
-                );
+                console.warn("Slot inválido encontrado nos dados recebidos (faltando campos?):", slot);
             }
         });
-        slotsContainer.appendChild(table);
-        messageDiv.textContent =
-            response.message || "Horários carregados com sucesso.";
-        messageDiv.className = "message success";
+
+        slotsContainer.appendChild(table); // Adiciona a tabela completa ao container
+
+        // Mensagem de sucesso apenas se a tabela foi criada e populada
+        messageDiv.textContent = response.message || 'Horários carregados com sucesso.';
+        messageDiv.className = 'message success';
     }
 
     function showLoading() {
@@ -190,202 +191,162 @@
 
     function loadAvailableSlots(type) {
         showLoading();
-        const reposicaoForm = document.getElementById("reposicao-form");
-        const substituicaoForm = document.getElementById("substituicao-form");
-        const reposicaoSlots = document.getElementById("reposicao-slots");
-        const substituicaoSlots = document.getElementById("substituicao-slots");
+        // Limpa formulários e slots anteriores ao buscar novos
+        const reposicaoForm = document.getElementById('reposicao-form');
+        const substituicaoForm = document.getElementById('substituicao-form');
+        const reposicaoSlots = document.getElementById('reposicao-slots');
+        const substituicaoSlots = document.getElementById('substituicao-slots');
 
-        if (reposicaoForm) reposicaoForm.style.display = "none";
-        if (substituicaoForm) substituicaoForm.style.display = "none";
-        if (reposicaoSlots) reposicaoSlots.innerHTML = "";
-        if (substituicaoSlots) substituicaoSlots.innerHTML = "";
+        if (reposicaoForm) reposicaoForm.style.display = 'none';
+        if (substituicaoForm) substituicaoForm.style.display = 'none';
+        if (reposicaoSlots) reposicaoSlots.innerHTML = ''; // Limpa container
+        if (substituicaoSlots) substituicaoSlots.innerHTML = ''; // Limpa container
+
 
         google.script.run
-            .withSuccessHandler((responseString) =>
-                onSlotsLoaded(responseString, type)
-            )
-            .withFailureHandler((error) => {
+            .withSuccessHandler(responseString => onSlotsLoaded(responseString, type))
+            .withFailureHandler(error => {
                 hideLoading();
-                const messageDiv = document.getElementById("message");
-                messageDiv.textContent =
-                    "Erro na comunicação com o servidor: " + error.message;
-                messageDiv.className = "message error";
-                const slotsDiv = document.getElementById(type.toLowerCase() + "-slots");
-                if (slotsDiv)
-                    slotsDiv.innerHTML =
-                        '<p class="error-message">Erro ao carregar horários.</p>';
+                const messageDiv = document.getElementById('message');
+                messageDiv.textContent = 'Erro na comunicação com o servidor: ' + error.message;
+                messageDiv.className = 'message error';
+                // Limpar a lista de slots também em caso de falha completa na comunicação
+                const slotsDiv = document.getElementById(type.toLowerCase() + '-slots');
+                if (slotsDiv) slotsDiv.innerHTML = '<p class="error-message">Erro ao carregar horários.</p>'; // Mensagem dentro do container
             })
             .getAvailableSlots(type);
     }
+
+    // Seleciona um slot (linha da tabela) e mostra o formulário de reserva (sem mudanças aqui)
     function selectSlot(idInstancia, type, slotInfo) {
-        document
-            .querySelectorAll(".slots-table tbody tr.selected")
-            .forEach((item) => item.classList.remove("selected"));
+        // Remove a classe 'selected' de todas as linhas em AMBAS as tabelas (se existirem)
+        document.querySelectorAll('.slots-table tbody tr.selected').forEach(item => item.classList.remove('selected'));
 
-        const selectedRow = document.querySelector(
-            `.slots-table tbody tr[data-id-instancia="${idInstancia}"][data-type="${type}"]`
-        );
-
+        // Adiciona a classe 'selected' à linha clicada
+        const selectedRow = document.querySelector(`.slots-table tbody tr[data-id-instancia="${idInstancia}"][data-type="${type}"]`);
         if (selectedRow) {
-            selectedRow.classList.add("selected");
+            selectedRow.classList.add('selected');
         }
 
-        const formDiv = document.getElementById(type.toLowerCase() + "-form");
+        const formDiv = document.getElementById(type.toLowerCase() + '-form');
+        const slotIdInput = document.getElementById(type.toLowerCase() + '-selected-slot-id');
+        const slotInfoSpan = document.getElementById(type.toLowerCase() + '-selected-slot-info');
 
-        const slotIdInput = document.getElementById(
-            type.toLowerCase() + "-selected-slot-id"
-        );
-
-        const slotInfoSpan = document.getElementById(
-            type.toLowerCase() + "-selected-slot-info"
-        );
         if (slotIdInput) slotIdInput.value = idInstancia;
-        if (slotInfoSpan) slotInfoSpan.textContent = slotInfo;
+        if (slotInfoSpan) slotInfoSpan.textContent = slotInfo; // slotInfo já inclui a Turma e Prof Principal (se fixo)
 
-        if (type === "Reposicao") {
-            const alunoInput = document.getElementById("reposicao-aluno");
-            const professorSelect = document.getElementById(
-                "reposicao-professor-real"
-            );
-            const disciplinaSelect = document.getElementById("reposicao-disciplina");
-            if (alunoInput) {
-                alunoInput.value = "";
-                alunoInput.required = false;
-            }
-            if (professorSelect) {
-                professorSelect.value = "";
-                professorSelect.required = true;
-            }
-            if (disciplinaSelect) {
-                disciplinaSelect.value = "";
-                disciplinaSelect.required = true;
-            }
-        } else if (type === "Substituicao") {
-            const realSelect = document.getElementById("substituicao-professor-real");
-            const disciplinaSelect = document.getElementById(
-                "substituicao-disciplina"
-            );
-            if (realSelect) {
-                realSelect.value = "";
-                realSelect.required = true;
-            }
-            if (disciplinaSelect) {
-                disciplinaSelect.value = "";
-                disciplinaSelect.required = true;
-            }
+        // Resetar campos do formulário e definir required (sem mudanças aqui)
+        if (type === 'Reposicao') {
+            const alunoInput = document.getElementById('reposicao-aluno');
+            const professorSelect = document.getElementById('reposicao-professor-real');
+            const disciplinaSelect = document.getElementById('reposicao-disciplina');
+
+            if (alunoInput) { alunoInput.value = ''; alunoInput.required = false; }
+            if (professorSelect) { professorSelect.value = ''; professorSelect.required = true; }
+            if (disciplinaSelect) { disciplinaSelect.value = ''; disciplinaSelect.required = true; }
+
+        } else if (type === 'Substituicao') {
+            const realSelect = document.getElementById('substituicao-professor-real');
+            const disciplinaSelect = document.getElementById('substituicao-disciplina');
+
+            if (realSelect) { realSelect.value = ''; realSelect.required = true; }
+            if (disciplinaSelect) { disciplinaSelect.value = ''; disciplinaSelect.required = true; }
         }
-        if (formDiv) formDiv.style.display = "block";
-        document.getElementById("message").textContent = "";
-        document.getElementById("message").className = "message";
+
+        if (formDiv) formDiv.style.display = 'block';
+        document.getElementById('message').textContent = '';
+        document.getElementById('message').className = 'message';
+
     }
 
+    // Cancela a exibição do formulário de reserva (sem mudanças aqui)
     function cancelBookingForm(type) {
-        const formDiv = document.getElementById(type.toLowerCase() + "-form");
-        if (formDiv) formDiv.style.display = "none";
-        document
-            .querySelectorAll(
-                `#${type.toLowerCase()}-slots .slots-table tbody tr.selected`
-            )
-            .forEach((item) => item.classList.remove("selected"));
-        document.getElementById("message").textContent = "";
-        document.getElementById("message").className = "message";
+        const formDiv = document.getElementById(type.toLowerCase() + '-form');
+        if (formDiv) formDiv.style.display = 'none';
+        // Remove a classe 'selected' de todas as linhas da tabela relevante
+        document.querySelectorAll(`#${type.toLowerCase()}-slots .slots-table tbody tr.selected`).forEach(item => item.classList.remove('selected'));
+        document.getElementById('message').textContent = '';
+        document.getElementById('message').className = 'message';
     }
 
+
+    // Envia os detalhes da reserva para o backend (sem mudanças aqui)
     function bookSlot(type) {
         showLoading();
-        const slotIdInput = document.getElementById(
-            type.toLowerCase() + "-selected-slot-id"
-        );
+        const slotIdInput = document.getElementById(type.toLowerCase() + '-selected-slot-id');
         const slotId = slotIdInput ? slotIdInput.value : null;
+
         const bookingDetails = {
             idInstancia: slotId,
-            tipoReserva: type,
+            tipoReserva: type
         };
-        if (type === "Reposicao") {
-            const professorSelect = document.getElementById(
-                "reposicao-professor-real"
-            );
-            const disciplinaSelect = document.getElementById("reposicao-disciplina");
-            bookingDetails.professorReal = professorSelect
-                ? professorSelect.value
-                : "";
-            bookingDetails.disciplinaReal = disciplinaSelect
-                ? disciplinaSelect.value
-                : "";
-            if (
-                !bookingDetails.professorReal ||
-                bookingDetails.professorReal === "" ||
-                !bookingDetails.disciplinaReal ||
-                bookingDetails.disciplinaReal ===
-                "" /*|| !bookingDetails.turmasAgendada || bookingDetails.turmasAgendada === ''*/
-            ) {
+
+        if (type === 'Reposicao') {
+            const professorSelect = document.getElementById('reposicao-professor-real');
+            const disciplinaSelect = document.getElementById('reposicao-disciplina');
+
+            bookingDetails.professorReal = professorSelect ? professorSelect.value : '';
+            bookingDetails.disciplinaReal = disciplinaSelect ? disciplinaSelect.value : '';
+
+            if (!bookingDetails.professorReal || bookingDetails.professorReal === '' || !bookingDetails.disciplinaReal || bookingDetails.disciplinaReal === '') {
                 hideLoading();
-                const messageDiv = document.getElementById("message");
-                messageDiv.textContent =
-                    "Por favor, preencha todos os campos obrigatórios para reposição (Professor, Disciplina).";
-                messageDiv.className = "message error";
+                const messageDiv = document.getElementById('message');
+                messageDiv.textContent = 'Por favor, preencha todos os campos obrigatórios para reposição (Professor, Disciplina).';
+                messageDiv.className = 'message error';
                 return;
             }
-        } else if (type === "Substituicao") {
-            const realSelect = document.getElementById("substituicao-professor-real");
-            const disciplinaSelect = document.getElementById(
-                "substituicao-disciplina"
-            );
-            bookingDetails.professorReal = realSelect ? realSelect.value : "";
-            bookingDetails.disciplinaReal = disciplinaSelect
-                ? disciplinaSelect.value
-                : "";
-            if (
-                !bookingDetails.professorReal ||
-                bookingDetails.professorReal === "" ||
-                !bookingDetails.disciplinaReal ||
-                bookingDetails.disciplinaReal ===
-                "" /*|| !bookingDetails.turmasAgendada || bookingDetails.turmasAgendada === ''*/
-            ) {
+        } else if (type === 'Substituicao') {
+            const realSelect = document.getElementById('substituicao-professor-real');
+            const disciplinaSelect = document.getElementById('substituicao-disciplina');
+
+            bookingDetails.professorReal = realSelect ? realSelect.value : '';
+            bookingDetails.disciplinaReal = disciplinaSelect ? disciplinaSelect.value : '';
+
+            if (!bookingDetails.professorReal || bookingDetails.professorReal === '' || !bookingDetails.disciplinaReal || bookingDetails.disciplinaReal === '') {
                 hideLoading();
-                const messageDiv = document.getElementById("message");
-                messageDiv.textContent =
-                    "Por favor, preencha todos os campos obrigatórios para substituição (Professor Substituto, Disciplina).";
-                messageDiv.className = "message error";
+                const messageDiv = document.getElementById('message');
+                messageDiv.textContent = 'Por favor, preencha todos os campos obrigatórios para substituição (Professor Substituto, Disciplina).';
+                messageDiv.className = 'message error';
                 return;
             }
         } else {
             hideLoading();
-            const messageDiv = document.getElementById("message");
-            messageDiv.textContent = "Tipo de agendamento desconhecido.";
-            messageDiv.className = "message error";
+            const messageDiv = document.getElementById('message');
+            messageDiv.textContent = 'Tipo de agendamento desconhecido.';
+            messageDiv.className = 'message error';
             return;
         }
+
         const jsonBookingDetailsString = JSON.stringify(bookingDetails);
         console.log("Sending booking details as JSON:", jsonBookingDetailsString);
+
+
         google.script.run
             .withSuccessHandler(onBackendResponse)
-            .withFailureHandler((error) => {
+            .withFailureHandler(error => {
                 hideLoading();
-                const messageDiv = document.getElementById("message");
-                messageDiv.textContent =
-                    "Erro na comunicação ao agendar: " + error.message;
-                messageDiv.className = "message error";
+                const messageDiv = document.getElementById('message');
+                messageDiv.textContent = 'Erro na comunicação ao agendar: ' + error.message;
+                messageDiv.className = 'message error';
             })
             .bookSlot(jsonBookingDetailsString);
     }
 
+    // --- Função auxiliar para popular um dropdown (select) --- (sem mudanças aqui)
     function populateDropdown(selectId, optionsArray) {
         const selectElement = document.getElementById(selectId);
         if (!selectElement) {
             console.warn("Dropdown com ID '" + selectId + "' não encontrado.");
             return;
         }
+
         for (let i = selectElement.options.length - 1; i >= 0; i--) {
             if (selectElement.options[i].value !== "") {
                 selectElement.remove(i);
             }
         }
-        if (
-            selectElement.options.length === 0 ||
-            selectElement.options[0].value !== ""
-        ) {
-            const defaultOption = document.createElement("option");
+        if (selectElement.options.length === 0 || selectElement.options[0].value !== "") {
+            const defaultOption = document.createElement('option');
             defaultOption.value = "";
             defaultOption.textContent = "-- Selecione --";
             defaultOption.disabled = true;
@@ -394,46 +355,38 @@
         } else {
             selectElement.selectedIndex = 0;
         }
+
         if (optionsArray && Array.isArray(optionsArray)) {
-            optionsArray.forEach((optionValue) => {
-                if (optionValue && optionValue.trim() !== "") {
-                    const option = document.createElement("option");
+            optionsArray.forEach(optionValue => {
+                if (optionValue && optionValue.trim() !== '') {
+                    const option = document.createElement('option');
                     option.value = optionValue;
                     option.textContent = optionValue;
                     selectElement.appendChild(option);
                 }
             });
         }
-        console.log(
-            "Dropdown '" +
-            selectId +
-            "' populado com " +
-            (optionsArray ? optionsArray.length : 0) +
-            " opções (além da padrão)."
-        );
-        if (
-            selectElement.options.length > 1 &&
-            selectElement.options[1] &&
-            selectElement.options[1].textContent.startsWith("-- Carregando ")
-        ) {
+        console.log("Dropdown '" + selectId + "' populado com " + (optionsArray ? optionsArray.length : 0) + " opções (além da padrão).");
+
+        if (selectElement.options.length > 1 && selectElement.options[1] && selectElement.options[1].textContent.startsWith("-- Carregando ")) {
             selectElement.remove(1);
         }
-        if (
-            selectElement.selectedIndex === -1 ||
-            (selectElement.selectedIndex === 1 &&
-                selectElement.options[1].textContent.startsWith("-- Carregando "))
-        ) {
+        if (selectElement.selectedIndex === -1 || selectElement.selectedIndex === 1 && selectElement.options[1].textContent.startsWith("-- Carregando ")) {
             selectElement.selectedIndex = 0;
         }
     }
 
-    document.addEventListener("DOMContentLoaded", function () {
+
+    // Inicialização - Carrega informações essenciais ao carregar a página (sem mudanças aqui)
+    document.addEventListener('DOMContentLoaded', function () {
         console.log("DOM completamente carregado. Iniciando aplicação.");
         showLoading();
+
         let completedCalls = 0;
         const totalCalls = 4;
         let userResponse = null;
         let hasInitializationError = false;
+
         function handleSuccess(jsonStringResponse, callType) {
             completedCalls++;
             console.log(`Call ${callType} completed successfully.`);
@@ -442,42 +395,30 @@
                 response = JSON.parse(jsonStringResponse);
                 console.log(`${callType} parsed response:`, response);
             } catch (e) {
-                console.error(
-                    `Erro ao parsear JSON de ${callType}:`,
-                    e,
-                    jsonStringResponse
-                );
-                handleError(
-                    { message: `Erro ao processar dados de ${callType}.` },
-                    callType
-                );
+                console.error(`Erro ao parsear JSON de ${callType}:`, e, jsonStringResponse);
+                handleError({ message: `Erro ao processar dados de ${callType}.` }, callType);
                 return;
             }
             if (!response || !response.success) {
-                const errorMsg =
-                    response && response.message
-                        ? `Falha ao carregar ${callType}: ${response.message}`
-                        : `Falha desconhecida ao carregar ${callType}.`;
-                console.error(
-                    `Falha reportada pelo backend para ${callType}:`,
-                    errorMsg,
-                    response
-                );
+                const errorMsg = response && response.message ? `Falha ao carregar ${callType}: ${response.message}` : `Falha desconhecida ao carregar ${callType}.`;
+                console.error(`Falha reportada pelo backend para ${callType}:`, errorMsg, response);
                 handleError({ message: errorMsg }, callType);
                 return;
             }
-            if (callType === "getUserRole") {
+            if (callType === 'getUserRole') {
                 userResponse = response;
-            } else if (callType === "getProfessorsList") {
+            } else if (callType === 'getProfessorsList') {
                 const professors = Array.isArray(response.data) ? response.data : [];
-                populateDropdown("reposicao-professor-real", professors);
-                populateDropdown("substituicao-professor-real", professors);
-            } else if (callType === "getTurmasList") {
+                populateDropdown('reposicao-professor-real', professors);
+                populateDropdown('substituicao-professor-real', professors);
+            } else if (callType === 'getTurmasList') {
                 const turmas = Array.isArray(response.data) ? response.data : [];
-            } else if (callType === "getDisciplinesList") {
+                // populateDropdown('reposicao-turma-agendada', turmas); // Comentado no HTML
+                // populateDropdown('substituicao-turma-agendada', turmas); // Comentado no HTML
+            } else if (callType === 'getDisciplinesList') {
                 const disciplines = Array.isArray(response.data) ? response.data : [];
-                populateDropdown("reposicao-disciplina", disciplines);
-                populateDropdown("substituicao-disciplina", disciplines);
+                populateDropdown('reposicao-disciplina', disciplines);
+                populateDropdown('substituicao-disciplina', disciplines);
             }
             checkAllCallsCompleted();
         }
@@ -486,145 +427,87 @@
             if (completedCalls < totalCalls) completedCalls++;
             hasInitializationError = true;
             console.error(`Call ${callType} failed:`, error);
-            const messageDiv = document.getElementById("message");
-            const errorMessage = `Erro na inicialização (${callType}): ${error.message || "Erro desconhecido"
-                }.`;
+            const messageDiv = document.getElementById('message');
+            const errorMessage = `Erro na inicialização (${callType}): ${error.message || 'Erro desconhecido'}.`;
             console.error(errorMessage);
-            if (
-                messageDiv &&
-                (!messageDiv.textContent || messageDiv.className !== "message error")
-            ) {
-                messageDiv.textContent =
-                    "Ocorreu um erro durante a inicialização. Verifique o console para detalhes.";
-                messageDiv.className = "message error";
+            if (messageDiv && (!messageDiv.textContent || messageDiv.className !== 'message error')) {
+                messageDiv.textContent = "Ocorreu um erro durante a inicialização. Verifique o console para detalhes.";
+                messageDiv.className = 'message error';
             }
-            if (callType === "getProfessorsList") {
-                populateDropdown("reposicao-professor-real", []);
-                populateDropdown("substituicao-professor-real", []);
-            } else if (callType === "getTurmasList") {
-            } else if (callType === "getDisciplinesList") {
-                populateDropdown("reposicao-disciplina", []);
-                populateDropdown("substituicao-disciplina", []);
+            if (callType === 'getProfessorsList') {
+                populateDropdown('reposicao-professor-real', []);
+                populateDropdown('substituicao-professor-real', []);
+            } else if (callType === 'getTurmasList') {
+                // populateDropdown('reposicao-turma-agendada', []); // Comentado no HTML
+                // populateDropdown('substituicao-turma-agendada', []); // Comentado no HTML
+            } else if (callType === 'getDisciplinesList') {
+                populateDropdown('reposicao-disciplina', []);
+                populateDropdown('substituicao-disciplina', []);
             }
             checkAllCallsCompleted();
         }
 
         function checkAllCallsCompleted() {
-            console.log(
-                `checkAllCallsCompleted: ${completedCalls}/${totalCalls} calls completed.`
-            );
+            console.log(`checkAllCallsCompleted: ${completedCalls}/${totalCalls} calls completed.`);
             if (completedCalls === totalCalls) {
                 hideLoading();
-                const messageDiv = document.getElementById("message");
-                const userEmailSpan = document.getElementById("user-email");
-                const userRoleSpan = document.getElementById("user-role");
-                const reposicaoSection = document.getElementById("reposicao-section");
-                const substituicaoSection = document.getElementById(
-                    "substituicao-section"
-                );
-                const userRole =
-                    userResponse && userResponse.success && userResponse.data
-                        ? userResponse.data.role
-                        : null;
-                const userEmail =
-                    userResponse && userResponse.success && userResponse.data
-                        ? userResponse.data.email
-                        : null;
-                if (userEmailSpan) userEmailSpan.textContent = userEmail || "N/A";
-                if (userRoleSpan)
-                    userRoleSpan.textContent = userRole || "Não Determinado";
+                const messageDiv = document.getElementById('message');
+                const userEmailSpan = document.getElementById('user-email');
+                const userRoleSpan = document.getElementById('user-role');
+                const reposicaoSection = document.getElementById('reposicao-section');
+                const substituicaoSection = document.getElementById('substituicao-section');
+                const userRole = userResponse && userResponse.success && userResponse.data ? userResponse.data.role : null;
+                const userEmail = userResponse && userResponse.success && userResponse.data ? userResponse.data.email : null;
+
+                if (userEmailSpan) userEmailSpan.textContent = userEmail || 'N/A';
+                if (userRoleSpan) userRoleSpan.textContent = userRole || 'Não Determinado';
+
                 if (hasInitializationError) {
-                    if (messageDiv && messageDiv.className !== "message error") {
-                        messageDiv.textContent =
-                            "Ocorreram erros durante a inicialização. Funcionalidades podem estar limitadas.";
-                        messageDiv.className = "message error";
+                    if (messageDiv && messageDiv.className !== 'message error') {
+                        messageDiv.textContent = "Ocorreram erros durante a inicialização. Funcionalidades podem estar limitadas.";
+                        messageDiv.className = 'message error';
                     }
                     console.warn("Initialization completed with errors.");
                     if (userRole) {
-                        if (reposicaoSection)
-                            reposicaoSection.style.display =
-                                userRole === "Admin" || userRole === "Professor"
-                                    ? "block"
-                                    : "none";
-                        if (substituicaoSection)
-                            substituicaoSection.style.display =
-                                userRole === "Admin" || userRole === "Professor"
-                                    ? "block"
-                                    : "none";
+                        if (reposicaoSection) reposicaoSection.style.display = (userRole === 'Admin' || userRole === 'Professor' || userRole === 'Aluno') ? 'block' : 'none';
+                        if (substituicaoSection) substituicaoSection.style.display = (userRole === 'Admin' || userRole === 'Professor') ? 'block' : 'none';
                     } else {
-                        if (reposicaoSection) reposicaoSection.style.display = "none";
-                        if (substituicaoSection) substituicaoSection.style.display = "none";
-                        if (userRoleSpan) userRoleSpan.textContent = "Erro ao Obter";
+                        if (reposicaoSection) reposicaoSection.style.display = 'none';
+                        if (substituicaoSection) substituicaoSection.style.display = 'none';
+                        if (userRoleSpan) userRoleSpan.textContent = 'Erro ao Obter';
                         if (messageDiv) {
-                            messageDiv.textContent =
-                                (userResponse && userResponse.message) ||
-                                "Falha ao obter informações do usuário. Acesso negado.";
-                            messageDiv.className = "message error";
+                            messageDiv.textContent = (userResponse && userResponse.message) || 'Falha ao obter informações do usuário. Acesso negado.';
+                            messageDiv.className = 'message error';
                         }
                     }
                 } else {
                     if (userRole) {
-                        if (reposicaoSection) {
-                            reposicaoSection.style.display =
-                                userRole === "Admin" || userRole === "Professor"
-                                    ? "block"
-                                    : "none";
-                        }
-                        if (substituicaoSection) {
-                            substituicaoSection.style.display =
-                                userRole === "Admin" || userRole === "Professor"
-                                    ? "block"
-                                    : "none";
-                        }
+                        if (reposicaoSection) reposicaoSection.style.display = (userRole === 'Admin' || userRole === 'Professor' || userRole === 'Aluno') ? 'block' : 'none';
+                        if (substituicaoSection) substituicaoSection.style.display = (userRole === 'Admin' || userRole === 'Professor') ? 'block' : 'none';
                         if (messageDiv) {
-                            messageDiv.textContent = userResponse.message || "";
-                            messageDiv.className = userResponse.message
-                                ? "message success"
-                                : "message";
+                            messageDiv.textContent = userResponse.message || '';
+                            messageDiv.className = userResponse.message ? 'message success' : 'message';
                         }
                         console.log("Initialization completed successfully.");
                     } else {
                         if (messageDiv) {
-                            messageDiv.textContent =
-                                (userResponse && userResponse.message) ||
-                                "Não foi possível determinar seu acesso. Entre em contato com o administrador.";
-                            messageDiv.className = "message error";
+                            messageDiv.textContent = (userResponse && userResponse.message) || 'Não foi possível determinar seu acesso. Entre em contato com o administrador.';
+                            messageDiv.className = 'message error';
                         }
-                        if (reposicaoSection) reposicaoSection.style.display = "none";
-                        if (substituicaoSection) substituicaoSection.style.display = "none";
-                        if (userRoleSpan) userRoleSpan.textContent = "Acesso Indefinido";
-                        console.warn(
-                            "Initialization completed without errors, but user role could not be determined."
-                        );
+                        if (reposicaoSection) reposicaoSection.style.display = 'none';
+                        if (substituicaoSection) substituicaoSection.style.display = 'none';
+                        if (userRoleSpan) userRoleSpan.textContent = 'Acesso Indefinido';
+                        console.warn("Initialization completed without errors, but user role could not be determined.");
                     }
                 }
                 console.log("checkAllCallsCompleted finished.");
             }
         }
 
-        google.script.run
-            .withSuccessHandler((responseString) =>
-                handleSuccess(responseString, "getUserRole")
-            )
-            .withFailureHandler((error) => handleError(error, "getUserRole"))
-            .getUserRole();
-        google.script.run
-            .withSuccessHandler((responseString) =>
-                handleSuccess(responseString, "getProfessorsList")
-            )
-            .withFailureHandler((error) => handleError(error, "getProfessorsList"))
-            .getProfessorsList();
-        google.script.run
-            .withSuccessHandler((responseString) =>
-                handleSuccess(responseString, "getTurmasList")
-            )
-            .withFailureHandler((error) => handleError(error, "getTurmasList"))
-            .getTurmasList();
-        google.script.run
-            .withSuccessHandler((responseString) =>
-                handleSuccess(responseString, "getDisciplinesList")
-            )
-            .withFailureHandler((error) => handleError(error, "getDisciplinesList"))
-            .getDisciplinesList();
-    });
+        google.script.run.withSuccessHandler(responseString => handleSuccess(responseString, 'getUserRole')).withFailureHandler(error => handleError(error, 'getUserRole')).getUserRole();
+        google.script.run.withSuccessHandler(responseString => handleSuccess(responseString, 'getProfessorsList')).withFailureHandler(error => handleError(error, 'getProfessorsList')).getProfessorsList();
+        google.script.run.withSuccessHandler(responseString => handleSuccess(responseString, 'getTurmasList')).withFailureHandler(error => handleError(error, 'getTurmasList')).getTurmasList();
+        google.script.run.withSuccessHandler(responseString => handleSuccess(responseString, 'getDisciplinesList')).withFailureHandler(error => handleError(error, 'getDisciplinesList')).getDisciplinesList();
+    }); // Fim DOMContentLoaded
+
 </script>
