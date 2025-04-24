@@ -396,26 +396,27 @@ function getConfigValue(configName) {
     return null;  // Retorna null se a configuração não foi encontrada.
 }
 
-
 /**
  * Função principal que responde a requisições GET (quando o script é acessado
  * como Web App). Verifica a autorização do usuário e serve a interface HTML
- * principal.
- * @param {object} e O objeto de evento do Google Apps Script (não usado
- *     diretamente aqui).
+ * principal ou sub-páginas.
+ * @param {object} e O objeto de evento do Google Apps Script contendo parâmetros
+ *     da requisição.
  * @returns {HtmlService.HtmlOutput} O conteúdo HTML a ser exibido para o
  *     usuário.
  */
 function doGet(e) {
     // Obtém o email do usuário que está acessando o Web App.
     const userEmail = Session.getActiveUser().getEmail();
+    Logger.log(`Acesso Web App por: ${userEmail}. Parâmetros: ${JSON.stringify(e.parameter)}`);
 
     // Verifica o papel (role) do usuário usando a função auxiliar.
     const userRole = getUserRolePlain(userEmail);
 
     // Se o usuário não tiver um papel definido (não autorizado), retorna uma
-    // página de acesso negado.
+    // página de acesso negado, independentemente da página solicitada.
     if (!userRole) {
+        Logger.log(`Acesso negado para usuário: ${userEmail}. Papel: ${userRole}`);
         // Cria uma página HTML simples informando o acesso negado.
         return HtmlService
             .createHtmlOutput(
@@ -425,15 +426,28 @@ function doGet(e) {
             .setTitle('Acesso Negado');  // Define o título da página.
     }
 
-    // Se o usuário for autorizado, cria a interface a partir do arquivo HTML
-    // 'Index.html'.
-    const htmlOutput = HtmlService.createTemplateFromFile('Index');
-    // Passa o papel do usuário para o template HTML (para que o lado do cliente
-    // saiba o que exibir).
-    htmlOutput.userRole = userRole;
-    // Avalia o template (processa qualquer scriptlet فيه) e retorna o HTML final.
-    return htmlOutput.evaluate().setTitle(
-        'Sistema de Agendamento');  // Define o título da página principal.
+    // --- Roteamento para sub-páginas ---
+    const page = e.parameter.page; // Obtém o parâmetro 'page' da URL
+
+    if (page === 'scheduleView') {
+        Logger.log('Servindo ScheduleView.html');
+        // Se a página solicitada for 'scheduleView', serve o HTML correspondente.
+        // Não precisamos passar o papel do usuário aqui, pois a ScheduleViewJS
+        // fará a própria checagem ao carregar filtros/dados.
+        return HtmlService.createTemplateFromFile('ScheduleView')
+            .evaluate()
+            .setTitle('Visualizar Horários - Sistema de Agendamento');
+    } else {
+        // Página padrão (se nenhum parâmetro 'page' ou um parâmetro
+        // desconhecido for especificado)
+        Logger.log('Servindo Index.html (padrão)');
+        const htmlOutput = HtmlService.createTemplateFromFile('Index');
+        // Passa o papel do usuário para o template HTML principal.
+        htmlOutput.userRole = userRole;
+        // Avalia o template e retorna o HTML final.
+        return htmlOutput.evaluate().setTitle(
+            'Sistema de Agendamento');  // Define o título da página principal.
+    }
 }
 
 /**
@@ -698,6 +712,241 @@ function getDisciplinesList() {
         });
     }
 }
+
+/**
+ * Função exposta para o lado do cliente da ScheduleView.
+ * Retorna as listas de turmas e datas de início de semana disponíveis para filtros.
+ * Calcula as próximas N semanas (começando na Segunda).
+ * @returns {string} JSON string {success, message, data: {turmas: [], weekStartDates: []}}
+ */
+function getScheduleViewFilters() {
+    Logger.log('*** getScheduleViewFilters chamada ***');
+    try {
+        // Verifica autorização mínima (qualquer papel é suficiente para visualizar)
+        const userEmail = Session.getActiveUser().getEmail();
+        const userRole = getUserRolePlain(userEmail);
+        if (!userRole) {
+            Logger.log('Erro: Usuário não autorizado a obter filtros de visualização.');
+            return JSON.stringify({ success: false, message: 'Usuário não autorizado.', data: null });
+        }
+
+        // Obter lista de turmas (reutiliza a lógica existente ou chama a função)
+        const turmasResponse = JSON.parse(getTurmasList()); // Chama a função existente e parsea a resposta
+        const turmas = turmasResponse.success ? turmasResponse.data : [];
+        if (!turmasResponse.success) {
+            Logger.log("Falha ao obter lista de turmas para filtros: " + turmasResponse.message);
+            // Continua, mas com turmas vazias
+        }
+
+
+        // Calcular próximas semanas (ex: 12 semanas a partir da próxima segunda)
+        const timeZone = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+        const weekStartDates = [];
+        const numWeeks = 12; // Quantidade de semanas futuras para mostrar
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // Encontra a próxima segunda-feira
+        const nextMonday = new Date(today.getTime());
+        const currentDayOfWeek = nextMonday.getDay(); // 0=Domingo, 1=Segunda
+        const daysUntilNextMonday = (currentDayOfWeek === 0) ? 1 : (8 - currentDayOfWeek) % 7; // Se hoje for domingo, próxima segunda é daqui 1 dia. Se for segunda, é hoje. Senão, (8 - dia_da_semana)%7
+        nextMonday.setDate(nextMonday.getDate() + daysUntilNextMonday);
+        nextMonday.setHours(0, 0, 0, 0); // Garantir hora zerada
+
+        Logger.log("Gerando lista de semanas a partir de: " + Utilities.formatDate(nextMonday, timeZone, 'yyyy-MM-dd'));
+
+        // Adiciona as datas das próximas 'numWeeks' segundas-feiras
+        for (let i = 0; i < numWeeks; i++) {
+            const weekStartDate = new Date(nextMonday.getTime());
+            weekStartDate.setDate(nextMonday.getDate() + (i * 7));
+            // Formata para um valor legível E um valor técnico (YYYY-MM-DD)
+            const valueString = Utilities.formatDate(weekStartDate, timeZone, 'yyyy-MM-dd');
+            const textString = Utilities.formatDate(weekStartDate, timeZone, 'dd/MM/yyyy'); // Formato exibição
+            weekStartDates.push({ value: valueString, text: `Semana de ${textString}` });
+        }
+
+        // Adapta para o formato esperado pelo populateDropdown simples no JS (apenas value)
+        const weekValueStrings = weekStartDates.map(week => week.value);
+
+        Logger.log(`Filtros obtidos: ${turmas.length} turmas, ${weekValueStrings.length} semanas.`);
+
+        return JSON.stringify({
+            success: true,
+            message: 'Filtros carregados.',
+            data: {
+                turmas: turmas,
+                weekStartDates: weekValueStrings // Retorna apenas os valores YYYY-MM-DD
+            }
+        });
+
+    } catch (e) {
+        Logger.log('Erro em getScheduleViewFilters: ' + e.message + ' Stack: ' + e.stack);
+        return JSON.stringify({ success: false, message: 'Ocorreu um erro ao obter os filtros de horários: ' + e.message, data: null });
+    }
+}
+
+
+/**
+ * Função exposta para o lado do cliente da ScheduleView.
+ * Busca instâncias de horários filtradas por turma e data de início da semana.
+ * @param {string} turma A turma para filtrar.
+ * @param {string} weekStartDateString A data de início da semana (Segunda-feira) no formato 'YYYY-MM-DD'.
+ * @returns {string} JSON string {success, message, data: [lista de slots filtrados]}
+ */
+function getFilteredScheduleInstances(turma, weekStartDateString) {
+    Logger.log(`*** getFilteredScheduleInstances chamada para Turma: ${turma}, Semana: ${weekStartDateString} ***`);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const instancesSheet = ss.getSheetByName(SHEETS.SCHEDULE_INSTANCES);
+    const timeZone = ss.getSpreadsheetTimeZone();
+
+    // 1. Verifica autorização mínima
+    const userEmail = Session.getActiveUser().getEmail();
+    const userRole = getUserRolePlain(userEmail);
+    if (!userRole) { // Qualquer usuário autorizado pode visualizar
+        Logger.log('Erro: Usuário não autorizado a visualizar horários filtrados.');
+        return JSON.stringify({ success: false, message: 'Usuário não autorizado a visualizar.', data: null });
+    }
+
+    // 2. Valida parâmetros de entrada
+    if (!turma || typeof turma !== 'string' || turma.trim() === '') {
+        Logger.log('Erro: Parâmetro turma inválido ou ausente.');
+        return JSON.stringify({ success: false, message: 'Turma não especificada.', data: null });
+    }
+    if (!weekStartDateString || typeof weekStartDateString !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(weekStartDateString)) {
+        Logger.log('Erro: Parâmetro weekStartDateString inválido ou ausente: ' + weekStartDateString);
+        return JSON.stringify({ success: false, message: 'Semana de início inválida.', data: null });
+    }
+
+    // 3. Calcula o intervalo de datas da semana
+    const parts = weekStartDateString.split('-');
+    const weekStartDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)); // Month is 0-indexed
+    weekStartDate.setHours(0, 0, 0, 0); // Zera a hora para comparação
+
+    // Verifica se a data parseada é válida e se realmente é uma segunda-feira
+    if (isNaN(weekStartDate.getTime()) || weekStartDate.getDay() !== 1) { // 1 = Monday
+        Logger.log('Erro: A data de início da semana fornecida não é uma Segunda-feira válida: ' + weekStartDateString);
+        return JSON.stringify({ success: false, message: 'A data de início da semana deve ser uma Segunda-feira válida.', data: null });
+    }
+
+    const weekEndDate = new Date(weekStartDate.getTime());
+    weekEndDate.setDate(weekEndDate.getDate() + 6); // Fim da semana (Domingo)
+    weekEndDate.setHours(23, 59, 59, 999); // Define para o final do dia
+
+    Logger.log(`Buscando instâncias para Turma "${turma}" entre ${Utilities.formatDate(weekStartDate, timeZone, 'dd/MM/yyyy')} e ${Utilities.formatDate(weekEndDate, timeZone, 'dd/MM/yyyy')}`);
+
+
+    try {
+        // 4. Lê os dados da planilha de instâncias
+        if (!instancesSheet) {
+            Logger.log(`Erro: Planilha "${SHEETS.SCHEDULE_INSTANCES}" não encontrada!`);
+            return JSON.stringify({ success: false, message: `Erro interno: Planilha "${SHEETS.SCHEDULE_INSTANCES}" não encontrada.`, data: null });
+        }
+
+        const rawData = instancesSheet.getDataRange().getValues();
+
+        if (rawData.length <= 1) {
+            Logger.log('Planilha Instancias de Horarios está vazia ou apenas cabeçalho.');
+            return JSON.stringify({ success: true, message: 'Nenhuma instância de horário futura encontrada.', data: [] });
+        }
+
+        const header = rawData[0]; // Guarda o cabeçalho
+        const data = rawData.slice(1); // Dados sem o cabeçalho
+
+        // Verifica se as colunas essenciais existem antes de tentar acessá-las
+        const requiredCols = Math.max(
+            HEADERS.SCHEDULE_INSTANCES.TURMA,
+            HEADERS.SCHEDULE_INSTANCES.DATA,
+            HEADERS.SCHEDULE_INSTANCES.DIA_SEMANA,
+            HEADERS.SCHEDULE_INSTANCES.HORA_INICIO,
+            HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL,
+            HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO,
+            HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL // Necessário para display
+        ) + 1;
+
+        if (header.length < requiredCols) {
+            Logger.log(`Erro: Planilha "${SHEETS.SCHEDULE_INSTANCES}" não tem colunas suficientes para a visualização (${header.length} vs ${requiredCols} requeridas). Verifique a estrutura da planilha.`);
+            return JSON.stringify({ success: false, message: `Erro interno: Estrutura da planilha "${SHEETS.SCHEDULE_INSTANCES}" incorreta.`, data: null });
+        }
+
+
+        // 5. Filtra os slots
+        const filteredSlots = [];
+
+        for (let i = 0; i < data.length; i++) {
+            const row = data[i];
+            const rowIndex = i + 2; // Índice real na planilha
+
+            // Basic check if row is likely valid before accessing columns
+            if (!row || row.length < requiredCols) {
+                // Logger.log(`Skipping incomplete row ${rowIndex} during filtering.`); // Too noisy
+                continue;
+            }
+
+            // Extrai e formata dados relevantes para o filtro e display
+            const instanceTurmaRaw = row[HEADERS.SCHEDULE_INSTANCES.TURMA];
+            const rawInstanceDate = row[HEADERS.SCHEDULE_INSTANCES.DATA];
+            const instanceDiaSemanaRaw = row[HEADERS.SCHEDULE_INSTANCES.DIA_SEMANA];
+            const rawHoraInicio = row[HEADERS.SCHEDULE_INSTANCES.HORA_INICIO];
+            const originalTypeRaw = row[HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL];
+            const instanceStatusRaw = row[HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO];
+            const professorPrincipalRaw = row[HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL];
+            const instanceIdRaw = row[HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA];
+
+
+            const instanceTurma = (typeof instanceTurmaRaw === 'string' || typeof instanceTurmaRaw === 'number') ? String(instanceTurmaRaw).trim() : null;
+            const instanceDate = formatValueToDate(rawInstanceDate);
+            const instanceDiaSemana = (typeof instanceDiaSemanaRaw === 'string' || typeof instanceDiaSemanaRaw === 'number') ? String(instanceDiaSemanaRaw).trim() : null;
+            const formattedHoraInicio = formatValueToHHMM(rawHoraInicio, timeZone);
+            const originalType = (typeof originalTypeRaw === 'string' || typeof originalTypeRaw === 'number') ? String(originalTypeRaw).trim() : null;
+            const instanceStatus = (typeof instanceStatusRaw === 'string' || typeof instanceStatusRaw === 'number') ? String(instanceStatusRaw).trim() : null;
+            const professorPrincipal = (typeof professorPrincipalRaw === 'string' || typeof professorPrincipalRaw === 'number') ? String(professorPrincipalRaw || '').trim() : '';
+            const instanceId = (typeof instanceIdRaw === 'string' || typeof instanceIdRaw === 'number') ? String(instanceIdRaw).trim() : null;
+
+            // Validação mínima dos dados essenciais para display
+            if (!instanceId || !instanceTurma || !instanceDate || !instanceDiaSemana || formattedHoraInicio === null || !originalType || !instanceStatus) {
+                // Logger.log(`Skipping row ${rowIndex} due to invalid essential data for display.`); // Too noisy
+                continue;
+            }
+
+
+            // Filtra por Turma
+            if (instanceTurma !== turma.trim()) {
+                continue; // Pula se a turma não corresponder
+            }
+
+            // Filtra por intervalo de Data
+            // Compara apenas a data, ignorando a hora do instanceDate (já zerada pelo formatValueToDate se for um Date object)
+            // E compara com o início (inclusive) e fim (inclusive) da semana
+            if (instanceDate < weekStartDate || instanceDate > weekEndDate) {
+                continue; // Pula se a data estiver fora da semana
+            }
+
+            // Se passou por todos os filtros, adiciona aos resultados
+            filteredSlots.push({
+                idInstancia: instanceId,
+                data: Utilities.formatDate(instanceDate, timeZone, 'dd/MM/yyyy'), // Formata data para exibição
+                diaSemana: instanceDiaSemana,
+                horaInicio: formattedHoraInicio,
+                turma: instanceTurma,
+                professorPrincipal: professorPrincipal, // Professor original do base (pode ser vazio para Vago)
+                tipoOriginal: originalType,
+                statusOcupacao: instanceStatus,
+                // Não precisa carregar bookingDetails aqui para a visualização básica
+            });
+        }
+
+        Logger.log(`Encontrados ${filteredSlots.length} slots para Turma "${turma}" na semana de ${weekStartDateString}.`);
+
+        // Retorna JSON com sucesso e a lista de horários encontrados.
+        return JSON.stringify({ success: true, message: `${filteredSlots.length} horários encontrados.`, data: filteredSlots });
+
+    } catch (e) {
+        Logger.log('Erro em getFilteredScheduleInstances: ' + e.message + ' Stack: ' + e.stack);
+        return JSON.stringify({ success: false, message: 'Ocorreu um erro interno ao buscar horários: ' + e.message, data: null });
+    }
+}
+
 
 /**
  * Função exposta para ser chamada pelo lado do cliente.

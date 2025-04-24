@@ -1,31 +1,24 @@
+<!-- Stylesheet.html -->
 <style>
-  /* --- Base Styles --- */
   body {
     font-family: 'Roboto', sans-serif;
     margin: 0;
-    /* Remove default margin */
     padding: 0;
-    /* Remove default padding */
     background-color: #f4f4f4;
     color: #333;
     font-size: 16px;
     -webkit-text-size-adjust: 100%;
-    /* Prevent font scaling on iOS */
   }
 
   .container {
     max-width: 1100px;
-    /* Max width for larger screens */
     min-width: 300px;
-    /* Min width for smaller screens */
     margin: 20px auto;
     background-color: #fff;
     padding: 20px 15px;
-    /* Adjust padding for mobile first */
     box-shadow: 0 2px 15px rgba(0, 0, 0, 0.1);
     border-radius: 8px;
     box-sizing: border-box;
-    /* Include padding in width calculation */
   }
 
   h1,
@@ -41,7 +34,6 @@
     padding-bottom: 0.5em;
     margin-bottom: 1em;
     font-size: 1.8em;
-    /* Adjust heading size */
   }
 
   h2 {
@@ -55,7 +47,6 @@
   p {
     line-height: 1.6;
     margin-bottom: 1em;
-    /* Add consistent margin */
   }
 
   .section {
@@ -67,28 +58,21 @@
   .section:last-of-type {
     border-bottom: none;
   }
-
-  /* --- Buttons --- */
   button {
     background-color: #1a73e8;
     color: white;
     padding: 12px 18px;
-    /* Slightly larger padding */
     border: none;
     border-radius: 4px;
     cursor: pointer;
     font-size: 1em;
-    /* Use relative unit */
     font-weight: 500;
     margin-top: 5px;
     margin-right: 10px;
     margin-bottom: 10px;
-    /* Add bottom margin for stacking */
     transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
     display: inline-block;
-    /* Default display */
     width: auto;
-    /* Default width */
     text-align: center;
     vertical-align: middle;
   }
@@ -113,12 +97,9 @@
     cursor: not-allowed;
     box-shadow: none;
   }
-
-  /* --- Slots List Container --- */
   .slots-list {
     margin-top: 15px;
     max-height: 450px;
-    /* Slightly increased max height */
     overflow-y: auto;
     overflow-x: hidden;
     border: 1px solid #ddd;
@@ -126,8 +107,6 @@
     position: relative;
     background-color: #fff;
   }
-
-  /* --- Slots Table (Desktop First) --- */
   .slots-table {
     width: 100%;
     border-collapse: collapse;
@@ -135,12 +114,9 @@
   }
 
   .slots-table thead {
-    /* Thead is visible by default */
     position: sticky;
-    /* Make header sticky within .slots-list */
     top: 0;
     z-index: 2;
-    /* Ensure header is above body rows */
   }
 
   .slots-table th,
@@ -153,11 +129,8 @@
   }
 
   .slots-table td:nth-child(4),
-  /* Turma */
   .slots-table td:nth-child(5) {
-    /* Professor */
     white-space: normal;
-    /* Allow wrapping for these columns */
   }
 
   .slots-table thead th {
@@ -186,7 +159,6 @@
 
   .slots-table tbody tr.selected {
     background-color: #d2e3fc !important;
-    /* Use important to override nth-child */
     border-left: 3px solid #1a73e8;
     font-weight: 500;
   }
@@ -194,8 +166,6 @@
   .slots-table tbody tr.selected td {
     color: #174ea6;
   }
-
-  /* Messages inside .slots-list */
   .slots-list p {
     padding: 25px 20px;
     margin: 0;
@@ -214,8 +184,6 @@
     color: #137333;
     background-color: #e6f4ea;
   }
-
-  /* --- Booking Form --- */
   .booking-form {
     margin-top: 25px;
     padding: 20px;
@@ -275,8 +243,6 @@
     border-color: #1a73e8;
     box-shadow: 0 0 0 1px #1a73e8;
   }
-
-  /* --- Loading & Messages --- */
   .loading {
     position: fixed;
     inset: 0;
@@ -288,8 +254,6 @@
     color: #1a73e8;
     z-index: 1000;
   }
-
-  /* Basic Spinner Example (CSS only) */
   .loading::before {
     content: '';
     display: block;
@@ -340,13 +304,9 @@
     border: none;
     border-top: 1px solid #e0e0e0;
   }
-
-
-  /* --- Responsive Styles (Mobile First Approach - Adjust breakpoint as needed) --- */
   @media screen and (max-width: 768px) {
     .container {
       padding: 15px 10px;
-      /* Reduce padding on mobile */
       margin: 10px auto;
     }
 
@@ -361,20 +321,12 @@
     h3 {
       font-size: 1.1em;
     }
-
-    /* --- Responsive Buttons --- */
-    /* Make main action buttons full width */
     .section>button:first-of-type {
-      /* Targets 'Buscar Horários...' */
       width: 100%;
       margin-right: 0;
       margin-bottom: 15px;
-      /* More space after main button */
       box-sizing: border-box;
-      /* Include padding in width */
     }
-
-    /* Stack buttons in the booking form */
     .booking-form button {
       width: 100%;
       margin-right: 0;
@@ -385,120 +337,242 @@
     .booking-form button:last-of-type {
       margin-bottom: 0;
     }
-
-
-    /* --- Responsive Table: Transform to Card View --- */
     .slots-list {
       max-height: none;
-      /* Remove max-height for card view */
       overflow-y: visible;
-      /* Allow container to grow */
       border: none;
-      /* Remove border around the list container */
       background-color: transparent;
-      /* Make container transparent */
     }
 
     .slots-table {
       border: none;
-      /* Remove table border */
     }
 
     .slots-table thead {
       display: none;
-      /* Hide table header */
     }
 
     .slots-table tbody tr {
       display: block;
-      /* Make rows block elements */
       margin-bottom: 15px;
-      /* Space between cards */
       border: 1px solid #ddd;
-      /* Border for the card */
       border-radius: 5px;
-      /* Rounded corners for card */
       padding: 10px;
-      /* Padding inside the card */
       background-color: #fff;
-      /* White background for card */
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-      /* Subtle shadow */
     }
-
-    /* Reset hover/selected styles for card view if needed */
     .slots-table tbody tr:hover {
       background-color: #f8f9fa;
-      /* Simple hover for card */
     }
 
     .slots-table tbody tr.selected {
       background-color: #e8f0fe !important;
-      /* Selected card background */
       border-left: 4px solid #1a73e8;
-      /* Keep highlight bar */
       padding-left: 6px;
-      /* Adjust padding for border */
       font-weight: normal;
-      /* Reset font weight */
     }
 
     .slots-table tbody tr.selected td {
       color: inherit;
-      /* Reset text color */
     }
 
 
     .slots-table tbody td {
       display: flex;
-      /* Use flexbox for label/data layout */
       justify-content: space-between;
-      /* Space between label and data */
       align-items: center;
-      /* Align items vertically */
       text-align: right;
-      /* Align data text to the right */
       padding: 8px 0;
-      /* Vertical padding, no horizontal needed with flex */
       border: none;
-      /* Remove individual cell borders */
       border-bottom: 1px dotted #eee;
-      /* Separator line */
       white-space: normal;
-      /* Allow wrapping */
       font-size: 0.95em;
-      /* Slightly larger font for mobile readability */
     }
 
     .slots-table tbody td:last-child {
       border-bottom: none;
-      /* No border for the last item in card */
     }
-
-    /* Add the label using ::before */
     .slots-table tbody td::before {
       content: attr(data-label);
-      /* Get label text from data-label attribute */
       font-weight: bold;
       text-align: left;
-      /* Align label text left */
       margin-right: 10px;
-      /* Space between label and data */
       color: #5f6368;
-      /* Grey color for label */
       flex-basis: 40%;
-      /* Give label some base width */
       flex-shrink: 0;
-      /* Prevent label from shrinking */
     }
-
-    /* Adjust form inputs slightly */
     .booking-form input[type="text"],
     .booking-form select {
       font-size: 1em;
-      /* Ensure readable font size */
     }
   }
+  .filter-section {
+    margin-bottom: 20px;
+    padding: 15px;
+    border: 1px solid #dadce0;
+    border-radius: 8px;
+    background-color: #f8f9fa;
+  }
 
-  /* End of Media Query */
+  .filter-section h3 {
+    margin-top: 0;
+    margin-bottom: 1em;
+  }
+
+  .filter-section label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 500;
+    font-size: 0.9em;
+    color: #3c4043;
+  }
+
+  .filter-section select {
+    width: 100%;
+    padding: 10px 12px;
+    margin-bottom: 18px;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    box-sizing: border-box;
+    background-color: #fff;
+    font-size: 0.95em;
+    height: 40px;
+    appearance: none;
+    background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%235f6368%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.4-5.4-12.8z%22%2F%3E%3C%2Fsvg%3E');
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 10px auto;
+    padding-right: 35px;
+  }
+
+  .filter-section select:disabled {
+    background-color: #e8eaed;
+    cursor: not-allowed;
+  }
+
+
+  .schedule-container {
+    margin-top: 20px;
+    overflow-x: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: #fff;
+  }
+
+  .schedule-container p.info-message,
+  .schedule-container p.error-message {
+    padding: 25px 20px;
+    margin: 0;
+    text-align: center;
+    font-style: italic;
+    font-size: 1em;
+  }
+
+  .schedule-grid-table {
+    width: 100%;
+    min-width: 700px;
+    border-collapse: collapse;
+    font-size: 0.9em;
+  }
+
+  .schedule-grid-table th,
+  .schedule-grid-table td {
+    border: 1px solid #e0e0e0;
+    padding: 8px 10px;
+    text-align: center;
+    vertical-align: top;
+    width: 12.5%;
+    min-width: 80px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .schedule-grid-table th {
+    background-color: #f8f9fa;
+    color: #3c4043;
+    font-weight: 500;
+    border-bottom: 2px solid #ddd;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+
+  .schedule-grid-table td {
+    background-color: #fff;
+  }
+
+  .schedule-grid-table tbody tr:nth-child(even) td {
+    background-color: #f9f9f9;
+  }
+  .schedule-grid-table td.hour-cell {
+    background-color: #e8f0fe;
+    font-weight: bold;
+    color: #1a73e8;
+    width: auto;
+    min-width: 50px;
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    text-align: left;
+  }
+  .schedule-grid-table tbody tr:nth-child(even) td.hour-cell {
+    background-color: #d2e3fc;
+  }
+  .slot-cell {
+    min-height: 40px;
+  }
+
+  .slot-empty {
+    background-color: #f1f3f4;
+  }
+
+  .slot-status {
+    display: block;
+    font-size: 0.8em;
+    font-weight: normal;
+    color: #5f6368;
+  }
+
+  .slot-fixed-available {
+    color: #174ea6;
+  }
+
+  .slot-vago-available {
+    font-style: italic;
+  }
+
+
+  .slot-booked {
+    font-weight: 500;
+  }
+
+  .slot-reposicao {
+    background-color: #e6f4ea;
+    color: #137333;
+    border-left: 3px solid #34a853;
+  }
+
+  .slot-substituicao {
+    background-color: #fce8e6;
+    color: #d93025;
+    border-left: 3px solid #ea4335;
+  }
+  .slot-unknown-status {
+    background-color: #fef7e0;
+    color: #f79c00;
+    border-left: 3px solid #fcc934;
+  }
+  @media screen and (max-width: 768px) {
+
+    .schedule-grid-table th,
+    .schedule-grid-table td {
+      padding: 6px 8px;
+      font-size: 0.85em;
+    }
+
+    .schedule-grid-table td.hour-cell {
+      min-width: 40px;
+    }
+
+  }
 </style>

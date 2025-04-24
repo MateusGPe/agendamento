@@ -1,0 +1,45 @@
+<!-- ScheduleView.html -->
+<!DOCTYPE html>
+<html>
+
+<head>
+    <base target="_top">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <?!= include('Stylesheet'); ?>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Visualizar Horários</h1>
+        <p><a href="<?= ScriptApp.getService().getUrl() ?>">← Voltar para Agendamento</a></p>
+
+        <div class="filter-section">
+            <h3>Filtros de Visualização</h3>
+            <label for="turma-filter">Turma:</label>
+            <select id="turma-filter" required>
+                <option value="" disabled selected>-- Carregando Turmas --</option>
+            </select>
+
+            <label for="week-filter">Semana (começando na Segunda-feira):</label>
+            <select id="week-filter" required>
+                <option value="" disabled selected>-- Carregando Semanas --</option>
+            </select>
+
+            <button onclick="loadFilteredSchedule()">Buscar Horário</button>
+        </div>
+
+        <hr>
+
+        <div id="schedule-container" class="schedule-container">
+            <!-- O horário filtrado será renderizado aqui pela JavaScript -->
+            <p class="info-message">Selecione a Turma e a Semana e clique em "Buscar Horário".</p>
+        </div>
+
+        <div id="loading" class="loading" style="display: none;">Carregando...</div>
+        <div id="message" class="message"></div>
+    </div>
+
+    <?!= include('ScheduleViewJavascript'); ?>
+</body>
+
+</html>

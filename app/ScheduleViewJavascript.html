@@ -1,0 +1,369 @@
+<!-- ScheduleViewJavascript.html -->
+<script>
+    // Helper function to show the loading spinner
+    function showLoading() {
+        const loadingDiv = document.getElementById("loading");
+        if (loadingDiv) loadingDiv.style.display = "flex";
+        const messageDiv = document.getElementById("message");
+        if (messageDiv) {
+            messageDiv.textContent = "";
+            messageDiv.className = "message";
+        }
+    }
+
+    // Helper function to hide the loading spinner
+    function hideLoading() {
+        const loadingDiv = document.getElementById("loading");
+        if (loadingDiv) loadingDiv.style.display = "none";
+    }
+
+     // Helper function to display messages
+    function displayMessage(text, type = 'info') {
+        const messageDiv = document.getElementById("message");
+        if (messageDiv) {
+            messageDiv.textContent = text;
+            messageDiv.className = "message " + type;
+            if (text) {
+                 messageDiv.style.display = 'block'; // Show if not empty
+            } else {
+                 messageDiv.style.display = 'none'; // Hide if empty
+            }
+        }
+    }
+
+
+    // Helper function to populate a dropdown (select)
+    function populateDropdown(selectId, optionsArray, defaultText = "-- Selecione --") {
+        const selectElement = document.getElementById(selectId);
+        if (!selectElement) {
+            console.warn("Dropdown com ID '" + selectId + "' não encontrado.");
+            return;
+        }
+
+        // Clear existing options except the first disabled one
+        selectElement.innerHTML = `<option value="" disabled selected>${defaultText}</option>`;
+
+        if (optionsArray && Array.isArray(optionsArray)) {
+            optionsArray.forEach(optionValue => {
+                if (optionValue && String(optionValue).trim() !== '') {
+                    const option = document.createElement('option');
+                    option.value = optionValue;
+                    option.textContent = optionValue;
+                    selectElement.appendChild(option);
+                }
+            });
+        }
+        // console.log("Dropdown '" + selectId + "' populado com " + (optionsArray ? optionsArray.length : 0) + " opções (além da padrão).");
+        selectElement.disabled = false; // Enable the dropdown after populating
+    }
+
+    // Function to load filter options on page load
+    function loadFilterOptions() {
+        showLoading();
+        google.script.run
+            .withSuccessHandler(onFilterOptionsLoaded)
+            .withFailureHandler(onFilterOptionsFailed)
+            .getScheduleViewFilters();
+    }
+
+    // Success handler for filter options
+    function onFilterOptionsLoaded(jsonStringResponse) {
+        hideLoading();
+        let response;
+        try {
+            response = JSON.parse(jsonStringResponse);
+            console.log("Filter options response:", response);
+        } catch (e) {
+            console.error("Erro ao parsear JSON de filtros:", e, jsonStringResponse);
+            displayMessage('Erro ao processar filtros de horários.', 'error');
+            return;
+        }
+
+        if (!response || !response.success) {
+            const errorMessage = (response && response.message) ? response.message : 'Erro desconhecido ao carregar filtros.';
+            console.error("Falha ao carregar filtros:", errorMessage, response);
+            displayMessage(errorMessage, 'error');
+            populateDropdown('turma-filter', [], '-- Erro ao Carregar Turmas --');
+            populateDropdown('week-filter', [], '-- Erro ao Carregar Semanas --');
+            return;
+        }
+
+        const data = response.data;
+        if (data && data.turmas && data.weekStartDates) {
+            populateDropdown('turma-filter', data.turmas, '-- Selecione a Turma --');
+            populateDropdown('week-filter', data.weekStartDates, '-- Selecione a Semana --');
+            displayMessage('Filtros carregados. Selecione e busque o horário.', 'info');
+
+            // Pre-select the current week if possible
+            const today = new Date();
+            today.setHours(0,0,0,0);
+            const currentDayOfWeek = today.getDay(); // 0-Sunday, 1-Monday
+            // Find the date of the Monday of the current week
+            const mondayOfCurrentWeek = new Date(today);
+            mondayOfCurrentWeek.setDate(today.getDate() - (currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1)); // Adjust for Sunday
+            const currentWeekString = mondayOfCurrentWeek.toISOString().slice(0, 10); // Format as YYYY-MM-DD
+
+            // Try to select the current week in the dropdown
+            const weekSelect = document.getElementById('week-filter');
+            let foundCurrentWeek = false;
+            if (weekSelect) {
+                 for (let i = 0; i < weekSelect.options.length; i++) {
+                      if (weekSelect.options[i].value && weekSelect.options[i].value.startsWith(currentWeekString)) {
+                           weekSelect.value = weekSelect.options[i].value;
+                           foundCurrentWeek = true;
+                           break;
+                      }
+                 }
+                 if (!foundCurrentWeek && weekSelect.options.length > 1) {
+                      // If current week not in list (too far past/future), select the first available week
+                      weekSelect.selectedIndex = 1;
+                 } else if (weekSelect.options.length > 1) {
+                     // If current week was found, ensure it's selected
+                      weekSelect.value = weekSelect.value; // Re-assign to trigger potential UI update
+                 }
+                 // If only the default option exists, keep it selected
+            }
+
+
+        } else {
+            displayMessage('Dados de filtros incompletos.', 'error');
+            populateDropdown('turma-filter', [], '-- Erro ao Carregar Turmas --');
+            populateDropdown('week-filter', [], '-- Erro ao Carregar Semanas --');
+        }
+    }
+
+    // Failure handler for filter options
+    function onFilterOptionsFailed(error) {
+        hideLoading();
+        console.error("Erro na comunicação ao carregar filtros:", error);
+        displayMessage('Erro na comunicação com o servidor ao carregar filtros: ' + error.message, 'error');
+        populateDropdown('turma-filter', [], '-- Erro ao Carregar Turmas --');
+        populateDropdown('week-filter', [], '-- Erro ao Carregar Semanas --');
+    }
+
+    // Function to trigger loading the filtered schedule
+    function loadFilteredSchedule() {
+        const turmaFilter = document.getElementById('turma-filter');
+        const weekFilter = document.getElementById('week-filter');
+        const scheduleContainer = document.getElementById('schedule-container');
+
+        // Clear previous schedule display
+        if (scheduleContainer) {
+             scheduleContainer.innerHTML = '<p class="info-message">Carregando horário...</p>';
+        }
+
+        const selectedTurma = turmaFilter ? turmaFilter.value : '';
+        const selectedWeek = weekFilter ? weekFilter.value : '';
+
+        if (!selectedTurma) {
+            displayMessage('Por favor, selecione a Turma.', 'error');
+             if (scheduleContainer) scheduleContainer.innerHTML = '<p class="info-message">Selecione a Turma e a Semana e clique em "Buscar Horário".</p>';
+            return;
+        }
+         if (!selectedWeek) {
+            displayMessage('Por favor, selecione a Semana.', 'error');
+             if (scheduleContainer) scheduleContainer.innerHTML = '<p class="info-message">Selecione a Turma e a Semana e clique em "Buscar Horário".</p>';
+            return;
+        }
+
+
+        showLoading();
+        displayMessage(''); // Clear previous messages
+
+        google.script.run
+            .withSuccessHandler(onScheduleLoaded)
+            .withFailureHandler(onScheduleLoadFailed)
+            .getFilteredScheduleInstances(selectedTurma, selectedWeek);
+    }
+
+    // Success handler for filtered schedule data
+    function onScheduleLoaded(jsonStringResponse) {
+        hideLoading();
+        const scheduleContainer = document.getElementById('schedule-container');
+         if (!scheduleContainer) {
+             console.error("Schedule container not found!");
+             displayMessage('Erro interno: Container de horário não encontrado.', 'error');
+             return;
+         }
+         scheduleContainer.innerHTML = ''; // Clear the 'Loading...' message or previous table
+
+        let response;
+        try {
+            response = JSON.parse(jsonStringResponse);
+            console.log("Filtered schedule response:", response);
+        } catch (e) {
+            console.error("Erro ao parsear JSON de horários filtrados:", e, jsonStringResponse);
+            displayMessage('Erro ao processar dados de horários filtrados.', 'error');
+            scheduleContainer.innerHTML = '<p class="error-message">Erro ao carregar horário.</p>';
+            return;
+        }
+
+        if (!response || !response.success) {
+            const errorMessage = (response && response.message) ? response.message : 'Erro desconhecido ao carregar horários.';
+            console.error("Falha ao carregar horários filtrados:", errorMessage, response);
+            displayMessage(errorMessage, 'error');
+            scheduleContainer.innerHTML = '<p class="error-message">' + errorMessage + '</p>';
+            return;
+        }
+
+        const slots = response.data; // Array of slot objects
+
+        if (!Array.isArray(slots) || slots.length === 0) {
+            displayMessage(response.message || 'Nenhum horário encontrado para a turma e semana selecionadas.', 'info');
+             scheduleContainer.innerHTML = '<p class="info-message">Nenhum horário encontrado para os filtros selecionados.</p>';
+            return;
+        }
+
+        displayMessage(response.message || 'Horário carregado com sucesso.', 'success');
+        renderScheduleTable(slots, scheduleContainer);
+    }
+
+    // Failure handler for filtered schedule data
+    function onScheduleLoadFailed(error) {
+        hideLoading();
+        console.error("Erro na comunicação ao carregar horários:", error);
+        displayMessage('Erro na comunicação com o servidor ao buscar horários: ' + error.message, 'error');
+        const scheduleContainer = document.getElementById('schedule-container');
+        if (scheduleContainer) {
+             scheduleContainer.innerHTML = '<p class="error-message">Erro ao carregar horário.</p>';
+        }
+    }
+
+    // Function to render the schedule data into an HTML table
+    function renderScheduleTable(slots, containerElement) {
+        // Days of the week for table columns (adjust order if needed)
+        const daysOfWeek = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+        const dayIndexMap = {
+             'Segunda': 0, 'Terça': 1, 'Quarta': 2, 'Quinta': 3,
+             'Sexta': 4, 'Sábado': 5, 'Domingo': 6
+        };
+
+        // Map slots to a grid structure: grid[dayIndex][hourString] = slotData
+        const gridData = {};
+        const uniqueHours = new Set();
+
+        slots.forEach(slot => {
+            if (slot && slot.diaSemana && slot.horaInicio) {
+                 const dayIndex = dayIndexMap[slot.diaSemana];
+                 if (dayIndex !== undefined) {
+                      if (!gridData[dayIndex]) gridData[dayDataIndex] = {};
+                      // Store the slot data, potentially handling multiple slots at the same time?
+                      // Assuming one slot per time per day for this structure.
+                      // If multiple, might need an array: if (!gridData[dayIndex][slot.horaInicio]) gridData[dayIndex][slot.horaInicio] = []; gridData[dayIndex][slot.horaInicio].push(slot);
+                      // For simplicity, let's assume one slot per time slot.
+                      gridData[dayIndex][slot.horaInicio] = slot;
+                      uniqueHours.add(slot.horaInicio);
+                 } else {
+                      console.warn("Slot com Dia da Semana inválido:", slot);
+                 }
+            } else {
+                 console.warn("Slot inválido ou incompleto:", slot);
+            }
+        });
+
+        // Sort unique hours
+        const sortedHours = Array.from(uniqueHours).sort();
+
+        // Create the table element
+        const table = document.createElement('table');
+        table.classList.add('schedule-grid-table'); // Add a specific class for styling
+
+        // Create table header
+        const thead = table.createTHead();
+        const headerRow = thead.insertRow();
+        const emptyTh = document.createElement('th'); // Top-left empty cell for hour column
+        headerRow.appendChild(emptyTh);
+        daysOfWeek.forEach(day => {
+            const th = document.createElement('th');
+            th.textContent = day;
+            headerRow.appendChild(th);
+        });
+
+        // Create table body
+        const tbody = table.createTBody();
+
+        // Populate the table body row by row (each row is an hour)
+        sortedHours.forEach(hour => {
+            const row = tbody.insertRow();
+            const hourCell = row.insertCell();
+            hourCell.textContent = hour; // First cell is the hour
+            hourCell.classList.add('hour-cell'); // Class for hour cell
+
+            // Populate cells for each day of the week at this hour
+            daysOfWeek.forEach(day => {
+                const dayIndex = dayIndexMap[day];
+                const cell = row.insertCell(); // Create cell for this day/hour
+                const slot = gridData[dayIndex] ? gridData[dayIndex][hour] : null; // Get the slot data
+
+                if (slot) {
+                    // Populate cell with slot info
+                    let cellContent = '';
+                    let cellClass = 'slot-cell'; // Base class
+
+                    // Determine content based on slot type and status
+                    if (slot.statusOcupacao === 'Disponivel') {
+                        cellContent = 'Vago'; // For Reposicao view, 'Disponivel' Vago slots are shown.
+                                                // For Substituicao view, 'Disponivel' Fixo slots are shown.
+                        cellClass += ' slot-available';
+                         if(slot.tipoOriginal === 'Fixo' && slot.professorPrincipal) {
+                              cellContent = `${slot.professorPrincipal}\n<span class="slot-status">(Disponível)</span>`;
+                              cellClass += ' slot-fixed-available';
+                         } else if (slot.tipoOriginal === 'Vago') {
+                             cellContent = `Vago\n<span class="slot-status">(Disponível)</span>`;
+                              cellClass += ' slot-vago-available';
+                         } else {
+                              cellContent = `${slot.tipoOriginal}\n<span class="slot-status">(Disponível)</span>`;
+                         }
+
+                    } else if (slot.statusOcupacao === 'Reposicao Agendada') {
+                         // Note: This view doesn't fetch booking details (professor/discipline)
+                         // To show real professor/discipline here, we'd need to fetch BOOKING_DETAILS too.
+                         // For now, just show status.
+                        cellContent = 'Reposição Agendada';
+                        cellClass += ' slot-booked slot-reposicao';
+                         if (slot.professorPrincipal) { // Still show original prof if available
+                             cellContent = `${slot.professorPrincipal}\n<span class="slot-status">(Reposição Agendada)</span>`;
+                         }
+
+
+                    } else if (slot.statusOcupacao === 'Substituicao Agendada') {
+                         // Same note as above - fetching real professor/discipline requires BOOKING_DETAILS
+                        cellContent = 'Substituição Agendada';
+                        cellClass += ' slot-booked slot-substituicao';
+                         if (slot.professorPrincipal) { // Still show original prof if available
+                             cellContent = `${slot.professorPrincipal}\n<span class="slot-status">(Substituição Agendada)</span>`;
+                         }
+
+                    } else {
+                         // Handle any other potential status or the base case
+                         cellContent = `${slot.tipoOriginal || 'Horário'}\n<span class="slot-status">(${slot.statusOcupacao || 'Status Desconhecido'})</span>`;
+                         cellClass += ' slot-unknown-status';
+                    }
+
+                    // Add a tooltip with more details
+                    cell.title = `ID: ${slot.idInstancia}\nData: ${slot.data}\nHora: ${slot.horaInicio}\nTurma: ${slot.turma}\nTipo: ${slot.tipoOriginal}\nStatus: ${slot.statusOcupacao}\nProf. Base: ${slot.professorPrincipal || '-'}`;
+
+
+                    cell.innerHTML = cellContent.replace(/\n/g, '<br>'); // Allow line breaks in content
+                    cell.className = cellClass; // Apply classes
+
+
+                } else {
+                    // No slot found for this day/hour
+                    cell.classList.add('slot-cell', 'slot-empty');
+                }
+            });
+        });
+
+        // Append the created table to the container
+        containerElement.appendChild(table);
+    }
+
+
+    // On DOM ready, load the filter options
+    document.addEventListener('DOMContentLoaded', function () {
+        console.log("ScheduleView DOM loaded. Loading filter options.");
+        loadFilterOptions();
+    });
+
+</script>
