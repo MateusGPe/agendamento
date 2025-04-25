@@ -188,6 +188,66 @@ function formatValueToDate(rawValue) {
 }
 
 /**
+ * Envia um email para uma lista fixa de contatos.
+ *
+ * @param {string[]} recipientsArray Um array de strings com os emails dos destinatários.
+ * @param {string} subject O assunto do email.
+ * @param {string} bodyText O corpo do email em texto simples.
+ * @param {string} [bodyHtml] (Opcional) O corpo do email em formato HTML.
+ * @param {string} [sendAs='to'] (Opcional) Como enviar: 'to', 'cc' ou 'bcc'. Padrão 'to'.
+ */
+function enviarEmailListaFixa(recipientsArray, subject, bodyText, bodyHtml, sendAs) {
+    try {
+        if (!recipientsArray || recipientsArray.length === 0) {
+            Logger.log("A lista de destinatários está vazia. Nenhum email enviado.");
+            return;
+        }
+
+        // Filtra emails inválidos (básico)
+        const validRecipients = recipientsArray
+            .map(email => String(email).trim())
+            .filter(email => email && email.includes('@'));
+
+        if (validRecipients.length === 0) {
+            Logger.log("Nenhum endereço de email válido encontrado na lista fornecida.");
+            return;
+        }
+
+        const recipientString = validRecipients.join(',');
+        const mailOptions = {
+            subject: subject,
+            body: bodyText,
+        };
+
+        const sendType = (sendAs || 'to').toLowerCase();
+
+        if (sendType === 'bcc') {
+            mailOptions.bcc = recipientString;
+            mailOptions.to = Session.getActiveUser().getEmail(); // Boa prática
+            Logger.log(`Enviando email via Bcc para ${validRecipients.length} destinatários.`);
+        } else if (sendType === 'cc') {
+            mailOptions.cc = recipientString;
+            mailOptions.to = Session.getActiveUser().getEmail(); // Precisa de um 'to'
+            Logger.log(`Enviando email com Cc para ${recipientString}`);
+        } else {
+            mailOptions.to = recipientString;
+            Logger.log(`Enviando email para: ${recipientString}`);
+        }
+
+        if (bodyHtml) {
+            mailOptions.htmlBody = bodyHtml;
+        }
+
+        Logger.log(`Assunto: ${subject}`);
+        MailApp.sendEmail(mailOptions);
+        Logger.log("Email enviado com sucesso para a lista fixa.");
+
+    } catch (error) {
+        Logger.log(`Erro ao enviar email: ${error.message}\n${error.stack}`);
+    }
+}
+
+/**
  * Converte um valor (string 'dd/MM/yyyy' ou objeto Date) para um objeto Date válido.
  * Retorna null se o valor for inválido ou o formato incorreto para string.
  * A hora é definida para 00:00:00.
@@ -1942,6 +2002,7 @@ function bookSlot(jsonBookingDetailsString) {
             // Retorna sucesso na reserva da planilha, mas informa sobre o erro no
             // Calendar. A reserva está feita no sistema, mas o evento pode estar
             // ausente ou incorreto.
+            enviarEmailListaFixa([...new Set(guests)], eventTitle, eventDescription, 'bcc');
             return JSON.stringify({
                 success: true,
                 message:
@@ -1953,6 +2014,7 @@ function bookSlot(jsonBookingDetailsString) {
         // --- Finalização ---
         // Libera o bloqueio, pois todas as operações foram concluídas.
         lock.releaseLock();
+        enviarEmailListaFixa([...new Set(guests)], eventTitle, eventDescription, 'bcc');
 
         // Retorna JSON indicando sucesso total.
         return JSON.stringify({
