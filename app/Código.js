@@ -188,66 +188,6 @@ function formatValueToDate(rawValue) {
 }
 
 /**
- * Envia um email para uma lista fixa de contatos.
- *
- * @param {string[]} recipientsArray Um array de strings com os emails dos destinatários.
- * @param {string} subject O assunto do email.
- * @param {string} bodyText O corpo do email em texto simples.
- * @param {string} [bodyHtml] (Opcional) O corpo do email em formato HTML.
- * @param {string} [sendAs='to'] (Opcional) Como enviar: 'to', 'cc' ou 'bcc'. Padrão 'to'.
- */
-function enviarEmailListaFixa(recipientsArray, subject, bodyText, bodyHtml, sendAs) {
-    try {
-        if (!recipientsArray || recipientsArray.length === 0) {
-            Logger.log("A lista de destinatários está vazia. Nenhum email enviado.");
-            return;
-        }
-
-        // Filtra emails inválidos (básico)
-        const validRecipients = recipientsArray
-            .map(email => String(email).trim())
-            .filter(email => email && email.includes('@'));
-
-        if (validRecipients.length === 0) {
-            Logger.log("Nenhum endereço de email válido encontrado na lista fornecida.");
-            return;
-        }
-
-        const recipientString = validRecipients.join(',');
-        const mailOptions = {
-            subject: subject,
-            body: bodyText,
-        };
-
-        const sendType = (sendAs || 'to').toLowerCase();
-
-        if (sendType === 'bcc') {
-            mailOptions.bcc = recipientString;
-            mailOptions.to = Session.getActiveUser().getEmail(); // Boa prática
-            Logger.log(`Enviando email via Bcc para ${validRecipients.length} destinatários.`);
-        } else if (sendType === 'cc') {
-            mailOptions.cc = recipientString;
-            mailOptions.to = Session.getActiveUser().getEmail(); // Precisa de um 'to'
-            Logger.log(`Enviando email com Cc para ${recipientString}`);
-        } else {
-            mailOptions.to = recipientString;
-            Logger.log(`Enviando email para: ${recipientString}`);
-        }
-
-        if (bodyHtml) {
-            mailOptions.htmlBody = bodyHtml;
-        }
-
-        Logger.log(`Assunto: ${subject}`);
-        MailApp.sendEmail(mailOptions);
-        Logger.log("Email enviado com sucesso para a lista fixa.");
-
-    } catch (error) {
-        Logger.log(`Erro ao enviar email: ${error.message}\n${error.stack}`);
-    }
-}
-
-/**
  * Converte um valor (string 'dd/MM/yyyy' ou objeto Date) para um objeto Date válido.
  * Retorna null se o valor for inválido ou o formato incorreto para string.
  * A hora é definida para 00:00:00.
@@ -850,7 +790,7 @@ function getScheduleViewFilters() {
 /**
  * Função exposta para o lado do cliente da ScheduleView.
  * Busca instâncias de horários filtradas por turma e data de início da semana.
- * Inclui informações adicionais de disciplina e professor real/original
+ * Inclui informações adicionais de disciplina e professor original
  * buscando em outras planilhas para horários relevantes.
  * @param {string} turma A turma para filtrar.
  * @param {string} weekStartDateString A data de início da semana (Segunda-feira) no formato 'YYYY-MM-DD'.
@@ -1346,699 +1286,946 @@ function getAvailableSlots(tipoReserva) {
         return JSON.stringify({ success: false, message: 'Ocorreu um erro interno ao buscar horários: ' + e.message, data: null });
     }
 }
+/**
+ * Cria o conteúdo (assunto, texto, HTML) para o email de notificação da reserva.
+ * Inclui detalhes como tipo, data, hora, turma, disciplina, professores e status do Calendar.
+ *
+ * @param {object} dadosReserva Um objeto contendo os detalhes da reserva.
+ * @param {string} dadosReserva.bookingId O ID da reserva.
+ * @param {string} dadosReserva.bookingType O tipo de reserva (Reposição/Substituição).
+ * @param {string} dadosReserva.disciplina A disciplina agendada.
+ * @param {string} dadosReserva.turma A turma associada.
+ * @param {string} dadosReserva.profReal O professor que realizará a aula.
+ * @param {string} [dadosReserva.profOrig] O professor original (para substituições).
+ * @param {Date} dadosReserva.startTime O objeto Date/Time de início da aula.
+ * @param {string} dadosReserva.timeZone O fuso horário da planilha.
+ * @param {string} dadosReserva.userEmail O email de quem fez a reserva.
+ * @param {Date} dadosReserva.timestampCriacao O momento em que a reserva foi criada.
+ * @param {string|null} [dadosReserva.calendarEventId] O ID do evento do Calendar, if criado/atualizado.
+ * @param {Error|null} [dadosReserva.calendarError] O objeto de erro do Calendar, if ocorreu um erro.
+ * @return {{subject: string, bodyText: string, bodyHtml: string}} Objeto com o conteúdo do email.
+ */
+function criarConteudoEmailReserva(dadosReserva) {
+    const {
+        bookingId, bookingType, disciplina, turma, profReal, profOrig,
+        startTime, timeZone, userEmail, timestampCriacao,
+        calendarEventId, calendarError
+    } = dadosReserva;
+
+    // Assumindo que TIPOS_RESERVA.SUBSTITUICAO está definido globalmente
+    const isSubstituicao = bookingType === TIPOS_RESERVA.SUBSTITUICAO;
+
+    // Formatação de Data e Hora
+    const dataFormatada = Utilities.formatDate(startTime, timeZone, 'dd/MM/yyyy');
+    const horaFormatada = Utilities.formatDate(startTime, timeZone, 'HH:mm');
+    const criacaoFormatada = Utilities.formatDate(timestampCriacao, timeZone, 'dd/MM/yyyy HH:mm:ss');
+
+    // --- Assunto ---
+    let subject = '';
+    if (calendarError) {
+        subject = `⚠️ Reserva ${bookingType} Confirmada (Erro Calendar) - ${disciplina || 'N/D'} - ${dataFormatada}`;
+    } else if (!calendarEventId && !calendarError) {
+        // Condição onde o Calendar não foi configurado ou encontrado, mas não deu erro
+        subject = `✅ Reserva ${bookingType} Confirmada (Sem Evento Calendar) - ${disciplina || 'N/D'} - ${dataFormatada}`;
+    }
+    else {
+        // Sucesso total
+        subject = `✅ Reserva ${bookingType} Confirmada - ${disciplina || 'N/D'} - ${dataFormatada}`;
+    }
+
+    // --- Corpo Texto ---
+    let bodyText = `Olá,\n\n`;
+    bodyText += `Uma reserva de "${bookingType}" foi registrada no sistema:\n\n`;
+    bodyText += `==============================\n`;
+    bodyText += `DETALHES DA RESERVA\n`;
+    bodyText += `==============================\n`;
+    bodyText += `Tipo: ${bookingType}\n`;
+    bodyText += `Data: ${dataFormatada}\n`;
+    bodyText += `Horário: ${horaFormatada}\n`;
+    bodyText += `Turma: ${turma || 'N/A'}\n`;
+    bodyText += `Disciplina: ${disciplina || 'N/A'}\n`;
+    bodyText += `Professor: ${profReal || 'N/A'}\n`;
+    if (isSubstituicao && profOrig) {
+        bodyText += `Professor Original: ${profOrig}\n`;
+    }
+    bodyText += `------------------------------\n`;
+    bodyText += `ID da Reserva: ${bookingId}\n`;
+    bodyText += `Agendado por: ${userEmail}\n`;
+    bodyText += `Data/Hora Agendamento: ${criacaoFormatada}\n`;
+    bodyText += `==============================\n\n`;
+
+    // Adiciona status do Calendário
+    if (calendarError) {
+        bodyText += `*** ATENÇÃO ***\n`;
+        bodyText += `Houve um erro ao tentar criar ou atualizar o evento no Google Calendar.\n`;
+        bodyText += `A reserva está confirmada nas planilhas, mas por favor, verifique o calendário manualmente.\n`;
+        bodyText += `Erro: ${calendarError.message}\n\n`;
+    } else if (!calendarEventId) {
+        // Inclui o caso de calendarId não configurado/encontrado
+        bodyText += `*** AVISO ***\n`;
+        bodyText += `O evento correspondente não foi criado/atualizado no Google Calendar (ID do calendário pode não estar configurado, o calendário pode não ter sido encontrado ou houve um erro não capturado na obtenção do ID).\n\n`;
+    }
+    else {
+        // Sucesso no Calendar
+        bodyText += `Evento no Google Calendar criado/atualizado com sucesso.\n`;
+        bodyText += `ID do Evento: ${calendarEventId}\n\n`;
+    }
+
+    bodyText += `Atenciosamente,\nSistema de Agendamento`;
+
+    // --- Corpo HTML ---
+    let bodyHtml = `<p>Olá,</p>`;
+    bodyHtml += `<p>Uma reserva de "<b>${bookingType}</b>" foi registrada no sistema:</p>`;
+    bodyHtml += `<hr>`;
+    bodyHtml += `<h3>Detalhes da Reserva</h3>`;
+    bodyHtml += `<table border="0" cellpadding="5" style="border-collapse: collapse; font-family: sans-serif; font-size: 11pt;">`; // Estilo básico
+    bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><strong>Tipo:</strong></td><td>${bookingType}</td></tr>`;
+    bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><strong>Data:</strong></td><td>${dataFormatada}</td></tr>`;
+    bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><strong>Horário:</strong></td><td>${horaFormatada}</td></tr>`;
+    bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><strong>Turma:</strong></td><td>${turma || 'N/A'}</td></tr>`;
+    bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><strong>Disciplina:</strong></td><td>${disciplina || 'N/A'}</td></tr>`;
+    bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><strong>Professor:</strong></td><td>${profReal || 'N/A'}</td></tr>`;
+    if (isSubstituicao && profOrig) {
+        bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><strong>Professor Original:</strong></td><td>${profOrig}</td></tr>`;
+    }
+    bodyHtml += `</table>`;
+    bodyHtml += `<br>`;
+    bodyHtml += `<table border="0" cellpadding="5" style="border-collapse: collapse; font-family: sans-serif; font-size: 9pt; color: #555;">`; // Estilo menor para meta-info
+    bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><i>ID Reserva:</i></td><td><i>${bookingId}</i></td></tr>`;
+    bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><i>Agendado por:</i></td><td><i>${userEmail}</i></td></tr>`;
+    bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><i>Data/Hora Agend.:</i></td><td><i>${criacaoFormatada}</i></td></tr>`;
+    bodyHtml += `</table>`;
+    bodyHtml += `<hr>`;
+
+    // Adiciona status do Calendário
+    if (calendarError) {
+        bodyHtml += `<div style="border: 1px solid #DC3545; background-color: #F8D7DA; color: #721C24; padding: 15px; margin-top: 15px; border-radius: 4px; font-family: sans-serif; font-size: 11pt;">`; // Estilo de alerta vermelho
+        bodyHtml += `<strong>*** ATENÇÃO ***</strong><br>`;
+        bodyHtml += `Houve um erro ao tentar criar ou atualizar o evento no Google Calendar.<br>`;
+        bodyHtml += `A reserva está confirmada nas planilhas, mas por favor, <strong>verifique o calendário manualmente</strong>.<br>`;
+        bodyHtml += `<span style="font-size: 9pt; color: #721C24;">Erro: ${calendarError.message}</span>`;
+        bodyHtml += `</div>`;
+    } else if (!calendarEventId) {
+        // Inclui o caso de calendarId não configurado/encontrado
+        bodyHtml += `<div style="border: 1px solid #FFC107; background-color: #FFF3CD; color: #856404; padding: 15px; margin-top: 15px; border-radius: 4px; font-family: sans-serif; font-size: 11pt;">`; // Estilo de alerta amarelo
+        bodyHtml += `<strong>*** AVISO ***</strong><br>`;
+        bodyHtml += `O evento correspondente não foi criado/atualizado no Google Calendar.<br>`;
+        bodyHtml += `Isso pode ocorrer se o ID do calendário não estiver configurado, o calendário não for encontrado ou ocorrer um erro não capturado na obtenção do ID do evento.`;
+        bodyHtml += `</div>`;
+    }
+    else {
+        // Sucesso no Calendar
+        bodyHtml += `<div style="border: 1px solid #28A745; background-color: #D4EDDA; color: #155724; padding: 15px; margin-top: 15px; border-radius: 4px; font-family: sans-serif; font-size: 11pt;">`; // Estilo de sucesso verde
+        bodyHtml += `Evento no Google Calendar criado/atualizado com sucesso.<br>`;
+        bodyHtml += `ID do Evento: ${calendarEventId}`;
+        bodyHtml += `</div>`;
+    }
+
+    bodyHtml += `<p style="font-family: sans-serif; font-size: 11pt; margin-top: 20px;">Atenciosamente,<br>Sistema de Agendamento</p>`;
+
+    return { subject, bodyText, bodyHtml };
+}
+
 
 /**
- * Função exposta para ser chamada pelo lado do cliente.
- * Tenta reservar um horário específico (instância), atualizando seu status e
- * criando um registro na planilha de detalhes da reserva e um evento no Google
- * Calendar. Usa LockService para evitar condições de corrida (duas pessoas
- * tentando reservar o mesmo horário).
+ * Tenta agendar um horário vago (Reposição) ou substituir um horário fixo
+ * (Substituição).
+ * Responsabilidades:
+ * 1. Valida a autorização do usuário.
+ * 2. Analisa os detalhes da reserva recebidos como JSON.
+ * 3. Encontra e valida a instância de horário solicitada na planilha 'Instancias de Horarios'.
+ * 4. Realiza verificações de concorrência e regras de negócio (ex: tipo de horário vs tipo de reserva).
+ * 5. Atualiza o status e o ID da reserva na planilha 'Instancias de Horarios'.
+ * 6. Cria um novo registro detalhado na planilha 'Reservas Detalhadas'.
+ * 7. Tenta criar ou atualizar um evento correspondente no Google Calendar.
+ * 8. Salva o ID do evento do Calendar na planilha 'Instancias de Horarios'.
+ * 9. Envia notificações por email aos envolvidos usando o conteúdo gerado por `criarConteudoEmailReserva`.
+ * 10. Utiliza LockService para prevenir condições de corrida.
+ *
  * @param {string} jsonBookingDetailsString Uma string JSON contendo os detalhes
- *     da reserva (idInstancia, tipoReserva, professorReal, disciplinaReal,
- *     etc.).
- * @returns {string} Uma string JSON indicando sucesso ou falha da
- *     operação {success, message, data: {bookingId, eventId}}.
+ *   necessários para a reserva (idInstancia, tipoReserva, professorReal,
+ *   disciplinaReal, alunos?). Ex: '{"idInstancia":"unique-id-123", "tipoReserva":"Reposição", ...}'
+ * @return {string} Uma string JSON indicando o sucesso ou falha da operação.
+ *   Em caso de sucesso: {success: true, message: "...", data: {bookingId: "...", eventId: "..."}}
+ *   Em caso de falha: {success: false, message: "...", data: null}
  */
 function bookSlot(jsonBookingDetailsString) {
-    // Obtém um bloqueio exclusivo para este script, esperando até 10 segundos se
-    // já estiver bloqueado. Isso previne que duas execuções simultâneas desta
-    // função tentem modificar o mesmo horário ao mesmo tempo.
+    // --- Fase 1: Bloqueio e Validação Inicial ---
     const lock = LockService.getScriptLock();
-    lock.waitLock(10000);  // Espera até 10 segundos (10000 ms).
-
-    // Verifica a autorização do usuário.
-    const userEmail = Session.getActiveUser().getEmail();
-    const userRole = getUserRolePlain(userEmail);
-
-    // Se não autorizado, libera o bloqueio e retorna falha.
-    if (!userRole) {
-        lock.releaseLock();
-        return JSON.stringify({
-            success: false,
-            message: 'Usuário não autorizado a agendar.',
-            data: null
-        });
-    }
-
-    let bookingDetails;
     try {
-        // Tenta converter a string JSON recebida em um objeto JavaScript.
-        bookingDetails = JSON.parse(jsonBookingDetailsString);
-        Logger.log(
-            'Booking details received and parsed: ' +
-            JSON.stringify(bookingDetails));
+        // Tenta obter o bloqueio exclusivo, esperando no máximo 10 segundos.
+        lock.waitLock(10000); // Lança erro se o tempo expirar
     } catch (e) {
-        // Se o JSON for inválido, libera o bloqueio e retorna falha.
-        lock.releaseLock();
-        Logger.log('Erro ao parsear JSON de detalhes da reserva: ' + e.message);
+        // Falha ao obter o bloqueio, provavelmente devido a alta concorrência.
+        Logger.log('Não foi possível obter o bloqueio do script em 10 segundos: ' + e.message);
+        // Retorna falha indicando que o sistema está ocupado.
         return JSON.stringify({
             success: false,
-            message: 'Erro ao processar dados da reserva.',
+            message: 'O sistema está ocupado processando outra solicitação. Tente novamente em alguns instantes.',
             data: null
         });
     }
 
-    // Inicia o bloco principal de processamento da reserva.
+    // Variáveis que serão usadas em múltiplos escopos, incluindo a criação do email.
+    let userEmail;
+    let bookingId = null;
+    let bookingType = null;
+    let disciplina = null;
+    let turmaInstancia = null;
+    let profReal = null;
+    let profOrig = null;
+    let effectiveStartDateTime = null;
+    let now = null;
+    let timeZone = null;
+    let calendarEventId = null; // Será atualizado pela lógica do Calendar
+    let guests = []; // Lista de emails dos convidados para o evento/email
+    let calendarError = null; // Armazena erro do Calendar, se houver
+
     try {
+        // Obtém o email do usuário que está executando o script.
+        try {
+            userEmail = Session.getActiveUser().getEmail();
+        } catch (e) {
+            // Falha rara, mas possível em certos contextos de execução.
+            lock.releaseLock(); // Libera o bloqueio antes de sair
+            Logger.log('Erro ao obter email do usuário ativo: ' + e.message);
+            return JSON.stringify({
+                success: false,
+                message: 'Não foi possível identificar o usuário logado.',
+                data: null
+            });
+        }
+
+        // Verifica a autorização do usuário (assume que getUserRolePlain existe).
+        const userRole = getUserRolePlain(userEmail); // Assume que esta função existe e retorna o papel ou null
+        if (!userRole) {
+            lock.releaseLock();
+            Logger.log(`Usuário ${userEmail} não autorizado a agendar.`);
+            return JSON.stringify({
+                success: false,
+                message: 'Você não tem permissão para realizar agendamentos.',
+                data: null
+            });
+        }
+
+        // Analisa (parse) a string JSON com os detalhes da reserva.
+        let bookingDetails;
+        try {
+            bookingDetails = JSON.parse(jsonBookingDetailsString);
+            Logger.log('Detalhes da reserva recebidos e analisados: ' + JSON.stringify(bookingDetails));
+        } catch (e) {
+            lock.releaseLock();
+            Logger.log('Erro ao analisar JSON de detalhes da reserva: ' + e.message + ' | JSON recebido: ' + jsonBookingDetailsString);
+            return JSON.stringify({
+                success: false,
+                message: 'Erro interno ao processar os dados da reserva (JSON inválido).',
+                data: null
+            });
+        }
+
+        // --- Fase 2: Processamento Principal da Reserva ---
         const ss = SpreadsheetApp.getActiveSpreadsheet();
-        // Acessa as planilhas de instâncias e de detalhes das reservas.
         const instancesSheet = ss.getSheetByName(SHEETS.SCHEDULE_INSTANCES);
         const bookingsSheet = ss.getSheetByName(SHEETS.BOOKING_DETAILS);
-        // Obtém o fuso horário.
-        const timeZone = ss.getSpreadsheetTimeZone();
 
-        // Validação básica dos dados recebidos: ID da instância é obrigatório.
-        if (!bookingDetails || typeof bookingDetails.idInstancia !== 'string' ||
-            bookingDetails.idInstancia.trim() === '') {
-            lock.releaseLock();
-            return JSON.stringify({
-                success: false,
-                message:
-                    'Dados de ID da instância de horário incompletos ou inválidos.',
-                data: null
-            });
+        // Valida se as planilhas foram encontradas
+        if (!instancesSheet) throw new Error(`Planilha "${SHEETS.SCHEDULE_INSTANCES}" não encontrada.`);
+        if (!bookingsSheet) throw new Error(`Planilha "${SHEETS.BOOKING_DETAILS}" não encontrada.`);
+        // A planilha de usuários é verificada depois, pois é usada apenas para o Calendar/Email.
+
+        // Obtém o fuso horário da planilha
+        timeZone = ss.getSpreadsheetTimeZone(); // Atribui à variável de escopo superior
+
+        // Valida dados básicos da reserva recebidos no JSON
+        if (!bookingDetails || typeof bookingDetails.idInstancia !== 'string' || bookingDetails.idInstancia.trim() === '') {
+            throw new Error('Dados de ID da instância de horário incompletos ou inválidos.');
         }
-
-        // Obtém e limpa os dados essenciais da reserva.
         const instanceIdToBook = bookingDetails.idInstancia.trim();
-        const bookingType = bookingDetails.tipoReserva ?
-            String(bookingDetails.tipoReserva).trim() :
-            null;
-        // Valida o tipo de reserva.
-        if (!bookingType ||
-            (bookingType !== TIPOS_RESERVA.REPOSICAO &&
-                bookingType !== TIPOS_RESERVA.SUBSTITUICAO)) {
-            lock.releaseLock();
-            return JSON.stringify({
-                success: false,
-                message: 'Tipo de reserva inválido ou ausente.',
-                data: null
-            });
+
+        bookingType = bookingDetails.tipoReserva ? String(bookingDetails.tipoReserva).trim() : null; // Atribui
+        if (!bookingType || (bookingType !== TIPOS_RESERVA.REPOSICAO && bookingType !== TIPOS_RESERVA.SUBSTITUICAO)) {
+            throw new Error(`Tipo de reserva inválido ou ausente. Recebido: "${bookingDetails.tipoReserva}". Esperado: "${TIPOS_RESERVA.REPOSICAO}" ou "${TIPOS_RESERVA.SUBSTITUICAO}".`);
         }
 
-        // --- Busca e Validação da Instância de Horário na Planilha ---
-        // Obtém todos os dados da planilha de instâncias.
+        // --- Busca e Validação da Instância na Planilha 'Instancias de Horarios' ---
         const instanceDataRaw = instancesSheet.getDataRange().getValues();
-        let instanceRowIndex =
-            -1;  // Índice da linha onde a instância foi encontrada.
-        let instanceDetails = null;  // Array com os dados da linha da instância.
+        let instanceRowIndex = -1;
+        let instanceDetails = null;
 
-        // Verifica se a planilha de instâncias tem dados.
         if (instanceDataRaw.length <= 1) {
-            lock.releaseLock();
-            return JSON.stringify({
-                success: false,
-                message:
-                    'Erro interno: Planilha de instâncias vazia ou estrutura incorreta.',
-                data: null
-            });
+            // A planilha está vazia ou só tem cabeçalho
+            throw new Error('Erro interno: Planilha de instâncias está vazia ou contém apenas o cabeçalho.');
         }
 
-        // Remove o cabeçalho.
-        const instanceData = instanceDataRaw.slice(1);
-
-        // Itera pelas linhas de instância para encontrar a que corresponde ao ID
-        // solicitado.
+        const instanceData = instanceDataRaw.slice(1); // Remove cabeçalho
+        // Procura a instância pelo ID
         for (let i = 0; i < instanceData.length; i++) {
             const row = instanceData[i];
-            const rowIndex = i + 2;  // Índice real na planilha.
-            // Verifica se a linha tem pelo menos a coluna do ID.
+            const rowIndexInSheet = i + 2; // Índice 1-based na planilha
             const minColsForId = HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA + 1;
             if (row && row.length >= minColsForId) {
-                const currentInstanceIdRaw =
-                    row[HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA];
-                // Converte e compara o ID da linha atual com o ID procurado.
-                const currentInstanceId = (typeof currentInstanceIdRaw === 'string' ||
-                    typeof currentInstanceIdRaw === 'number') ?
-                    String(currentInstanceIdRaw).trim() :
-                    null;
+                const currentInstanceIdRaw = row[HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA];
+                const currentInstanceId = (typeof currentInstanceIdRaw === 'string' || typeof currentInstanceIdRaw === 'number')
+                    ? String(currentInstanceIdRaw).trim() : null;
                 if (currentInstanceId && currentInstanceId === instanceIdToBook) {
-                    instanceRowIndex = rowIndex;  // Armazena o índice da linha.
-                    instanceDetails = row;        // Armazena os dados da linha.
-                    break;                        // Para o loop assim que encontrar.
+                    instanceRowIndex = rowIndexInSheet;
+                    instanceDetails = row;
+                    break; // Encontrou
                 }
             }
         }
 
-        // Se a instância não foi encontrada (pode ter sido deletada ou o ID estava
-        // errado).
+        // Se não encontrou a instância
         if (instanceRowIndex === -1 || !instanceDetails) {
-            lock.releaseLock();
-            // Mensagem importante para o usuário indicando possível concorrência ou
-            // dado desatualizado.
+            lock.releaseLock(); // Libera antes de retornar
+            // Mensagem para o usuário indicando que o horário não está mais lá
             return JSON.stringify({
                 success: false,
-                message:
-                    'Este horário não está mais disponível. Por favor, atualize a lista e tente novamente.',
+                message: 'Este horário não está mais disponível ou não foi encontrado. Por favor, atualize a lista de horários e tente novamente.',
                 data: null
             });
         }
 
-        // Verifica se a linha encontrada tem o número esperado de colunas para
-        // evitar erros.
-        const expectedInstanceCols =
-            Math.max(
-                HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO,
-                HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL,
-                HEADERS.SCHEDULE_INSTANCES.DATA,
-                HEADERS.SCHEDULE_INSTANCES.HORA_INICIO,
-                HEADERS.SCHEDULE_INSTANCES.TURMA,
-                HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL,
-                HEADERS.SCHEDULE_INSTANCES
-                    .ID_EVENTO_CALENDAR  // Inclui a coluna do ID do evento.
-            ) +
-            1;
+        // Verifica o número de colunas na linha encontrada
+        const expectedInstanceCols = Math.max(
+            HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO, HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL,
+            HEADERS.SCHEDULE_INSTANCES.DATA, HEADERS.SCHEDULE_INSTANCES.HORA_INICIO,
+            HEADERS.SCHEDULE_INSTANCES.TURMA, HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL,
+            HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR, HEADERS.SCHEDULE_INSTANCES.ID_RESERVA
+        ) + 1; // +1 para índice base 0
 
         if (instanceDetails.length < expectedInstanceCols) {
-            Logger.log(`Erro: Linha ${instanceRowIndex} na planilha Instancias de Horarios tem menos colunas (${instanceDetails.length}) que o esperado (${expectedInstanceCols}).`);
-            lock.releaseLock();
-            return JSON.stringify({
-                success: false,
-                message:
-                    'Erro interno: Dados do horário selecionado incompletos na planilha.',
-                data: null
-            });
+            // Dados incompletos na linha encontrada
+            throw new Error(`Erro interno: Dados da instância ${instanceIdToBook} (linha ${instanceRowIndex}) estão incompletos na planilha "${SHEETS.SCHEDULE_INSTANCES}". Colunas encontradas: ${instanceDetails.length}, esperado pelo menos: ${expectedInstanceCols}.`);
         }
 
-        // Extrai e formata os dados relevantes da linha da instância encontrada.
-        const currentStatusRaw =
-            instanceDetails[HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO];
-        const originalTypeRaw =
-            instanceDetails[HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL];
+        // Extrai e formata dados da instância
+        const currentStatusRaw = instanceDetails[HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO];
+        const originalTypeRaw = instanceDetails[HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL];
         const rawBookingDate = instanceDetails[HEADERS.SCHEDULE_INSTANCES.DATA];
-        const rawBookingTime =
-            instanceDetails[HEADERS.SCHEDULE_INSTANCES.HORA_INICIO];
+        const rawBookingTime = instanceDetails[HEADERS.SCHEDULE_INSTANCES.HORA_INICIO];
         const turmaInstanciaRaw = instanceDetails[HEADERS.SCHEDULE_INSTANCES.TURMA];
-        const professorPrincipalInstanciaRaw =
-            instanceDetails[HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL];
-        const calendarEventIdExistingRaw =
-            instanceDetails[HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR];
+        const professorPrincipalInstanciaRaw = instanceDetails[HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL];
+        const calendarEventIdExistingRaw = instanceDetails[HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR];
 
-        // Formata e valida os dados extraídos.
-        const currentStatus = (typeof currentStatusRaw === 'string' ||
-            typeof currentStatusRaw === 'number') ?
-            String(currentStatusRaw).trim() :
-            null;
-        const originalType = (typeof originalTypeRaw === 'string' ||
-            typeof originalTypeRaw === 'number') ?
-            String(originalTypeRaw).trim() :
-            null;
-        const turmaInstancia = (typeof turmaInstanciaRaw === 'string' ||
-            typeof turmaInstanciaRaw === 'number') ?
-            String(turmaInstanciaRaw).trim() :
-            null;
-        const professorPrincipalInstancia =
-            (typeof professorPrincipalInstanciaRaw === 'string' ||
-                typeof professorPrincipalInstanciaRaw === 'number') ?
-                String(professorPrincipalInstanciaRaw || '').trim() :
-                '';
-        const bookingDateObj = formatValueToDate(rawBookingDate);
-        const bookingHourString = formatValueToHHMM(rawBookingTime, timeZone);
-        const calendarEventIdExisting =
-            (typeof calendarEventIdExistingRaw === 'string' ||
-                typeof calendarEventIdExistingRaw === 'number') ?
-                String(calendarEventIdExistingRaw || '').trim() :
-                null;
+        const currentStatus = (typeof currentStatusRaw === 'string' || typeof currentStatusRaw === 'number') ? String(currentStatusRaw).trim() : null;
+        const originalType = (typeof originalTypeRaw === 'string' || typeof originalTypeRaw === 'number') ? String(originalTypeRaw).trim() : null;
+        turmaInstancia = (typeof turmaInstanciaRaw === 'string' || typeof turmaInstanciaRaw === 'number') ? String(turmaInstanciaRaw).trim() : null; // Atribui
+        const professorPrincipalInstancia = (typeof professorPrincipalInstanciaRaw === 'string' || typeof professorPrincipalInstanciaRaw === 'number') ? String(professorPrincipalInstanciaRaw || '').trim() : '';
+        const calendarEventIdExisting = (typeof calendarEventIdExistingRaw === 'string' || typeof calendarEventIdExistingRaw === 'number') ? String(calendarEventIdExistingRaw || '').trim() : null;
 
-        // Verifica se dados críticos formatados são válidos.
-        if (!currentStatus || currentStatus === '' || !originalType ||
-            originalType === '' || !turmaInstancia || turmaInstancia === '' ||
-            !bookingDateObj || bookingHourString === null) {
-            Logger.log(`Erro: Dados críticos da instância ${instanceIdToBook} na linha ${instanceRowIndex} são inválidos. Status=${currentStatusRaw}, Tipo=${originalTypeRaw}, Turma=${turmaInstanciaRaw}, Data=${rawBookingDate}, Hora=${rawBookingTime}`);
-            lock.releaseLock();
-            return JSON.stringify({
-                success: false,
-                message:
-                    'Erro interno: Dados do horário selecionado são inválidos na planilha.',
-                data: null
-            });
+        // Converte data e hora usando funções auxiliares
+        const bookingDateObj = formatValueToDate(rawBookingDate); // Assume que retorna Date ou null
+        const bookingHourString = formatValueToHHMM(rawBookingTime, timeZone); // Assume que retorna "HH:MM" ou null
+
+        // Valida dados formatados essenciais
+        if (!currentStatus || currentStatus === '' || !originalType || originalType === '' || !turmaInstancia || turmaInstancia === '' || !bookingDateObj || bookingHourString === null) {
+            Logger.log(`Erro: Dados críticos formatados da instância ${instanceIdToBook} na linha ${instanceRowIndex} são inválidos. Status Raw: ${currentStatusRaw}, Tipo Raw: ${originalTypeRaw}, Turma Raw: ${turmaInstanciaRaw}, Data Raw: ${rawBookingDate}, Hora Raw: ${rawBookingTime}`);
+            throw new Error(`Erro interno: Dados do horário selecionado (Status, Tipo, Turma, Data ou Hora) são inválidos ou estão mal formatados na planilha "${SHEETS.SCHEDULE_INSTANCES}".`);
         }
 
-        // --- Lógica de Validação Específica por Tipo de Reserva (VERIFICAÇÃO DE
-        // CONCORRÊNCIA) ---
+        // --- Lógica de Validação Específica por Tipo de Reserva (CONCORRÊNCIA) ---
+        // Esta parte é crucial e ocorre dentro do bloqueio.
         if (bookingType === TIPOS_RESERVA.REPOSICAO) {
-            // Para REPOSICAO, a instância deve ser do tipo VAGO e estar DISPONIVEL no
-            // momento da reserva.
-            if (originalType !== TIPOS_HORARIO.VAGO ||
-                currentStatus !== STATUS_OCUPACAO.DISPONIVEL) {
-                lock.releaseLock();
-                // Mensagem indicando que o status mudou desde que o usuário viu a
-                // lista.
-                return JSON.stringify({
-                    success: false,
-                    message:
-                        'Este horário não está mais disponível para reposição ou não é um horário vago (concorrência).',
-                    data: null
-                });
-            }
-            // Verifica se os campos obrigatórios para reposição foram preenchidos no
-            // formulário.
-            if (!bookingDetails.professorReal ||
-                bookingDetails.professorReal.trim() === '' ||
-                !bookingDetails.disciplinaReal ||
-                bookingDetails.disciplinaReal.trim() === '') {
+            // Regras para Reposição
+            if (originalType !== TIPOS_HORARIO.VAGO || currentStatus !== STATUS_OCUPACAO.DISPONIVEL) {
                 lock.releaseLock();
                 return JSON.stringify({
                     success: false,
-                    message:
-                        'Por favor, preencha todos os campos obrigatórios para reposição (Professor, Disciplina).',
+                    message: `Este horário vago (${instanceIdToBook}) não está mais disponível para reposição (Status atual: ${currentStatus}). Alguém pode ter agendado antes. Atualize a lista.`,
                     data: null
                 });
             }
-
+            // Valida campos obrigatórios para Reposição
+            if (!bookingDetails.professorReal || String(bookingDetails.professorReal).trim() === '' ||
+                !bookingDetails.disciplinaReal || String(bookingDetails.disciplinaReal).trim() === '') {
+                // Libera o bloqueio se dados essenciais faltam
+                lock.releaseLock();
+                throw new Error('Para agendar uma Reposição, os campos "Professor" e "Disciplina" são obrigatórios.');
+            }
         } else if (bookingType === TIPOS_RESERVA.SUBSTITUICAO) {
-            // Para SUBSTITUICAO, a instância deve ser do tipo FIXO.
+            // Regras para Substituição
             if (originalType !== TIPOS_HORARIO.FIXO) {
                 lock.releaseLock();
-                return JSON.stringify({
-                    success: false,
-                    message:
-                        'Este horário não é um horário fixo e não pode ser substituído.',
-                    data: null
-                });
+                throw new Error(`Não é possível agendar uma Substituição no horário ${instanceIdToBook}, pois ele não é um horário FIXO (Tipo original: ${originalType}).`);
             }
-            // Não pode ser substituído se já houver uma REPOSICAO agendada nele.
             if (currentStatus === STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
                 lock.releaseLock();
                 return JSON.stringify({
                     success: false,
-                    message:
-                        'Este horário fixo está sendo usado para uma reposição e não pode ser substituído.',
+                    message: `Este horário fixo (${instanceIdToBook}) já está sendo usado para uma Reposição e não pode ser substituído no momento.`,
                     data: null
                 });
             }
-            // Deve estar DISPONIVEL ou já marcado como SUBSTITUICAO_AGENDADA
-            // (permitindo reagendar/atualizar a substituição). Se o status for
-            // qualquer outro (ex: algum status futuro inválido), a reserva falha.
-            if (currentStatus !== STATUS_OCUPACAO.DISPONIVEL &&
-                currentStatus !== STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) {
+            if (currentStatus !== STATUS_OCUPACAO.DISPONIVEL && currentStatus !== STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) {
                 lock.releaseLock();
                 return JSON.stringify({
                     success: false,
-                    message:
-                        'Este horário fixo não está disponível para substituição neste momento (concorrência).',
+                    message: `Este horário fixo (${instanceIdToBook}) não está disponível para substituição neste momento (Status atual: ${currentStatus}). Alguém pode ter agendado antes ou o status é inesperado. Atualize a lista.`,
                     data: null
                 });
             }
-
-            // Verifica campos obrigatórios para substituição.
-            if (!bookingDetails.professorReal ||
-                bookingDetails.professorReal.trim() === '' ||
-                !bookingDetails.disciplinaReal ||
-                bookingDetails.disciplinaReal.trim() === '') {
+            // Valida campos obrigatórios para Substituição
+            if (!bookingDetails.professorReal || String(bookingDetails.professorReal).trim() === '' ||
+                !bookingDetails.disciplinaReal || String(bookingDetails.disciplinaReal).trim() === '') {
                 lock.releaseLock();
-                return JSON.stringify({
-                    success: false,
-                    message:
-                        'Por favor, preencha todos os campos obrigatórios para substituição (Professor Substituto, Disciplina).',
-                    data: null
-                });
+                throw new Error('Para agendar uma Substituição, os campos "Professor Substituto" (Professor) e "Disciplina" são obrigatórios.');
             }
-
-            // Para substituição, é crucial que o professor original esteja definido
-            // na instância.
+            // Valida se professor original está definido na instância
             if (professorPrincipalInstancia === '') {
-                Logger.log(`Erro: Instância de horário fixo ${instanceIdToBook} na linha ${instanceRowIndex} não tem Professor Principal definido na planilha de instâncias.`);
                 lock.releaseLock();
-                return JSON.stringify({
-                    success: false,
-                    message:
-                        'Erro interno: Horário fixo não tem Professor Principal definido na planilha de instâncias. Verifique a geração de instâncias.',
-                    data: null
-                });
+                throw new Error(`Erro interno: O horário fixo ${instanceIdToBook} (linha ${instanceRowIndex}) não tem um "Professor Principal" definido na planilha de instâncias. Impossível realizar substituição.`);
             }
         }
 
-        // --- Se todas as validações passaram, prossegue com a reserva ---
+        // --- Se todas as validações passaram, ATUALIZA as planilhas ---
+        Logger.log(`Validações para ${bookingType} no horário ${instanceIdToBook} passaram. Prosseguindo com a reserva.`);
 
-        // Gera um ID único para a nova reserva.
-        const bookingId = Utilities.getUuid();
-        // Obtém a data/hora atual para registro.
-        const now = new Date();
+        // Gera ID e timestamp
+        bookingId = Utilities.getUuid(); // Atribui
+        now = new Date(); // Atribui
 
-        // Determina o novo status da instância baseado no tipo de reserva.
-        const newStatus = (bookingType === TIPOS_RESERVA.REPOSICAO) ?
-            STATUS_OCUPACAO.REPOSICAO_AGENDADA :
-            STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA;
-        // Cria uma cópia dos dados da linha da instância para modificação.
-        const updatedInstanceRow = [...instanceDetails];
-        // Atualiza o status da ocupação.
+        // Define o novo status da instância
+        const newStatus = (bookingType === TIPOS_RESERVA.REPOSICAO)
+            ? STATUS_OCUPACAO.REPOSICAO_AGENDADA
+            : STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA;
+
+        // Atualiza a linha da instância na memória
+        const updatedInstanceRow = [...instanceDetails]; // Cria cópia mutável
         updatedInstanceRow[HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO] = newStatus;
-        // Associa o ID da reserva à instância.
         updatedInstanceRow[HEADERS.SCHEDULE_INSTANCES.ID_RESERVA] = bookingId;
+        // ID do evento será atualizado depois, se necessário
 
-        // --- Atualiza a Planilha de Instâncias ---
+        // --- Atualiza Planilha 'Instancias de Horarios' ---
         try {
-            // Define o número exato de colunas esperado na planilha de instâncias.
-            const numColsInstance = HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR + 1;
-
-            // Garante que a linha a ser escrita tenha exatamente o número correto de
-            // colunas.
-            while (updatedInstanceRow.length < numColsInstance)
-                updatedInstanceRow.push('');  // Adiciona colunas vazias se faltar.
-            if (updatedInstanceRow.length > numColsInstance)
-                updatedInstanceRow.length =
-                    numColsInstance;  // Remove colunas extras se houver.
-
-            // Escreve a linha atualizada de volta na planilha, na posição correta.
+            const numColsInstance = Math.max(...Object.values(HEADERS.SCHEDULE_INSTANCES)) + 1;
+            // Garante o número correto de colunas
+            while (updatedInstanceRow.length < numColsInstance) updatedInstanceRow.push('');
+            if (updatedInstanceRow.length > numColsInstance) updatedInstanceRow.length = numColsInstance;
+            // Escreve a linha inteira atualizada
             instancesSheet.getRange(instanceRowIndex, 1, 1, numColsInstance)
-                .setValues([updatedInstanceRow]);
-            Logger.log(`Instância de horário ${instanceIdToBook} na linha ${instanceRowIndex} atualizada para ${newStatus}.`);
+                .setValues([updatedInstanceRow]); // setValues espera array 2D
+            Logger.log(`Instância de horário ${instanceIdToBook} na linha ${instanceRowIndex} da planilha "${SHEETS.SCHEDULE_INSTANCES}" atualizada com sucesso para Status: ${newStatus}, ID Reserva: ${bookingId}.`);
         } catch (e) {
-            // Se ocorrer um erro ao escrever na planilha de instâncias.
-            Logger.log(`Erro ao atualizar linha ${instanceRowIndex} na planilha "${SHEETS.SCHEDULE_INSTANCES}": ${e.message}`);
-            lock.releaseLock();
-            return JSON.stringify({
-                success: false,
-                message: `Erro interno ao atualizar o status do horário na planilha. ${e.message}`,
-                data: null
-            });
+            // Erro crítico ao atualizar a instância. Não pode prosseguir.
+            Logger.log(`ERRO CRÍTICO ao atualizar linha ${instanceRowIndex} na planilha "${SHEETS.SCHEDULE_INSTANCES}": ${e.message}`);
+            // Lança erro para ser pego pelo catch geral, garantindo liberação do lock.
+            throw new Error(`Erro interno ao tentar atualizar o status do horário ${instanceIdToBook} na planilha. Operação cancelada. Detalhes: ${e.message}`);
         }
 
-        // --- Cria a Nova Linha na Planilha de Detalhes da Reserva ---
-        const newBookingRow = [];  // Array para a nova linha.
+        // --- Cria a Nova Linha na Planilha 'Reservas Detalhadas' ---
+        const newBookingRow = [];
+        const numColsBooking = Math.max(...Object.values(HEADERS.BOOKING_DETAILS)) + 1;
+        // Inicializa a linha com strings vazias
+        for (let colIdx = 0; colIdx < numColsBooking; colIdx++) { newBookingRow[colIdx] = ''; }
 
-        // Define o número de colunas esperado na planilha de reservas.
-        const numColsBooking = HEADERS.BOOKING_DETAILS.CRIADO_POR + 1;
-        // Inicializa a linha com strings vazias para garantir o tamanho correto.
-        for (let colIdx = 0; colIdx < numColsBooking; colIdx++) {
-            newBookingRow[colIdx] = '';
-        }
+        // Atribui valores às variáveis de escopo superior
+        profReal = String(bookingDetails.professorReal).trim();
+        profOrig = (bookingType === TIPOS_RESERVA.SUBSTITUICAO) ? professorPrincipalInstancia.trim() : '';
+        disciplina = String(bookingDetails.disciplinaReal).trim();
 
-        // Preenche os dados da nova reserva.
+        // Preenche os dados da nova linha
         newBookingRow[HEADERS.BOOKING_DETAILS.ID_RESERVA] = bookingId;
         newBookingRow[HEADERS.BOOKING_DETAILS.TIPO_RESERVA] = bookingType;
         newBookingRow[HEADERS.BOOKING_DETAILS.ID_INSTANCIA] = instanceIdToBook;
-        newBookingRow[HEADERS.BOOKING_DETAILS.PROFESSOR_REAL] =
-            bookingDetails.professorReal.trim();
-        // Professor original só é relevante para substituição.
-        newBookingRow[HEADERS.BOOKING_DETAILS.PROFESSOR_ORIGINAL] =
-            (bookingType === TIPOS_RESERVA.SUBSTITUICAO) ?
-                professorPrincipalInstancia.trim() :
-                '';
-        newBookingRow[HEADERS.BOOKING_DETAILS.ALUNOS] = bookingDetails.alunos ?
-            bookingDetails.alunos.trim() :
-            '';  // Campo opcional.
-        newBookingRow[HEADERS.BOOKING_DETAILS.TURMAS_AGENDADA] =
-            turmaInstancia;  // Usa a turma da instância por padrão.
-        newBookingRow[HEADERS.BOOKING_DETAILS.DISCIPLINA_REAL] =
-            bookingDetails.disciplinaReal.trim();
+        newBookingRow[HEADERS.BOOKING_DETAILS.PROFESSOR_REAL] = profReal;
+        newBookingRow[HEADERS.BOOKING_DETAILS.PROFESSOR_ORIGINAL] = profOrig;
+        newBookingRow[HEADERS.BOOKING_DETAILS.ALUNOS] = bookingDetails.alunos ? String(bookingDetails.alunos).trim() : '';
+        newBookingRow[HEADERS.BOOKING_DETAILS.TURMAS_AGENDADA] = turmaInstancia;
+        newBookingRow[HEADERS.BOOKING_DETAILS.DISCIPLINA_REAL] = disciplina;
 
-        // Monta o objeto Date/Time completo para o início efetivo da aula.
+        // Calcula e atribui a data/hora de início efetiva
         const [hour, minute] = bookingHourString.split(':').map(Number);
-        bookingDateObj.setHours(
-            hour, minute, 0, 0);  // Define a hora e minuto no objeto Date.
-        newBookingRow[HEADERS.BOOKING_DETAILS.DATA_HORA_INICIO_EFETIVA] =
-            bookingDateObj;
+        effectiveStartDateTime = new Date(bookingDateObj); // Atribui
+        effectiveStartDateTime.setHours(hour, minute, 0, 0); // Define hora/minuto
+        newBookingRow[HEADERS.BOOKING_DETAILS.DATA_HORA_INICIO_EFETIVA] = effectiveStartDateTime; // Salva objeto Date
 
-        newBookingRow[HEADERS.BOOKING_DETAILS.STATUS_RESERVA] =
-            'Agendada';  // Status inicial.
-        newBookingRow[HEADERS.BOOKING_DETAILS.DATA_CRIACAO] =
-            now;  // Data/hora da criação.
-        newBookingRow[HEADERS.BOOKING_DETAILS.CRIADO_POR] =
-            userEmail;  // Email do usuário que fez a reserva.
+        newBookingRow[HEADERS.BOOKING_DETAILS.STATUS_RESERVA] = 'Agendada';
+        newBookingRow[HEADERS.BOOKING_DETAILS.DATA_CRIACAO] = now;
+        newBookingRow[HEADERS.BOOKING_DETAILS.CRIADO_POR] = userEmail;
 
-        // --- Adiciona a Linha à Planilha de Reservas ---
+        // --- Adiciona Linha à Planilha 'Reservas Detalhadas' ---
         try {
-            // Verificação extra para garantir o número correto de colunas antes de
-            // adicionar.
+            // Verificação de segurança do número de colunas
             if (newBookingRow.length !== numColsBooking) {
-                Logger.log(`Erro interno: newBookingRow tem ${newBookingRow.length} colunas, esperado ${numColsBooking}. Ajustando...`);
-                // Ajusta o array se necessário (embora a inicialização acima deva
-                // prevenir isso).
+                Logger.log(`Aviso: Ajustando o número de colunas da nova linha de reserva. Esperado: ${numColsBooking}, Atual: ${newBookingRow.length}.`);
                 while (newBookingRow.length < numColsBooking) newBookingRow.push('');
-                if (newBookingRow.length > numColsBooking)
-                    newBookingRow.length = numColsBooking;
+                if (newBookingRow.length > numColsBooking) newBookingRow.length = numColsBooking;
             }
-            // Adiciona a nova linha ao final da planilha de reservas.
+            // Adiciona a linha no final da planilha
             bookingsSheet.appendRow(newBookingRow);
-            Logger.log(
-                `Reserva ${bookingId} adicionada à planilha de Reservas Detalhadas.`);
+            Logger.log(`Reserva ${bookingId} adicionada com sucesso à planilha "${SHEETS.BOOKING_DETAILS}".`);
         } catch (e) {
-            // Se falhar ao adicionar a linha de reserva (mas a instância já foi
-            // atualizada).
-            Logger.log(`Erro ao adicionar reserva ${bookingId} à planilha "${SHEETS.BOOKING_DETAILS}": ${e.message}`);
-            // É um estado inconsistente, mas informa o usuário. A instância ficou
-            // reservada, mas os detalhes não foram salvos. Idealmente, deveria tentar
-            // reverter a atualização da instância (rollback), mas isso adiciona
-            // complexidade.
-            lock.releaseLock();
+            // Falha ao adicionar detalhes, estado inconsistente.
+            Logger.log(`ERRO ao adicionar reserva ${bookingId} à planilha "${SHEETS.BOOKING_DETAILS}": ${e.message}`);
+            lock.releaseLock(); // Libera o bloqueio
+            // Retorna erro específico informando a inconsistência
             return JSON.stringify({
-                success: false,
-                message:
-                    `Reserva agendada na instância, mas erro ao salvar os detalhes da reserva. ${e.message}`,
-                data: null
+                success: false, // Operação falhou em ser consistente
+                message: `O horário foi marcado como reservado, mas ocorreu um erro ao salvar os detalhes da reserva (${bookingId}) na planilha "${SHEETS.BOOKING_DETAILS}". Por favor, contate o suporte. Detalhes: ${e.message}`,
+                data: { bookingId: bookingId } // Retorna ID para referência
             });
         }
 
-        // --- Integração com Google Calendar ---
-        let calendarEventId =
-            null;  // Variável para armazenar o ID do evento criado/atualizado.
+        // --- Fase 3: Integração com Google Calendar ---
+        // Reset calendarError for this attempt
+        calendarError = null;
+        // calendarEventId foi resetado no início do try principal
+
         try {
-            // Obtém o ID do calendário da planilha de configurações.
-            const calendarId = getConfigValue('ID do Calendario');
-            // Se o ID não estiver configurado, pula a criação do evento.
-            if (!calendarId || calendarId === '') {
-                Logger.log(
-                    'ID do Calendário não configurado. Pulando criação de evento.');
-                lock.releaseLock();
-                // Retorna sucesso, mas informa que o evento não foi criado.
-                return JSON.stringify({
-                    success: true,
-                    message:
-                        `Reserva agendada com sucesso, mas o ID do calendário não está configurado. Evento não criado/atualizado.`,
-                    data: { bookingId: bookingId, eventId: null }
-                });
-            }
-            // Tenta obter o objeto Calendar usando o ID.
-            const calendar = CalendarApp.getCalendarById(calendarId);
-            // Se o calendário não for encontrado ou o script não tiver permissão.
-            if (!calendar) {
-                Logger.log(`Calendário com ID "${calendarId}" não encontrado ou acessível. Pulando criação/atualização de evento.`);
-                lock.releaseLock();
-                // Retorna sucesso, mas informa sobre o problema com o calendário.
-                return JSON.stringify({
-                    success: true,
-                    message: `Reserva agendada com sucesso, mas o calendário "${calendarId}" não foi encontrado ou não está acessível. Evento não criado/atualizado.`,
-                    data: { bookingId: bookingId, eventId: null }
-                });
-            }
+            // Obtém ID do calendário da configuração
+            const calendarIdConfig = getConfigValue('ID do Calendario'); // Assume que existe
 
-            // Define a duração padrão da aula (em minutos).
-            let durationMinutes = 45;  // Valor default.
-            // Tenta obter a duração da configuração.
-            const durationConfig = getConfigValue('Duracao Padrao Aula (minutos)');
-            if (durationConfig && !isNaN(parseInt(durationConfig))) {
-                durationMinutes = parseInt(durationConfig);
+            if (!calendarIdConfig || String(calendarIdConfig).trim() === '') {
+                // Se não configurado, loga e define eventId como null
+                Logger.log('ID do Calendário não configurado. Pulando criação/atualização de evento no Calendar.');
+                calendarEventId = null;
             } else {
-                Logger.log(
-                    `Configuração "Duracao Padrao Aula (minutos)" não encontrada ou inválida. Usando padrão de ${durationMinutes} minutos.`);
-            }
-
-            // Calcula a hora de início e fim do evento.
-            const startTime = bookingDateObj;  // Já contém data e hora corretas.
-            const endTime = new Date(
-                startTime.getTime() +
-                durationMinutes * 60 * 1000);  // Adiciona a duração em milissegundos.
-
-            // Define o título e a descrição do evento.
-            let eventTitle = '';
-            let eventDescription = `Reserva ID: ${bookingId}\nTipo: ${bookingType}\nCriado por: ${userEmail}`;
-
-            // Usa os dados já formatados da newBookingRow.
-            const disciplina =
-                newBookingRow[HEADERS.BOOKING_DETAILS.DISCIPLINA_REAL] ||
-                'Disciplina Não Informada';
-            const turmaTexto = newBookingRow[HEADERS.BOOKING_DETAILS.TURMAS_AGENDADA];
-
-            eventDescription += `\nTurma(s): ${turmaTexto}`;
-            // Título mais informativo.
-            eventTitle = `${bookingType} - ${disciplina} - ${turmaTexto}`;
-
-            // --- Prepara a lista de convidados para o evento ---
-            const guests = [];  // Array de emails dos convidados.
-            const authUsersSheet = ss.getSheetByName(SHEETS.AUTHORIZED_USERS);
-            const nameEmailMap =
-                {};  // Mapa para buscar email pelo nome do professor.
-            // Tenta ler a planilha de usuários para mapear nomes a emails.
-            if (authUsersSheet) {
-                const authUserData = authUsersSheet.getDataRange().getValues();
-                // Verifica se a planilha tem dados e as colunas necessárias.
-                if (authUserData.length > 1 &&
-                    authUserData[0].length > Math.max(
-                        HEADERS.AUTHORIZED_USERS.EMAIL,
-                        HEADERS.AUTHORIZED_USERS.NOME)) {
-                    // Cria o mapa Nome -> Email.
-                    for (let i = 1; i < authUserData.length; i++) {
-                        const row = authUserData[i];
-                        const email =
-                            (row.length > HEADERS.AUTHORIZED_USERS.EMAIL &&
-                                typeof row[HEADERS.AUTHORIZED_USERS.EMAIL] === 'string') ?
-                                row[HEADERS.AUTHORIZED_USERS.EMAIL].trim() :
-                                '';
-                        const name =
-                            (row.length > HEADERS.AUTHORIZED_USERS.NOME &&
-                                typeof row[HEADERS.AUTHORIZED_USERS.NOME] === 'string') ?
-                                row[HEADERS.AUTHORIZED_USERS.NOME].trim() :
-                                '';
-                        if (email && name) nameEmailMap[name] = email;
-                    }
+                // Tenta acessar o calendário
+                const calendar = CalendarApp.getCalendarById(calendarIdConfig.trim());
+                if (!calendar) {
+                    // Se não encontrado/acessível, loga e define eventId como null
+                    Logger.log(`Calendário com ID "${calendarIdConfig}" não encontrado ou inacessível. Pulando criação/atualização de evento.`);
+                    calendarEventId = null;
                 } else {
-                    Logger.log(
-                        'Planilha Usuarios Autorizados vazia ou estrutura incorreta para buscar emails.');
-                }
+                    // Calendário acessado com sucesso
+                    Logger.log(`Acessando calendário "${calendar.getName()}" (ID: ${calendarIdConfig})`);
 
-                // Adiciona o email do professor real (que vai dar a aula).
-                const profRealNome =
-                    newBookingRow[HEADERS.BOOKING_DETAILS.PROFESSOR_REAL];
-                if (profRealNome && nameEmailMap[profRealNome])
-                    guests.push(nameEmailMap[profRealNome]);
+                    // Calcula duração
+                    let durationMinutes = 45; // Default
+                    const durationConfig = getConfigValue('Duracao Padrao Aula (minutos)'); // Assume que existe
+                    if (durationConfig && !isNaN(parseInt(durationConfig))) {
+                        durationMinutes = parseInt(durationConfig);
+                    } else {
+                        Logger.log(`Configuração "Duracao Padrao Aula (minutos)" não encontrada ou inválida ("${durationConfig}"). Usando padrão de ${durationMinutes} minutos.`);
+                    }
 
-                // Se for substituição, adiciona também o email do professor original.
-                if (bookingType === TIPOS_RESERVA.SUBSTITUICAO) {
-                    const profOriginalNome =
-                        newBookingRow[HEADERS.BOOKING_DETAILS.PROFESSOR_ORIGINAL];
-                    if (profOriginalNome && nameEmailMap[profOriginalNome])
-                        guests.push(nameEmailMap[profOriginalNome]);
-                }
+                    // Define tempos de início e fim
+                    const startTime = effectiveStartDateTime;
+                    const endTime = new Date(startTime.getTime() + durationMinutes * 60 * 1000);
 
-            } else {
-                Logger.log(
-                    'Planilha Usuarios Autorizados não encontrada para adicionar convidados.');
-            }
+                    // Define título e descrição para o EVENTO DO CALENDAR
+                    const eventTitleCalendar = `${bookingType} - ${disciplina} - ${turmaInstancia}`;
+                    let eventDescriptionCalendar = `Reserva ID: ${bookingId}\nProfessor: ${profReal}`;
+                    if (profOrig) eventDescriptionCalendar += ` (Original: ${profOrig})`;
+                    eventDescriptionCalendar += `\nTurma: ${turmaInstancia}\nAgendado por: ${userEmail}`;
 
-            // --- Lógica para Atualizar ou Criar Evento ---
-            let event = null;
-            // Verifica se já existe um ID de evento associado a esta instância na
-            // planilha.
-            if (calendarEventIdExisting && calendarEventIdExisting !== '') {
-                try {
-                    // Tenta obter o evento existente pelo ID.
-                    event = calendar.getEventById(calendarEventIdExisting);
-                    Logger.log(`Encontrado evento existente ${calendarEventIdExisting} para atualização.`);
-                    // Se encontrou, atualiza os detalhes do evento existente.
-                    event.setTitle(eventTitle);
-                    event.setDescription(eventDescription);
-                    event.setTime(startTime, endTime);
+                    // --- Prepara lista de convidados (guests) ---
+                    guests = []; // Reseta/Inicializa
+                    const authUsersSheet = ss.getSheetByName(SHEETS.AUTHORIZED_USERS); // Tenta obter a planilha
+                    const nameEmailMap = {}; // Mapa Nome -> Email
 
-                    // Atualiza a lista de convidados (adiciona novos, remove antigos).
-                    const existingGuests = event.getGuestList().map(g => g.getEmail());
-                    const newGuests =
-                        [...new Set(guests)];  // Remove duplicatas da nova lista.
+                    if (authUsersSheet) {
+                        // Se a planilha existe, lê os dados
+                        const authUserData = authUsersSheet.getDataRange().getValues();
+                        const emailColIdx = HEADERS.AUTHORIZED_USERS.EMAIL;
+                        const nameColIdx = HEADERS.AUTHORIZED_USERS.NOME;
+                        // Verifica se tem cabeçalho + dados e colunas necessárias
+                        if (authUserData.length > 1 && authUserData[0].length > Math.max(emailColIdx, nameColIdx)) {
+                            Logger.log(`Lendo planilha "${SHEETS.AUTHORIZED_USERS}" para mapear nomes a emails.`);
+                            // Itera pelos dados (a partir da linha 1)
+                            for (let i = 1; i < authUserData.length; i++) {
+                                const row = authUserData[i];
+                                const email = (row.length > emailColIdx && typeof row[emailColIdx] === 'string') ? row[emailColIdx].trim().toLowerCase() : '';
+                                const name = (row.length > nameColIdx && typeof row[nameColIdx] === 'string') ? row[nameColIdx].trim() : '';
+                                // Validação básica e preenchimento do mapa
+                                if (email && name && email.includes('@')) {
+                                    nameEmailMap[name] = email;
+                                }
+                            }
+                            Logger.log(`Mapa Nome->Email criado com ${Object.keys(nameEmailMap).length} entradas.`);
+                        } else {
+                            // Planilha vazia ou com estrutura incorreta
+                            Logger.log(`Aviso: Planilha "${SHEETS.AUTHORIZED_USERS}" está vazia ou estrutura de colunas (Nome/Email) incorreta.`);
+                        }
 
-                    // Remove convidados que não estão mais na lista nova.
-                    existingGuests.forEach(guestEmail => {
-                        if (!newGuests.includes(guestEmail)) {
+                        // Adiciona professores à lista de convidados usando o mapa
+                        if (profReal && nameEmailMap[profReal]) {
+                            guests.push(nameEmailMap[profReal]);
+                            Logger.log(`Adicionado convidado (Professor): ${profReal} -> ${nameEmailMap[profReal]}`);
+                        } else if (profReal) {
+                            // Loga se o nome foi fornecido mas não encontrado no mapa
+                            Logger.log(`Aviso: Email do Professor "${profReal}" não encontrado no mapa.`);
+                        }
+
+                        if (bookingType === TIPOS_RESERVA.SUBSTITUICAO && profOrig && nameEmailMap[profOrig]) {
+                            guests.push(nameEmailMap[profOrig]);
+                            Logger.log(`Adicionado convidado (Professor Original): ${profOrig} -> ${nameEmailMap[profOrig]}`);
+                        } else if (bookingType === TIPOS_RESERVA.SUBSTITUICAO && profOrig) {
+                            // Loga se o nome foi fornecido mas não encontrado
+                            Logger.log(`Aviso: Email do Professor Original "${profOrig}" não encontrado no mapa.`);
+                        }
+
+                        // Garante emails únicos na lista final
+                        guests = [...new Set(guests)];
+                        Logger.log(`Convidados para o evento: ${guests.join(', ')}`);
+
+                    } else {
+                        // Planilha de usuários não encontrada
+                        Logger.log(`Aviso: Planilha "${SHEETS.AUTHORIZED_USERS}" não encontrada. Não será possível adicionar convidados automaticamente ao evento.`);
+                    } // Fim if(authUsersSheet)
+
+                    // --- Lógica para Atualizar Evento Existente ou Criar Novo ---
+                    let event = null;
+                    // Verifica se há um ID de evento antigo na planilha
+                    if (calendarEventIdExisting && calendarEventIdExisting !== '') {
+                        Logger.log(`Tentando encontrar evento existente no Calendar com ID: ${calendarEventIdExisting}`);
+                        try {
+                            // Tenta buscar o evento pelo ID
+                            event = calendar.getEventById(calendarEventIdExisting);
+                            // Se encontrou, atualiza
+                            Logger.log(`Evento ${calendarEventIdExisting} encontrado. Atualizando detalhes.`);
+                            event.setTitle(eventTitleCalendar);
+                            event.setDescription(eventDescriptionCalendar);
+                            event.setTime(startTime, endTime);
+
+                            // Atualiza lista de convidados (remove antigos, adiciona novos)
+                            const existingGuestsEmails = event.getGuestList().map(g => g.getEmail().toLowerCase());
+                            const newGuestsEmails = guests.map(g => g.toLowerCase()); // Usa 'guests' populada acima
+
+                            existingGuestsEmails.forEach(guestEmail => {
+                                if (!newGuestsEmails.includes(guestEmail)) {
+                                    try { event.removeGuest(guestEmail); Logger.log(`Convidado removido: ${guestEmail}`); }
+                                    catch (removeErr) { Logger.log(`Falha ao remover ${guestEmail}: ${removeErr}`); }
+                                }
+                            });
+                            newGuestsEmails.forEach(guestEmail => {
+                                if (!existingGuestsEmails.includes(guestEmail)) {
+                                    try { event.addGuest(guestEmail); Logger.log(`Convidado adicionado: ${guestEmail}`); }
+                                    catch (addErr) { Logger.log(`Falha ao adicionar ${guestEmail}: ${addErr}`); }
+                                }
+                            });
+
+                        } catch (e) {
+                            // Falha ao buscar evento antigo (não encontrado, deletado, etc.)
+                            Logger.log(`AVISO: Evento do Calendar com ID ${calendarEventIdExisting} (da planilha) não foi encontrado para atualização. Provavelmente foi excluído ou o ID é inválido. Erro: ${e.message}. Um novo evento será criado.`);
+                            event = null; // Força criação de novo evento
+                            // Limpa o ID inválido da planilha (na memória e no disco)
+                            updatedInstanceRow[HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR] = '';
                             try {
-                                event.removeGuest(guestEmail);
-                            } catch (removeErr) {
-                                Logger.log(
-                                    `Falha ao remover convidado ${guestEmail}: ${removeErr}`);
+                                const numColsInstance = Math.max(...Object.values(HEADERS.SCHEDULE_INSTANCES)) + 1;
+                                while (updatedInstanceRow.length < numColsInstance) updatedInstanceRow.push('');
+                                if (updatedInstanceRow.length > numColsInstance) updatedInstanceRow.length = numColsInstance;
+                                instancesSheet.getRange(instanceRowIndex, 1, 1, numColsInstance).setValues([updatedInstanceRow]);
+                                Logger.log(`ID de evento inválido (${calendarEventIdExisting}) removido da instância ${instanceIdToBook} na planilha.`);
+                            } catch (writeError) {
+                                Logger.log(`ERRO ao tentar limpar ID de evento inválido da instância ${instanceIdToBook}: ${writeError.message}`);
                             }
                         }
-                    });
+                    } // Fim if(calendarEventIdExisting)
 
-                    // Adiciona convidados que estão na lista nova mas não estavam na
-                    // antiga.
-                    newGuests.forEach(guestEmail => {
-                        if (!existingGuests.includes(guestEmail)) {
-                            try {
-                                event.addGuest(guestEmail);
-                            } catch (addErr) {
-                                Logger.log(
-                                    `Falha ao adicionar convidado ${guestEmail}: ${addErr}`);
-                            }
+                    // Se não havia evento antigo ou a busca falhou
+                    if (!event) {
+                        Logger.log('Criando um novo evento no Calendar.');
+                        const eventOptions = { description: eventDescriptionCalendar };
+                        if (guests.length > 0) {
+                            eventOptions.guests = guests.join(','); // String separada por vírgulas
+                            eventOptions.sendInvites = true; // Envia convites
+                            Logger.log(`Adicionando ${guests.length} convidados ao novo evento: ${eventOptions.guests}`);
+                        } else {
+                            Logger.log('Nenhum convidado encontrado para adicionar ao novo evento.');
+                            eventOptions.sendInvites = false;
                         }
-                    });
+                        // Cria o evento
+                        event = calendar.createEvent(eventTitleCalendar, startTime, endTime, eventOptions);
+                        Logger.log(`Novo evento do Calendar criado com sucesso. ID: ${event.getId()}`);
+                    }
 
-                } catch (e) {
-                    // Se getEventById falhar (evento deletado, ID inválido, permissão?).
-                    Logger.log(`Evento do Calendar ID ${calendarEventIdExisting} não encontrado para atualização (pode ter sido excluído manualmente ou ID inválido): ${e}. Criando novo evento.`);
-                    event = null;  // Reseta a variável para forçar a criação de um novo
-                    // evento.
-                }
-            }
+                    // --- Salva/Atualiza o ID do Evento na Planilha ---
+                    if (event && event.getId()) {
+                        // Se o evento foi criado/atualizado com sucesso, pega o ID
+                        calendarEventId = event.getId(); // Atribui à variável de escopo superior
+                        // Verifica se precisa atualizar na planilha
+                        const currentEventIdInSheet = String(updatedInstanceRow[HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR] || '').trim();
+                        if (currentEventIdInSheet !== calendarEventId) {
+                            Logger.log(`Atualizando ID do evento na planilha (linha ${instanceRowIndex}) para: ${calendarEventId}`);
+                            // Atualiza APENAS a célula do ID do evento
+                            instancesSheet
+                                .getRange(instanceRowIndex, HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR + 1) // Coluna 1-based
+                                .setValue(calendarEventId);
+                        } else {
+                            Logger.log(`ID do evento (${calendarEventId}) já está correto na planilha (linha ${instanceRowIndex}).`);
+                        }
+                    } else {
+                        // Caso raro onde 'event' é nulo ou sem ID após a lógica
+                        Logger.log("AVISO: Não foi possível obter o ID do evento do Calendar após criação/atualização.");
+                        calendarEventId = null; // Garante que seja null
+                    }
 
-            // Se não havia evento existente ou a busca/atualização falhou.
-            if (!event) {
-                // Cria um novo evento.
-                const eventOptions = { description: eventDescription };
-                // Adiciona convidados se houver.
-                if (guests.length > 0) {
-                    const uniqueGuests = [...new Set(guests)];  // Garante emails únicos.
-                    eventOptions.guests =
-                        uniqueGuests.join(',');       // Formato esperado pela API.
-                    eventOptions.sendInvites = true;  // Envia convites por email.
-                    Logger.log(
-                        'Convidados adicionados ao novo evento: ' +
-                        uniqueGuests.join(', '));
-                }
-                event =
-                    calendar.createEvent(eventTitle, startTime, endTime, eventOptions);
-                Logger.log(`Evento do Calendar criado com ID: ${event.getId()}`);
-            } else {
-                // Se o evento foi atualizado com sucesso.
-                Logger.log(`Evento do Calendar ID ${event.getId()} atualizado.`);
-            }
+                } // Fim else (calendar encontrado)
+            } // Fim else (calendarIdConfig existe)
 
-            // --- Salva o ID do Evento na Planilha de Instâncias ---
-            // Atualiza a coluna ID_EVENTO_CALENDAR na linha da instância com o ID do
-            // evento (novo ou atualizado).
-            instancesSheet
-                .getRange(
-                    instanceRowIndex,
-                    HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR + 1)
-                .setValue(event.getId());
-            // Armazena o ID para retornar na resposta JSON.
-            calendarEventId = event.getId();
+        } catch (errorCalendarCatch) {
+            // Captura erro DURANTE a interação com Calendar
+            calendarError = errorCalendarCatch; // Armazena o erro
+            calendarEventId = null;      // Reseta o ID do evento
+            Logger.log(`ERRO durante a integração com o Google Calendar: ${calendarError.message}\nStack: ${calendarError.stack}`);
+            // IMPORTANTE: Não relança o erro aqui. A reserva nas planilhas foi feita.
+            // O fluxo continua para liberar o lock, enviar email de erro e retornar sucesso parcial.
+        } // Fim do catch (errorCalendarCatch)
 
-        } catch (calendarError) {
-            // Se ocorrer um erro durante a interação com o Google Calendar.
-            Logger.log(
-                'Erro crítico no Calendar: ' + calendarError.message +
-                ' Stack: ' + calendarError.stack);
-            // Libera o bloqueio.
-            lock.releaseLock();
-            // Retorna sucesso na reserva da planilha, mas informa sobre o erro no
-            // Calendar. A reserva está feita no sistema, mas o evento pode estar
-            // ausente ou incorreto.
-            enviarEmailListaFixa([...new Set(guests)], eventTitle, eventDescription, 'bcc');
+        // --- Fase 4: Envio de Email e Resposta Final ---
+
+        // Libera o bloqueio ANTES de enviar o email (operação final)
+        lock.releaseLock();
+        Logger.log('Bloqueio liberado.');
+
+        // Prepara os dados consolidados para a função de criação de email
+        const dadosParaEmail = {
+            bookingId: bookingId,
+            bookingType: bookingType,
+            disciplina: disciplina,
+            turma: turmaInstancia,
+            profReal: profReal,
+            profOrig: profOrig,
+            startTime: effectiveStartDateTime,
+            timeZone: timeZone,
+            userEmail: userEmail,
+            timestampCriacao: now,
+            calendarEventId: calendarEventId, // Será null se erro no Calendar ou não configurado
+            calendarError: calendarError      // Será null se Calendar OK
+        };
+
+        // Cria o conteúdo do email (assunto, texto, html)
+        const emailContent = criarConteudoEmailReserva(dadosParaEmail);
+
+        // Envia o email se houver destinatários ('guests' foi populado na seção do Calendar)
+        if (guests && guests.length > 0) {
+            Logger.log(`Enviando notificação para: ${guests.join(', ')} com assunto: ${emailContent.subject}`);
+            // Chama a função de envio, usando o conteúdo gerado
+            enviarEmailListaFixa(
+                guests, // Lista já é única
+                emailContent.subject,
+                emailContent.bodyText,
+                emailContent.bodyHtml,
+                'bcc' // Usa Cópia Oculta para privacidade
+            );
+        } else {
+            // Caso não haja professores mapeados para convidar/notificar
+            Logger.log("Nenhum convidado/destinatário encontrado para enviar notificação por email.");
+        }
+
+        // Monta a resposta JSON final baseada no sucesso ou falha do Calendar
+        if (calendarError) {
+            // Retorna sucesso PARCIAL (reserva OK, Calendar falhou)
+            return JSON.stringify({
+                success: true, // Indica que a reserva foi feita
+                message: `Reserva ${bookingType} (${bookingId}) agendada com sucesso nas planilhas, mas ocorreu um erro ao interagir com o Google Calendar: ${calendarError.message}. Notificação enviada.`,
+                data: { bookingId: bookingId, eventId: null } // eventId é null
+            });
+        } else {
+            // Retorna sucesso TOTAL
             return JSON.stringify({
                 success: true,
-                message:
-                    `Reserva agendada com sucesso, mas houve um erro ao criar/atualizar o evento no Google Calendar: ${calendarError.message}. Verifique os logs.`,
-                data: { bookingId: bookingId, eventId: null }
+                message: `Reserva ${bookingType} (${bookingId}) agendada com sucesso! ${calendarEventId ? 'Evento no calendário criado/atualizado.' : 'Não foi possível gerar evento no calendário.'} Notificação enviada.`,
+                data: { bookingId: bookingId, eventId: calendarEventId } // Retorna o eventId
             });
         }
 
-        // --- Finalização ---
-        // Libera o bloqueio, pois todas as operações foram concluídas.
-        lock.releaseLock();
-        enviarEmailListaFixa([...new Set(guests)], eventTitle, eventDescription, 'bcc');
-
-        // Retorna JSON indicando sucesso total.
-        return JSON.stringify({
-            success: true,
-            message: `${bookingType} agendada com sucesso!`,
-            data: { bookingId: bookingId, eventId: calendarEventId }
-        });
-
     } catch (e) {
-        // Captura qualquer erro não tratado no bloco try principal.
-        // Verifica se o bloqueio ainda está ativo (pode não estar se o erro ocorreu
-        // antes da liberação).
-        if (lock.hasLock()) {
-            lock.releaseLock();
+        // --- Captura de Erro Geral (qualquer erro não tratado nos catches específicos) ---
+        Logger.log(`ERRO FATAL durante o processamento da reserva: ${e.message}\nLinha: ${e.lineNumber || 'N/A'}\nStack: ${e.stack}`);
+
+        // Garante que o bloqueio seja liberado em caso de erro inesperado
+        if (lock && lock.hasLock()) {
+            try {
+                lock.releaseLock();
+                Logger.log('Bloqueio liberado devido a erro fatal.');
+            } catch (releaseError) {
+                Logger.log(`Erro ao tentar liberar o bloqueio após erro fatal: ${releaseError.message}`);
+            }
         }
-        Logger.log('Erro no bookSlot: ' + e.message + ' Stack: ' + e.stack);
-        // Retorna JSON indicando falha geral.
+
+        // Retorna JSON indicando falha geral
         return JSON.stringify({
             success: false,
-            message: 'Ocorreu um erro ao agendar: ' + e.message,
+            // Para o usuário final, talvez uma mensagem mais genérica seja melhor.
+            // Para depuração, a mensagem de erro é útil.
+            message: `Ocorreu um erro inesperado ao processar o agendamento: ${e.message}`,
             data: null
         });
+    } // Fim do catch (e) geral
+} // Fim da função bookSlot
+
+// --- FUNÇÃO DE ENVIO DE EMAIL FINAL (Base MailApp com Bcc Fixo) ---
+/**
+ * Envia um email para uma lista de destinatários principais usando MailApp.
+ * Trata o envio via To, Cc ou Bcc para os destinatários principais e
+ * SEMPRE adiciona cópias ocultas (Bcc) para emails administrativos fixos definidos.
+ * Usa a API MailApp básica.
+ *
+ * @param {string[]} recipientsArray Um array de strings com os emails dos destinatários principais. Pode ser vazio se o objetivo for enviar apenas as cópias fixas.
+ * @param {string} subject O assunto do email.
+ * @param {string} bodyText O corpo do email em formato texto simples (obrigatório como fallback).
+ * @param {string} [bodyHtml] (Opcional) O corpo do email em formato HTML. Usado preferencialmente se fornecido.
+ * @param {string} [sendAs='bcc'] (Opcional) Como enviar PARA OS DESTINATÁRIOS PRINCIPAIS: 'to', 'cc' ou 'bcc'. Padrão é 'bcc'.
+ */
+function enviarEmailListaFixa(recipientsArray, subject, bodyText, bodyHtml, sendAs) {
+    // <<< ---------------------------------------------------------- >>>
+    const ADMIN_COPY_EMAILS = ["cae.itq@ifsp.edu.br", "mtm.itq@ifsp.edu.br"];
+    // <<< ---------------------------------------------------------- >>>
+
+    // Define o método padrão de envio para os destinatários principais, default 'bcc'.
+    const sendType = ['to', 'cc', 'bcc'].includes(String(sendAs).toLowerCase())
+        ? String(sendAs).toLowerCase()
+        : 'bcc';
+
+    try {
+        // Validação e tratamento do array de entrada para destinatários principais.
+        if (!recipientsArray || !Array.isArray(recipientsArray)) {
+            Logger.log("enviarEmailListaFixa: recipientsArray fornecido é inválido. Tratando como lista vazia.");
+            recipientsArray = []; // Garante que seja um array, mesmo que vazio.
+        }
+        Logger.log(`enviarEmailListaFixa: Destinatários principais recebidos (antes da filtragem): [${recipientsArray.join(', ')}]`);
+
+        // --- Validação e Limpeza dos Destinatários ---
+
+        // 1. Valida destinatários principais (formato e unicidade).
+        const validMainRecipients = [...new Set(recipientsArray)] // Garante unicidade
+            .map(email => String(email || '').trim()) // Converte para string e remove espaços
+            .filter(email => { // Filtro de validação de formato básico
+                if (!email || !email.includes('@') || email.startsWith('@')) return false; // Rejeita nulos, vazios, sem @, começando com @
+                const atIndex = email.indexOf('@');
+                // Verifica se existe um ponto '.' *após* o '@'
+                return email.indexOf('.', atIndex + 1) > atIndex; // Deve encontrar '.' depois do índice do '@'
+            });
+        Logger.log(`enviarEmailListaFixa: Destinatários principais VÁLIDOS: [${validMainRecipients.join(', ')}]`);
+
+        // 2. Valida emails de cópia administrativa (formato e unicidade).
+        const validAdminEmails = [...new Set(ADMIN_COPY_EMAILS)] // Garante unicidade
+            .map(email => String(email || '').trim()) // Converte para string e remove espaços
+            .filter(email => { // Mesmo filtro de validação
+                if (!email || !email.includes('@') || email.startsWith('@')) return false;
+                const atIndex = email.indexOf('@');
+                return email.indexOf('.', atIndex + 1) > atIndex;
+            });
+        Logger.log(`enviarEmailListaFixa: Emails de cópia administrativa VÁLIDOS: [${validAdminEmails.join(', ')}]`);
+
+        // --- Verificação de Destinatários Válidos ---
+        // Se não houver NENHUM destinatário válido (nem principal, nem admin), não envia.
+        if (validMainRecipients.length === 0 && validAdminEmails.length === 0) {
+            Logger.log("enviarEmailListaFixa: Nenhum destinatário principal válido e nenhum email de cópia administrativa válido. Nenhum email será enviado.");
+            return; // Sai da função.
+        }
+
+        // --- Construção das Opções do Email para MailApp ---
+        // Nota: MailApp tem menos opções que GmailApp (ex: 'from' alias, 'replyTo' não são diretos aqui)
+        const mailOptions = {
+            subject: subject || '(Sem Assunto)', // Assunto padrão se não fornecido
+            body: bodyText || '(Corpo do email vazio)', // Corpo texto simples é obrigatório
+            // Opção 'name' define o nome exibido do remetente (associado à conta que executa)
+            name: 'Sistema de Reservas IFSP', // Nome personalizado do remetente
+            // A opção 'noReply' não é suportada diretamente por MailApp.
+            // O remetente será sempre o email da conta que executa o script.
+        };
+
+        // Adiciona corpo HTML se fornecido e válido.
+        if (bodyHtml && String(bodyHtml).trim() !== '') {
+            mailOptions.htmlBody = bodyHtml;
+        }
+
+        // --- Configuração dos Destinatários Principais (To, Cc, Bcc inicial) ---
+        const mainRecipientString = validMainRecipients.join(','); // String dos principais válidos
+
+        // Configura os campos 'to', 'cc' e 'bcc' *inicialmente* com base no 'sendType'
+        // O campo 'bcc' será modificado/combinado depois para incluir os admins.
+        if (sendType === 'bcc') {
+            // Se o modo for 'bcc', os destinatários principais irão para a lista final de Bcc.
+            // Define 'to' por boa prática (evita parecer spam).
+            /*try {
+                // Tenta usar o usuário ativo, mas pode falhar em alguns contextos.
+                // O código original tinha um email incompleto e fallback, vamos usar o fallback.
+                mailOptions.to = Session.getActiveUser().getEmail(); // Tenta obter o usuário atual
+                //mailOptions.to = "cae.itq@ifsp.edu.br"; // Define um 'to' fixo como fallback ou padrão
+            } catch (e) {
+                Logger.log("enviarEmailListaFixa: Não foi possível obter o email do usuário ativo para o campo 'to' ao usar Bcc. Usando fallback.");
+                mailOptions.to = "cae.itq@ifsp.edu.br"; // Garante um fallback
+            }*/
+            mailOptions.to = "cae@ifsp.edu.br";
+            Logger.log(`Configurando ${validMainRecipients.length} destinatários principais para envio via Bcc combinado. To definido como: ${mailOptions.to}`);
+            // Não definimos mailOptions.bcc aqui ainda, será feito na combinação final.
+
+        } else if (sendType === 'cc') {
+            // Se o modo for 'cc', define o campo 'cc' com os destinatários principais.
+            if (validMainRecipients.length > 0) {
+                mailOptions.cc = mainRecipientString;
+            }
+            // MailApp requer um 'to' quando 'cc' é usado.
+            try {
+                mailOptions.to = Session.getActiveUser().getEmail();
+            } catch (e) {
+                Logger.log("enviarEmailListaFixa: Não foi possível obter o email do usuário ativo para o campo 'to' ao usar Cc. Usando fallback.");
+                mailOptions.to = "cae@ifsp.edu.br"; // Necessário definir um fallback
+            }
+            Logger.log(`Configurando ${validMainRecipients.length} destinatários principais via Cc (To: ${mailOptions.to || 'N/D'})`);
+
+        } else { // sendType === 'to'
+            // Se o modo for 'to', define o campo 'to' com os destinatários principais.
+            if (validMainRecipients.length > 0) {
+                mailOptions.to = mainRecipientString;
+            } else if (!mailOptions.to) {
+                // Garante que 'to' exista se não houver destinatários principais (caso de enviar só cópias).
+                // Define um 'to' padrão ou o email do remetente.
+                /*try {
+                    mailOptions.to = Session.getActiveUser().getEmail();
+                } catch (e) {
+                    Logger.log("Não foi possível obter email do usuário ativo para 'to' padrão. Usando fallback.");
+                    mailOptions.to = "cae@ifsp.edu.br"; // Fallback essencial
+                }*/
+                mailOptions.to = "cae@ifsp.edu.br";
+            }
+            Logger.log(`Configurando ${validMainRecipients.length} destinatários principais via To.`);
+        }
+
+        // --- Combinação e Adição Final do Bcc (incluindo cópias fixas) ---
+        // Prepara a lista final de Bcc
+        let finalBccList = [];
+
+        // 1. Adiciona os destinatários principais se o modo de envio for 'bcc'
+        if (sendType === 'bcc' && validMainRecipients.length > 0) {
+            finalBccList.push(...validMainRecipients);
+        }
+
+        // 2. Adiciona os emails administrativos válidos à lista
+        if (validAdminEmails.length > 0) {
+            finalBccList.push(...validAdminEmails);
+        }
+
+        // 3. Garante unicidade e formata a string final para mailOptions.bcc
+        const uniqueBccRecipients = [...new Set(finalBccList)];
+        if (uniqueBccRecipients.length > 0) {
+            mailOptions.bcc = uniqueBccRecipients.join(','); // Define/Sobrescreve o campo bcc
+            Logger.log(`Campo Bcc final configurado com ${uniqueBccRecipients.length} endereços (incluindo ${validAdminEmails.length} cópias admin).`);
+        } else {
+            // Se a lista final de Bcc estiver vazia, remove a propriedade para evitar erros.
+            delete mailOptions.bcc;
+            Logger.log("Nenhum endereço final para o campo Bcc.");
+        }
+        // --- Fim da configuração do Bcc ---
+
+        // --- Log e Envio ---
+        // Log das opções de envio (exceto Bcc por privacidade, que é sensível)
+        const logOptions = { ...mailOptions }; // Cria cópia para modificar o log
+        if (logOptions.bcc) {
+            // Opcional: Logar apenas a contagem de Bcc em vez de remover
+            logOptions.bcc_count = (logOptions.bcc.match(/,/g) || []).length + 1;
+            delete logOptions.bcc; // Remove a string completa do log
+        }
+        Logger.log(`Opções FINAIS de envio para MailApp: ${JSON.stringify(logOptions)}`);
+
+        // Envia o email usando MailApp com as opções configuradas
+        MailApp.sendEmail(mailOptions);
+
+        // Log de sucesso após a chamada (não garante entrega, apenas que a API foi chamada sem erro)
+        Logger.log(`enviarEmailListaFixa: Chamada MailApp.sendEmail executada com sucesso para o assunto: "${subject}".`);
+
+    } catch (error) {
+        // Captura e loga qualquer erro ocorrido DENTRO da função de envio.
+        // Isso evita que um erro no envio de email pare a execução principal de onde foi chamada.
+        Logger.log(`ERRO DENTRO de enviarEmailListaFixa ao tentar enviar email com assunto "${subject}": ${error.message}\nStack: ${error.stack}`);
+        // Poderia adicionar tratamento específico para erros comuns de MailApp se necessário.
     }
-}
+} // Fim da função enviarEmailListaFixa
 
 /**
  * Função para gerar instâncias futuras de horários com base nos 'Horarios
