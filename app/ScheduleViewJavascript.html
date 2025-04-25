@@ -50,22 +50,22 @@
         selectElement.disabled = false;
 
         if (selectElement.selectedIndex === -1) {
-             selectElement.selectedIndex = 0;
+            selectElement.selectedIndex = 0;
         }
     }
 
     function formatYYYYMMDDToDDMMYYYY(dateString) {
-         const parts = dateString.split('-');
-         if (parts.length === 3) {
-             const dateObj = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-             if (!isNaN(dateObj.getTime()) && dateObj.getFullYear() == parts[0] && (dateObj.getMonth() + 1) == parts[1] && dateObj.getDate() == parts[2] ) {
-                 const day = String(dateObj.getDate()).padStart(2, '0');
-                 const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-                 const year = dateObj.getFullYear();
-                 return `${day}/${month}/${year}`;
-             }
-         }
-         return dateString;
+        const parts = dateString.split('-');
+        if (parts.length === 3) {
+            const dateObj = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+            if (!isNaN(dateObj.getTime()) && dateObj.getFullYear() == parts[0] && (dateObj.getMonth() + 1) == parts[1] && dateObj.getDate() == parts[2]) {
+                const day = String(dateObj.getDate()).padStart(2, '0');
+                const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+                const year = dateObj.getFullYear();
+                return `${day}/${month}/${year}`;
+            }
+        }
+        return dateString;
     }
 
     function formatCellContent(mainContent, status) {
@@ -75,7 +75,7 @@
         if (mainContent && mainContent.trim() !== '') {
             return `${mainContent.trim()}<br>${statusSpan}`;
         } else {
-             return statusSpan;
+            return statusSpan;
         }
     }
 
@@ -117,14 +117,14 @@
             populateDropdown('turma-filter', data.turmas, '-- Selecione a Turma --');
 
             const weeksForDropdown = data.weekStartDates.map(dateString => {
-                 if (typeof dateString === 'string' && dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                     const formattedDate = formatYYYYMMDDToDDMMYYYY(dateString);
-                     if (formattedDate !== dateString) {
-                         return { value: dateString, text: `Semana de ${formattedDate}` };
-                     }
-                 }
-                 return { value: dateString, text: dateString };
-             }).filter(item => item.value);
+                if (typeof dateString === 'string' && dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                    const formattedDate = formatYYYYMMDDToDDMMYYYY(dateString);
+                    if (formattedDate !== dateString) {
+                        return { value: dateString, text: `Semana de ${formattedDate}` };
+                    }
+                }
+                return { value: dateString, text: dateString };
+            }).filter(item => item.value);
 
 
             populateDropdown('week-filter', weeksForDropdown, '-- Selecione a Semana --');
@@ -135,20 +135,20 @@
             today.setHours(0, 0, 0, 0);
             const currentDayOfWeek = today.getDay();
             const mondayOfCurrentWeek = new Date(today);
-             mondayOfCurrentWeek.setDate(today.getDate() - (currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1));
+            mondayOfCurrentWeek.setDate(today.getDate() - (currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1));
             const currentWeekString = mondayOfCurrentWeek.toISOString().slice(0, 10);
 
             const weekSelect = document.getElementById('week-filter');
             if (weekSelect && weeksForDropdown.length > 0) {
-                 const optionToSelect = weekSelect.querySelector(`option[value="${currentWeekString}"]`);
+                const optionToSelect = weekSelect.querySelector(`option[value="${currentWeekString}"]`);
 
-                 if (optionToSelect) {
-                      optionToSelect.selected = true;
-                 } else {
-                      if (weekSelect.options.length > 1) {
-                           weekSelect.selectedIndex = 1;
-                      }
-                 }
+                if (optionToSelect) {
+                    optionToSelect.selected = true;
+                } else {
+                    if (weekSelect.options.length > 1) {
+                        weekSelect.selectedIndex = 1;
+                    }
+                }
             }
 
 
@@ -250,7 +250,11 @@
             scheduleContainer.innerHTML = '<p class="error-message">Erro ao carregar horário.</p>';
         }
     }
-
+    /**
+         * Renders the schedule data into an HTML table grid.
+         * @param {Array<Object>} slots Array of slot objects fetched from backend (now includes disciplinaParaExibir, professorParaExibir, professorOriginalNaReserva).
+         * @param {HTMLElement} containerElement The HTML element to append the table to.
+         */
     function renderScheduleTable(slots, containerElement) {
         const daysOfWeek = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
         const dayIndexMap = {
@@ -266,19 +270,22 @@
         const uniqueHours = new Set();
 
         slots.forEach(slot => {
-            if (slot && slot.diaSemana && slot.horaInicio) {
+            // Basic check if slot has minimal required data for rendering
+            if (slot && slot.diaSemana && slot.horaInicio && slot.hasOwnProperty('disciplinaParaExibir') && slot.hasOwnProperty('professorParaExibir') && slot.hasOwnProperty('professorOriginalNaReserva') && slot.hasOwnProperty('statusOcupacao') && slot.hasOwnProperty('tipoOriginal')) {
                 const dayIndex = dayIndexMap[slot.diaSemana];
                 if (dayIndex !== undefined) {
                     if (!gridData[dayIndex]) gridData[dayIndex] = {};
+                    // Store the slot data. Assuming one slot per time per day for simplicity.
                     gridData[dayIndex][slot.horaInicio] = slot;
                     uniqueHours.add(slot.horaInicio);
                 } else {
                     console.warn("Slot com Dia da Semana inválido:", slot);
                 }
             } else {
-                console.warn("Slot inválido ou incompleto:", slot);
+                console.warn("Slot inválido ou incompleto para renderização:", slot);
             }
         });
+
         const sortedHours = Array.from(uniqueHours).sort();
         const table = document.createElement('table');
         table.classList.add('schedule-grid-table');
@@ -301,39 +308,83 @@
                 const dayIndex = dayIndexMap[day];
                 const cell = row.insertCell();
                 const slot = gridData[dayIndex] ? gridData[dayIndex][hour] : null;
+
                 if (slot) {
-                    let mainContent = '';
+                    let cellContent = '';
                     let cellClass = 'slot-cell';
+
+                    const disciplina = slot.disciplinaParaExibir && slot.disciplinaParaExibir.trim() !== '' ? slot.disciplinaParaExibir.trim() : 'Disciplina';
+                    const professor = slot.professorParaExibir && slot.professorParaExibir.trim() !== '' ? slot.professorParaExibir.trim() : 'Professor';
+                    const professorOriginalBooking = slot.professorOriginalNaReserva && slot.professorOriginalNaReserva.trim() !== '' ? slot.professorOriginalNaReserva.trim() : null; // Use null if empty
+
+                    // Extract first word of discipline
+                    const firstWordDiscipline = disciplina.split(' ')[0] || 'Disciplina';
+
+
+                    // Determine main content and class based on status and type
                     if (slot.statusOcupacao === 'Disponivel') {
                         cellClass += ' slot-available';
-                         if(slot.tipoOriginal === 'Fixo' && slot.professorPrincipal && slot.professorPrincipal.trim() !== '') {
-                              mainContent = slot.professorPrincipal.trim();
-                              cellClass += ' slot-fixed-available';
-                         } else if (slot.tipoOriginal === 'Vago') {
-                             mainContent = 'Vago';
-                              cellClass += ' slot-vago-available';
-                         } else {
-                              mainContent = slot.tipoOriginal || 'Horário';
-                         }
+                        if (slot.tipoOriginal === 'Fixo') {
+                            // Available Fixed: Show base discipline and base professor
+                            mainContent = `${firstWordDiscipline} - ${professor}`;
+                            cellClass += ' slot-fixed-available';
+                        } else if (slot.tipoOriginal === 'Vago') {
+                            // Available Vago: Show base discipline (if any) and "Vago"
+                            mainContent = `${firstWordDiscipline} - Vago`; // Or just "Vago" if discipline not crucial here
+                            cellClass += ' slot-vago-available';
+                        } else { // Fallback for any other 'Disponivel' type
+                            mainContent = `${firstWordDiscipline} - ${professor}`; // Or just `${slot.tipoOriginal}`
+                        }
+
                     } else if (slot.statusOcupacao === 'Reposicao Agendada') {
-                        mainContent = slot.professorPrincipal && slot.professorPrincipal.trim() !== '' ? slot.professorPrincipal.trim() : 'Reposição';
+                        // Booked Reposicao: Show real discipline and real professor
+                        mainContent = `${firstWordDiscipline} - ${professor}`; // professor is professorParaExibir (real prof)
                         cellClass += ' slot-booked slot-reposicao';
+
                     } else if (slot.statusOcupacao === 'Substituicao Agendada') {
-                        mainContent = slot.professorPrincipal && slot.professorPrincipal.trim() !== '' ? slot.professorPrincipal.trim() : 'Substituição';
+                        // Booked Substituicao: Show real discipline, substitute (real) professor, and original professor
+                        let profText = professor; // Start with substitute professor (professorParaExibir)
+                        // If original professor from booking details is available and different from substitute
+                        if (professorOriginalBooking && professorOriginalBooking !== professor) {
+                            profText = `${professor} (${professorOriginalBooking})`;
+                        } else if (professorOriginalBooking && professorOriginalBooking === professor) {
+                            // If original and substitute are the same (maybe a mistake in booking?)
+                            profText = professor; // Or maybe `${professor} (Original: ${professorOriginalBooking})` ? Let's stick to simpler unless different.
+                        } else if (slot.professorPrincipal && slot.professorPrincipal.trim() !== '' && slot.professorPrincipal.trim() !== professor) {
+                            // Fallback: if booking details didn't have original, use original from instance if different from substitute
+                            profText = `${professor} (${slot.professorPrincipal.trim()})`;
+                        }
+                        mainContent = `${firstWordDiscipline} - ${profText}`;
                         cellClass += ' slot-booked slot-substituicao';
+
                     } else {
-                         mainContent = slot.tipoOriginal || 'Horário';
-                         cellClass += ' slot-unknown-status';
+                        // Handle any other potential status
+                        mainContent = `${firstWordDiscipline} - ${professor}`; // Default format
+                        cellClass += ' slot-unknown-status'; // Style for unknown status
                     }
+
+                    // Use the helper function to format content (main content + status span)
                     cell.innerHTML = formatCellContent(mainContent, slot.statusOcupacao);
+
+                    // Add a tooltip with more details
+                    // Include the new details in the tooltip for clarity
                     cell.title =
-                        `ID: ${slot.idInstancia}\nData: ${slot.data}\nHora: ${slot.horaInicio}\nTurma: ${slot.turma}\nTipo: ${slot.tipoOriginal}\nStatus: ${slot.statusOcupacao}\nProf. Base: ${slot.professorPrincipal || '-'}`;
+                        `ID: ${slot.idInstancia}\nData: ${slot.data}\nHora: ${slot.horaInicio}\nTurma: ${slot.turma}\nTipo: ${slot.tipoOriginal}\nStatus: ${slot.statusOcupacao}` +
+                        `\nDisciplina: ${disciplina}` + // Full discipline
+                        `\nProfessor(es): ${mainContent.replace(/<br>.*$/, '').replace(/ - /, ' (') + (slot.statusOcupacao === 'Disponivel' ? '' : (professorOriginalBooking && professorOriginalBooking !== professor ? ` - Original: ${professorOriginalBooking}` : '')) + ')'}` + // Attempt to format tooltip profs
+                        `\nProf. Base: ${slot.professorPrincipal || '-'}`; // Original professor from Instance row
+
+                    // Apply cell classes
                     cell.className = cellClass;
+
                 } else {
+                    // No slot found for this day/hour - this is an empty cell
                     cell.classList.add('slot-cell', 'slot-empty');
                 }
             });
         });
+
+        // Append the created table to the container
         containerElement.appendChild(table);
     }
 

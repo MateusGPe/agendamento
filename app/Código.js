@@ -787,18 +787,21 @@ function getScheduleViewFilters() {
     }
 }
 
-
 /**
  * Função exposta para o lado do cliente da ScheduleView.
  * Busca instâncias de horários filtradas por turma e data de início da semana.
+ * Inclui informações adicionais de disciplina e professor real/original
+ * buscando em outras planilhas para horários relevantes.
  * @param {string} turma A turma para filtrar.
  * @param {string} weekStartDateString A data de início da semana (Segunda-feira) no formato 'YYYY-MM-DD'.
- * @returns {string} JSON string {success, message, data: [lista de slots filtrados]}
+ * @returns {string} JSON string {success, message, data: [lista de slots filtrados com detalhes]}
  */
 function getFilteredScheduleInstances(turma, weekStartDateString) {
     Logger.log(`*** getFilteredScheduleInstances chamada para Turma: ${turma}, Semana: ${weekStartDateString} ***`);
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const instancesSheet = ss.getSheetByName(SHEETS.SCHEDULE_INSTANCES);
+    const baseSheet = ss.getSheetByName(SHEETS.BASE_SCHEDULES); // <-- Add this line
+    const bookingsSheet = ss.getSheetByName(SHEETS.BOOKING_DETAILS); // <-- Add this line
     const timeZone = ss.getSpreadsheetTimeZone();
 
     // 1. Verifica autorização mínima
@@ -838,108 +841,232 @@ function getFilteredScheduleInstances(turma, weekStartDateString) {
 
 
     try {
-        // 4. Lê os dados da planilha de instâncias
+        // 4. Lê os dados das planilhas necessárias
         if (!instancesSheet) {
             Logger.log(`Erro: Planilha "${SHEETS.SCHEDULE_INSTANCES}" não encontrada!`);
             return JSON.stringify({ success: false, message: `Erro interno: Planilha "${SHEETS.SCHEDULE_INSTANCES}" não encontrada.`, data: null });
         }
+        if (!baseSheet) { // Check base sheet
+            Logger.log(`Warning: Planilha "${SHEETS.BASE_SCHEDULES}" não encontrada. Disciplinas padrão podem não ser exibidas para horários disponíveis.`);
+            // Continue, but log a warning
+        }
+        if (!bookingsSheet) { // Check bookings sheet
+            Logger.log(`Warning: Planilha "${SHEETS.BOOKING_DETAILS}" não encontrada. Detalhes de reservas (disciplina real, profs reais) podem não ser exibidos.`);
+            // Continue, but log a warning
+        }
 
-        const rawData = instancesSheet.getDataRange().getValues();
 
-        if (rawData.length <= 1) {
+        const rawInstanceData = instancesSheet.getDataRange().getValues();
+
+        if (rawInstanceData.length <= 1) {
             Logger.log('Planilha Instancias de Horarios está vazia ou apenas cabeçalho.');
             return JSON.stringify({ success: true, message: 'Nenhuma instância de horário futura encontrada.', data: [] });
         }
 
-        const header = rawData[0]; // Guarda o cabeçalho
-        const data = rawData.slice(1); // Dados sem o cabeçalho
+        const instanceHeader = rawInstanceData[0];
+        const instanceData = rawInstanceData.slice(1);
 
-        // Verifica se as colunas essenciais existem antes de tentar acessá-las
-        const requiredCols = Math.max(
+        // Determine the number of columns based on the header
+        const numInstanceCols = instanceHeader.length;
+
+        // Check if essential instance columns exist
+        const requiredInstanceCols = Math.max(
+            HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA,
+            HEADERS.SCHEDULE_INSTANCES.ID_BASE_HORARIO,
             HEADERS.SCHEDULE_INSTANCES.TURMA,
+            HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL, // Original Prof
             HEADERS.SCHEDULE_INSTANCES.DATA,
             HEADERS.SCHEDULE_INSTANCES.DIA_SEMANA,
             HEADERS.SCHEDULE_INSTANCES.HORA_INICIO,
             HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL,
             HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO,
-            HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL // Necessário para display
+            HEADERS.SCHEDULE_INSTANCES.ID_RESERVA // Needed to link to bookings
         ) + 1;
 
-        if (header.length < requiredCols) {
-            Logger.log(`Erro: Planilha "${SHEETS.SCHEDULE_INSTANCES}" não tem colunas suficientes para a visualização (${header.length} vs ${requiredCols} requeridas). Verifique a estrutura da planilha.`);
+        if (numInstanceCols < requiredInstanceCols) {
+            Logger.log(`Erro: Planilha "${SHEETS.SCHEDULE_INSTANCES}" não tem colunas suficientes (${numInstanceCols} vs ${requiredInstanceCols} requeridas) para a visualização. Verifique a estrutura.`);
             return JSON.stringify({ success: false, message: `Erro interno: Estrutura da planilha "${SHEETS.SCHEDULE_INSTANCES}" incorreta.`, data: null });
         }
 
 
-        // 5. Filtra os slots
+        // --- Read and Map Base Schedules (for original discipline) ---
+        const baseScheduleDisciplineMap = {};
+        if (baseSheet) {
+            const rawBaseData = baseSheet.getDataRange().getValues();
+            const baseHeader = rawBaseData.length > 0 ? rawBaseData[0] : [];
+            const baseData = rawBaseData.slice(1);
+            const numBaseCols = baseHeader.length;
+            const requiredBaseCols = Math.max(HEADERS.BASE_SCHEDULES.ID, HEADERS.BASE_SCHEDULES.DISCIPLINA_PADRAO) + 1;
+
+            if (numBaseCols >= requiredBaseCols) {
+                baseData.forEach(row => {
+                    if (row && row.length >= requiredBaseCols) {
+                        const baseIdRaw = row[HEADERS.BASE_SCHEDULES.ID];
+                        const baseId = (typeof baseIdRaw === 'string' || typeof baseIdRaw === 'number') ? String(baseIdRaw).trim() : null;
+                        const disciplinaPadraoRaw = row[HEADERS.BASE_SCHEDULES.DISCIPLINA_PADRAO];
+                        const disciplinaPadrao = (typeof disciplinaPadraoRaw === 'string' || typeof disciplinaPadraoRaw === 'number') ? String(disciplinaPadraoRaw || '').trim() : '';
+                        if (baseId) {
+                            baseScheduleDisciplineMap[baseId] = disciplinaPadrao;
+                        }
+                    }
+                });
+                Logger.log(`Mapeadas ${Object.keys(baseScheduleDisciplineMap).length} disciplinas base.`);
+            } else if (rawBaseData.length > 1) {
+                Logger.log(`Warning: Planilha "${SHEETS.BASE_SCHEDULES}" não tem colunas suficientes (${numBaseCols} vs ${requiredBaseCols} requeridas). Disciplinas base podem não ser exibidas.`);
+            }
+        }
+
+
+        // --- Read and Map Booking Details (for real discipline and professors) ---
+        // Map instanceId -> bookingDetails (assuming one booking per instance for the relevant types)
+        const bookingDetailsMap = {};
+        if (bookingsSheet) {
+            const rawBookingData = bookingsSheet.getDataRange().getValues();
+            const bookingHeader = rawBookingData.length > 0 ? rawBookingData[0] : [];
+            const bookingData = rawBookingData.slice(1);
+            const numBookingCols = bookingHeader.length;
+            const requiredBookingCols = Math.max(
+                HEADERS.BOOKING_DETAILS.ID_INSTANCIA,
+                HEADERS.BOOKING_DETAILS.DISCIPLINA_REAL,
+                HEADERS.BOOKING_DETAILS.PROFESSOR_REAL,
+                HEADERS.BOOKING_DETAILS.PROFESSOR_ORIGINAL,
+                HEADERS.BOOKING_DETAILS.STATUS_RESERVA // To filter for 'Agendada'
+            ) + 1;
+
+            if (numBookingCols >= requiredBookingCols) {
+                bookingData.forEach(row => {
+                    if (row && row.length >= requiredBookingCols) {
+                        const instanceIdRaw = row[HEADERS.BOOKING_DETAILS.ID_INSTANCIA];
+                        const instanceId = (typeof instanceIdRaw === 'string' || typeof instanceIdRaw === 'number') ? String(instanceIdRaw).trim() : null;
+                        const statusReservaRaw = row[HEADERS.BOOKING_DETAILS.STATUS_RESERVA];
+                        const statusReserva = (typeof statusReservaRaw === 'string' || typeof statusReservaRaw === 'number') ? String(statusReservaRaw).trim() : '';
+
+                        // Only consider 'Agendada' bookings linked to an instance
+                        if (instanceId && statusReserva === 'Agendada') {
+                            const disciplinaRealRaw = row[HEADERS.BOOKING_DETAILS.DISCIPLINA_REAL];
+                            const disciplinaReal = (typeof disciplinaRealRaw === 'string' || typeof disciplinaRealRaw === 'number') ? String(disciplinaRealRaw || '').trim() : '';
+                            const professorRealRaw = row[HEADERS.BOOKING_DETAILS.PROFESSOR_REAL];
+                            const professorReal = (typeof professorRealRaw === 'string' || typeof professorRealRaw === 'number') ? String(professorRealRaw || '').trim() : '';
+                            const professorOriginalBookingRaw = row[HEADERS.BOOKING_DETAILS.PROFESSOR_ORIGINAL];
+                            const professorOriginalBooking = (typeof professorOriginalBookingRaw === 'string' || typeof professorOriginalBookingRaw === 'number') ? String(professorOriginalBookingRaw || '').trim() : '';
+
+                            // Store the details, prioritizing if multiple bookings exist for the same instance (unlikely with current system)
+                            bookingDetailsMap[instanceId] = {
+                                disciplinaReal: disciplinaReal,
+                                professorReal: professorReal,
+                                professorOriginalBooking: professorOriginalBooking // Original Prof from the booking detail row
+                            };
+                        }
+                    }
+                });
+                Logger.log(`Mapeadas ${Object.keys(bookingDetailsMap).length} detalhes de reservas agendadas.`);
+            } else if (rawBookingData.length > 1) {
+                Logger.log(`Warning: Planilha "${SHEETS.BOOKING_DETAILS}" não tem colunas suficientes (${numBookingCols} vs ${requiredBookingCols} requeridas). Detalhes de reservas podem não ser exibidos.`);
+            }
+        }
+
+
+        // 5. Filtra e enriquece os slots
         const filteredSlots = [];
 
-        for (let i = 0; i < data.length; i++) {
-            const row = data[i];
+        for (let i = 0; i < instanceData.length; i++) {
+            const row = instanceData[i];
             const rowIndex = i + 2; // Índice real na planilha
 
-            // Basic check if row is likely valid before accessing columns
-            if (!row || row.length < requiredCols) {
-                // Logger.log(`Skipping incomplete row ${rowIndex} during filtering.`); // Too noisy
+            // Basic check if row has enough columns based on header
+            if (!row || row.length < numInstanceCols) {
+                // Logger.log(`Skipping incomplete instance row ${rowIndex}.`); // Too noisy
                 continue;
             }
 
-            // Extrai e formata dados relevantes para o filtro e display
+            // Extract & format essential data from instance row
+            const instanceIdRaw = row[HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA];
+            const baseIdRaw = row[HEADERS.SCHEDULE_INSTANCES.ID_BASE_HORARIO]; // Needed to lookup base discipline
             const instanceTurmaRaw = row[HEADERS.SCHEDULE_INSTANCES.TURMA];
+            const professorPrincipalInstanceRaw = row[HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL]; // Original Prof from instance
             const rawInstanceDate = row[HEADERS.SCHEDULE_INSTANCES.DATA];
             const instanceDiaSemanaRaw = row[HEADERS.SCHEDULE_INSTANCES.DIA_SEMANA];
             const rawHoraInicio = row[HEADERS.SCHEDULE_INSTANCES.HORA_INICIO];
             const originalTypeRaw = row[HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL];
             const instanceStatusRaw = row[HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO];
-            const professorPrincipalRaw = row[HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL];
-            const instanceIdRaw = row[HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA];
+            const instanceReservationIdRaw = row[HEADERS.SCHEDULE_INSTANCES.ID_RESERVA]; // Needed to link to bookings
 
-
+            const instanceId = (typeof instanceIdRaw === 'string' || typeof instanceIdRaw === 'number') ? String(instanceIdRaw).trim() : null;
+            const baseId = (typeof baseIdRaw === 'string' || typeof baseIdRaw === 'number') ? String(baseIdRaw).trim() : null;
             const instanceTurma = (typeof instanceTurmaRaw === 'string' || typeof instanceTurmaRaw === 'number') ? String(instanceTurmaRaw).trim() : null;
+            const professorPrincipalInstance = (typeof professorPrincipalInstanceRaw === 'string' || typeof professorPrincipalInstanceRaw === 'number') ? String(professorPrincipalInstanceRaw || '').trim() : ''; // Original Prof from instance
             const instanceDate = formatValueToDate(rawInstanceDate);
             const instanceDiaSemana = (typeof instanceDiaSemanaRaw === 'string' || typeof instanceDiaSemanaRaw === 'number') ? String(instanceDiaSemanaRaw).trim() : null;
             const formattedHoraInicio = formatValueToHHMM(rawHoraInicio, timeZone);
             const originalType = (typeof originalTypeRaw === 'string' || typeof originalTypeRaw === 'number') ? String(originalTypeRaw).trim() : null;
             const instanceStatus = (typeof instanceStatusRaw === 'string' || typeof instanceStatusRaw === 'number') ? String(instanceStatusRaw).trim() : null;
-            const professorPrincipal = (typeof professorPrincipalRaw === 'string' || typeof professorPrincipalRaw === 'number') ? String(professorPrincipalRaw || '').trim() : '';
-            const instanceId = (typeof instanceIdRaw === 'string' || typeof instanceIdRaw === 'number') ? String(instanceIdRaw).trim() : null;
+            // We don't strictly need instanceReservationIdRaw here, as we map booking details by instance ID
 
-            // Validação mínima dos dados essenciais para display
-            if (!instanceId || !instanceTurma || !instanceDate || !instanceDiaSemana || formattedHoraInicio === null || !originalType || !instanceStatus) {
-                // Logger.log(`Skipping row ${rowIndex} due to invalid essential data for display.`); // Too noisy
+
+            // Validate essential data for filtering and display
+            if (!instanceId || !instanceTurma || !instanceDate || !instanceDiaSemana || formattedHoraInicio === null || !originalType || !instanceStatus || !baseId) { // baseId is now essential too
+                // Logger.log(`Skipping instance row ${rowIndex} due to invalid essential data.`); // Too noisy
                 continue;
             }
 
 
-            // Filtra por Turma
+            // Filter by Turma
             if (instanceTurma !== turma.trim()) {
-                continue; // Pula se a turma não corresponder
+                continue; // Skip if turma does not match
             }
 
-            // Filtra por intervalo de Data
-            // Compara apenas a data, ignorando a hora do instanceDate (já zerada pelo formatValueToDate se for um Date object)
-            // E compara com o início (inclusive) e fim (inclusive) da semana
+            // Filter by Date range
+            // Compare instanceDate (already zered hour by formatValueToDate if valid Date)
             if (instanceDate < weekStartDate || instanceDate > weekEndDate) {
-                continue; // Pula se a data estiver fora da semana
+                continue; // Skip if date is outside the week
             }
 
-            // Se passou por todos os filtros, adiciona aos resultados
+            // --- Enrich the slot with additional details ---
+            let disciplinaParaExibir = '';
+            let professorParaExibir = '';
+            let professorOriginalNaReserva = ''; // This is professor_original from booking details, relevant for Substituicao
+
+            const bookingDetails = bookingDetailsMap[instanceId]; // Try to find matching booking details
+
+            if (instanceStatus === STATUS_OCUPACAO.DISPONIVEL) {
+                // For available slots, use discipline and professor from the base schedule
+                disciplinaParaExibir = baseScheduleDisciplineMap[baseId] || ''; // Lookup discipline using baseId
+                professorParaExibir = professorPrincipalInstance; // Use original professor from instance
+            } else if (bookingDetails) { // If there are booking details linked AND the instance is booked
+                // For booked slots, use discipline and real/original professor from booking details
+                disciplinaParaExibir = bookingDetails.disciplinaReal;
+                professorParaExibir = bookingDetails.professorReal;
+                professorOriginalNaReserva = bookingDetails.professorOriginalBooking; // Store original prof from booking details
+            } else {
+                // Fallback for booked slots without matching booking details (inconsistent data)
+                Logger.log(`Warning: Instância ${instanceId} (Status: ${instanceStatus}) não encontrou detalhes de reserva correspondentes no mapa. Row ${rowIndex}.`);
+                // We could use base info as a fallback, or leave empty
+                disciplinaParaExibir = baseScheduleDisciplineMap[baseId] || ''; // Fallback to base discipline
+                professorParaExibir = professorPrincipalInstance; // Fallback to base professor
+            }
+
+
+            // If passed all filters and enriched, add to results
             filteredSlots.push({
                 idInstancia: instanceId,
-                data: Utilities.formatDate(instanceDate, timeZone, 'dd/MM/yyyy'), // Formata data para exibição
+                data: Utilities.formatDate(instanceDate, timeZone, 'dd/MM/yyyy'), // Formatted date for display
                 diaSemana: instanceDiaSemana,
                 horaInicio: formattedHoraInicio,
-                turma: instanceTurma,
-                professorPrincipal: professorPrincipal, // Professor original do base (pode ser vazio para Vago)
+                turma: instanceTurma, // Turma from instance (should match filter turma)
                 tipoOriginal: originalType,
                 statusOcupacao: instanceStatus,
-                // Não precisa carregar bookingDetails aqui para a visualização básica
+
+                // Add the enriched details
+                disciplinaParaExibir: disciplinaParaExibir,
+                professorParaExibir: professorParaExibir, // Real Professor for booked, Original for available (unless overridden by booking)
+                professorOriginalNaReserva: professorOriginalNaReserva // Professor ORIGINAL from booking details (only if Substitution booked)
+                // We could also include professorPrincipalInstance if needed for fallback logic in frontend
             });
         }
 
-        Logger.log(`Encontrados ${filteredSlots.length} slots para Turma "${turma}" na semana de ${weekStartDateString}.`);
+        Logger.log(`Encontrados ${filteredSlots.length} slots filtrados e enriquecidos para Turma "${turma}" na semana de ${weekStartDateString}.`);
 
-        // Retorna JSON com sucesso e a lista de horários encontrados.
+        // Return JSON with success and the list of enriched slots.
         return JSON.stringify({ success: true, message: `${filteredSlots.length} horários encontrados.`, data: filteredSlots });
 
     } catch (e) {
@@ -951,16 +1078,13 @@ function getFilteredScheduleInstances(turma, weekStartDateString) {
 
 /**
  * Função exposta para ser chamada pelo lado do cliente.
- * Busca e retorna as instâncias de horários disponíveis para um determinado
- * tipo de reserva (Reposição ou Substituição).
- * @param {string} tipoReserva O tipo de reserva desejado ('Reposicao' ou
- *     'Substituicao').
- * @returns {string} Uma string JSON contendo {success, message, data: [lista de
- *     horários disponíveis]}.
+ * Busca e retorna as instâncias de horários disponíveis para um determinado tipo de reserva (Reposição ou Substituição).
+ * Os resultados são ordenados por Data, Hora e Turma.
+ * @param {string} tipoReserva O tipo de reserva desejado ('Reposicao' ou 'Substituicao').
+ * @returns {string} Uma string JSON contendo {success, message, data: [lista de horários disponíveis]}.
  */
 function getAvailableSlots(tipoReserva) {
-    Logger.log(
-        '*** getAvailableSlots chamada para tipo: ' + tipoReserva + ' ***');
+    Logger.log('*** getAvailableSlots chamada para tipo: ' + tipoReserva + ' ***');
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     // Obtém o fuso horário da planilha para formatação correta de datas/horas.
     const timeZone = ss.getSpreadsheetTimeZone();
@@ -972,11 +1096,7 @@ function getAvailableSlots(tipoReserva) {
     // Se o usuário não for autorizado, retorna falha.
     if (!userRole) {
         Logger.log('Erro: Usuário no autorizado.');
-        return JSON.stringify({
-            success: false,
-            message: 'Usuário não autorizado a buscar horários.',
-            data: null
-        });
+        return JSON.stringify({ success: false, message: 'Usuário não autorizado a buscar horários.', data: null });
     }
 
     try {
@@ -984,17 +1104,11 @@ function getAvailableSlots(tipoReserva) {
         const sheet = ss.getSheetByName(SHEETS.SCHEDULE_INSTANCES);
         // Verifica se a planilha existe.
         if (!sheet) {
-            Logger.log(
-                `Erro: Planilha "${SHEETS.SCHEDULE_INSTANCES}" não encontrada!`);
-            return JSON.stringify({
-                success: false,
-                message: `Erro interno: Planilha "${SHEETS.SCHEDULE_INSTANCES}" não encontrada.`,
-                data: null
-            });
+            Logger.log(`Erro: Planilha "${SHEETS.SCHEDULE_INSTANCES}" não encontrada!`);
+            return JSON.stringify({ success: false, message: `Erro interno: Planilha "${SHEETS.SCHEDULE_INSTANCES}" não encontrada.`, data: null });
         }
 
-        // Determina o número mínimo de colunas necessárias para ler os dados
-        // essenciais.
+        // Determina o número mínimo de colunas necessárias para ler os dados essenciais.
         const minCols = Math.max(
             HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA,
             HEADERS.SCHEDULE_INSTANCES.ID_BASE_HORARIO,
@@ -1005,60 +1119,46 @@ function getAvailableSlots(tipoReserva) {
             HEADERS.SCHEDULE_INSTANCES.HORA_INICIO,
             HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL,
             HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO,
-            HEADERS.SCHEDULE_INSTANCES
-                .ID_EVENTO_CALENDAR  // Incluído para garantir
-            // consistência, mesmo que não
-            // usado diretamente no filtro.
-        ) +
-            1;  // +1 porque os índices são base 0.
+            HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR
+        ) + 1; // +1 porque os índices são base 0.
 
         // Obtém todos os dados da planilha.
         const rawData = sheet.getDataRange().getValues();
         // Verifica se há dados além do cabeçalho.
         if (rawData.length <= 1) {
-            Logger.log(
-                'Planilha Instancias de Horarios está vazia ou apenas cabeçalho.');
-            return JSON.stringify({
-                success: true,
-                message:
-                    'Nenhuma instância de horário futuro encontrada. Gere instâncias primeiro.',
-                data: []
-            });
+            Logger.log('Planilha Instancias de Horarios está vazia ou apenas cabeçalho.');
+            return JSON.stringify({ success: true, message: 'Nenhuma instância de horário futura encontrada. Gere instâncias primeiro.', data: [] });
         }
 
         // Verifica se a planilha tem o número mínimo de colunas esperado.
         if (rawData[0].length < minCols) {
             Logger.log(`Warning: Planilha "${SHEETS.SCHEDULE_INSTANCES}" tem menos colunas (${rawData[0].length}) do que o esperado (${minCols}). A leitura de dados pode falhar.`);
-            // O script continua, mas pode falhar se tentar acessar uma coluna
-            // inexistente.
+            // O script continua, mas pode falhar se tentar acessar uma coluna inexistente.
         }
 
         // Remove o cabeçalho dos dados.
         const data = rawData.slice(1);
 
-        const availableSlots =
-            [];  // Array para armazenar os horários disponíveis encontrados.
-        const today = new Date();    // Obtém a data atual.
-        today.setHours(0, 0, 0, 0);  // Zera a hora para comparar apenas a data.
+        const availableSlots = []; // Array para armazenar os horários disponíveis encontrados.
+        const today = new Date(); // Obtém a data atual.
+        today.setHours(0, 0, 0, 0); // Zera a hora para comparar apenas a data.
 
         // Itera por todas as linhas de instâncias de horário.
         for (let i = 0; i < data.length; i++) {
             const row = data[i];
-            const rowIndex = i +
-                2;  // Índice da linha na planilha (considerando cabeçalho e base 1).
+            const rowIndex = i + 2; // Índice da linha na planilha (considerando cabeçalho e base 1).
 
             // Pula a linha se for inválida ou não tiver colunas suficientes.
             if (!row || row.length < minCols) {
-                Logger.log(`Skipping incomplete row ${rowIndex} in Instancias de Horarios. Missing required columns.`);
-                continue;  // Pula para a próxima iteração.
+                // Logger.log(`Skipping incomplete row ${rowIndex} in Instancias de Horarios.`); // Too noisy
+                continue; // Pula para a próxima iteração.
             }
 
             // Extrai os valores brutos das colunas relevantes.
             const instanceIdRaw = row[HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA];
             const baseIdRaw = row[HEADERS.SCHEDULE_INSTANCES.ID_BASE_HORARIO];
             const turmaRaw = row[HEADERS.SCHEDULE_INSTANCES.TURMA];
-            const professorPrincipalRaw =
-                row[HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL];
+            const professorPrincipalRaw = row[HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL];
             const rawDate = row[HEADERS.SCHEDULE_INSTANCES.DATA];
             const instanceDiaSemanaRaw = row[HEADERS.SCHEDULE_INSTANCES.DIA_SEMANA];
             const rawHoraInicio = row[HEADERS.SCHEDULE_INSTANCES.HORA_INICIO];
@@ -1066,153 +1166,124 @@ function getAvailableSlots(tipoReserva) {
             const instanceStatusRaw = row[HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO];
 
             // Formata e valida os dados essenciais.
-            // Converte IDs para string e remove espaços, ou define como null se
-            // inválido.
-            const instanceId = (typeof instanceIdRaw === 'string' ||
-                typeof instanceIdRaw === 'number') ?
-                String(instanceIdRaw).trim() :
-                null;
-            const baseId =
-                (typeof baseIdRaw === 'string' || typeof baseIdRaw === 'number') ?
-                    String(baseIdRaw).trim() :
-                    null;
-            const turma =
-                (typeof turmaRaw === 'string' || typeof turmaRaw === 'number') ?
-                    String(turmaRaw).trim() :
-                    null;
-            // Trata professor principal (pode ser vazio).
-            const professorPrincipal = (typeof professorPrincipalRaw === 'string' ||
-                typeof professorPrincipalRaw === 'number') ?
-                String(professorPrincipalRaw || '').trim() :
-                '';
-            // Formata a data usando a função auxiliar.
-            const instanceDate = formatValueToDate(rawDate);
-            // Formata dia da semana e hora usando funções auxiliares.
-            const instanceDiaSemana = (typeof instanceDiaSemanaRaw === 'string' ||
-                typeof instanceDiaSemanaRaw === 'number') ?
-                String(instanceDiaSemanaRaw).trim() :
-                null;
-            const formattedHoraInicio = formatValueToHHMM(rawHoraInicio, timeZone);
-            // Formata tipo original e status.
-            const originalType = (typeof originalTypeRaw === 'string' ||
-                typeof originalTypeRaw === 'number') ?
-                String(originalTypeRaw).trim() :
-                null;
-            const instanceStatus = (typeof instanceStatusRaw === 'string' ||
-                typeof instanceStatusRaw === 'number') ?
-                String(instanceStatusRaw).trim() :
-                null;
+            const instanceId = (typeof instanceIdRaw === 'string' || typeof instanceIdRaw === 'number') ? String(instanceIdRaw).trim() : null;
+            const baseId = (typeof baseIdRaw === 'string' || typeof baseIdRaw === 'number') ? String(baseIdRaw).trim() : null;
+            const turma = (typeof turmaRaw === 'string' || typeof turmaRaw === 'number') ? String(turmaRaw).trim() : null;
+            const professorPrincipal = (typeof professorPrincipalRaw === 'string' || typeof professorPrincipalRaw === 'number') ? String(professorPrincipalRaw || '').trim() : '';
+            const instanceDate = formatValueToDate(rawDate); // <-- THIS IS THE Date OBJECT
+            const instanceDiaSemana = (typeof instanceDiaSemanaRaw === 'string' || typeof instanceDiaSemanaRaw === 'number') ? String(instanceDiaSemanaRaw).trim() : null;
+            const formattedHoraInicio = formatValueToHHMM(rawHoraInicio, timeZone); // <-- HH:mm STRING
+            const originalType = (typeof originalTypeRaw === 'string' || typeof originalTypeRaw === 'number') ? String(originalTypeRaw).trim() : null;
+            const instanceStatus = (typeof instanceStatusRaw === 'string' || typeof instanceStatusRaw === 'number') ? String(instanceStatusRaw).trim() : null;
 
             // Verifica se algum dado essencial formatado é inválido ou ausente.
-            if (!instanceId || instanceId === '' || !baseId || baseId === '' ||
-                !turma || turma === '' ||
-                !instanceDate ||  // Verifica se a data é válida.
+            if (!instanceId || instanceId === '' || !baseId || baseId === '' || !turma || turma === '' ||
+                !instanceDate || // Checks if instanceDate is a valid Date object
                 !instanceDiaSemana || instanceDiaSemana === '' ||
-                formattedHoraInicio === null ||  // Verifica se a hora é válida.
-                !originalType || originalType === '' || !instanceStatus ||
-                instanceStatus === '') {
-                // Registra um log detalhado sobre a linha pulada e os valores brutos.
-                Logger.log(`Skipping row ${rowIndex} due to invalid or missing essential data after formatting: ID=${instanceIdRaw}, BaseID=${baseIdRaw}, Turma=${turmaRaw}, ProfPrinc=${professorPrincipalRaw}, Data=${rawDate}, Dia=${instanceDiaSemanaRaw}, Hora=${rawHoraInicio}, Tipo=${originalTypeRaw}, Status=${instanceStatusRaw}`);
-                continue;  // Pula para a próxima linha.
+                formattedHoraInicio === null || // Checks if time is valid string
+                !originalType || originalType === '' ||
+                !instanceStatus || instanceStatus === '') {
+                // Log detail for debugging skipped rows
+                // Logger.log(`Skipping row ${rowIndex} due to invalid/missing essential data: ID=${instanceIdRaw}, BaseID=${baseIdRaw}, Turma=${turmaRaw}, ProfPrinc=${professorPrincipalRaw}, Data=${rawDate}, Dia=${instanceDiaSemanaRaw}, Hora=${rawHoraInicio}, Tipo=${originalTypeRaw}, Status=${instanceStatusRaw}`);
+                continue; // Pula para a próxima linha.
             }
 
-            // Validações adicionais de consistência dos dados.
-            const daysOfWeek = [
-                'Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'
-            ];
+            // Validações adicionais de consistência dos dados (Dias da semana, Tipos, Status)
+            const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
             if (!daysOfWeek.includes(instanceDiaSemana)) {
                 Logger.log(`Skipping row ${rowIndex} due to invalid Dia da Semana: "${instanceDiaSemana}". Raw: ${instanceDiaSemanaRaw}`);
                 continue;
             }
-            if (originalType !== TIPOS_HORARIO.FIXO &&
-                originalType !== TIPOS_HORARIO.VAGO) {
+            if (originalType !== TIPOS_HORARIO.FIXO && originalType !== TIPOS_HORARIO.VAGO) {
                 Logger.log(`Skipping row ${rowIndex} due to invalid Tipo Original: "${originalType}". Raw: ${originalTypeRaw}`);
                 continue;
             }
-            if (instanceStatus !== STATUS_OCUPACAO.DISPONIVEL &&
-                instanceStatus !== STATUS_OCUPACAO.REPOSICAO_AGENDADA &&
-                instanceStatus !== STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) {
+            if (instanceStatus !== STATUS_OCUPACAO.DISPONIVEL && instanceStatus !== STATUS_OCUPACAO.REPOSICAO_AGENDADA && instanceStatus !== STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) {
                 Logger.log(`Skipping row ${rowIndex} due to invalid Status Ocupação: "${instanceStatus}". Raw: ${instanceStatusRaw}`);
                 continue;
             }
 
             // Compara a data da instância (sem a hora) com a data atual (sem a hora).
-            const dateOnly = new Date(
-                instanceDate.getFullYear(), instanceDate.getMonth(),
-                instanceDate.getDate());
-            if (dateOnly < today) {
+            // instanceDate already has hours/minutes/seconds set to 0 by formatValueToDate if it was parsed correctly
+            if (instanceDate < today) {
                 // Pula instâncias que já ocorreram.
                 continue;
             }
 
-            // Lógica de filtragem baseada no tipo de reserva solicitado.
+            // Lógica de filtragem baseada no tipo de reserva solicitado e status.
             if (tipoReserva === TIPOS_RESERVA.REPOSICAO) {
-                // Para Reposição, o horário deve ser do tipo VAGO e estar com status
-                // DISPONIVEL.
-                if (originalType === TIPOS_HORARIO.VAGO &&
-                    instanceStatus === STATUS_OCUPACAO.DISPONIVEL) {
+                // Para Reposição, o horário deve ser do tipo VAGO e estar com status DISPONIVEL.
+                if (originalType === TIPOS_HORARIO.VAGO && instanceStatus === STATUS_OCUPACAO.DISPONIVEL) {
                     // Adiciona o horário à lista de disponíveis.
                     availableSlots.push({
                         idInstancia: instanceId,
                         baseId: baseId,
                         turma: turma,
-                        professorPrincipal:
-                            professorPrincipal,  // Geralmente vazio para tipo VAGO.
-                        data: Utilities.formatDate(
-                            instanceDate, timeZone,
-                            'dd/MM/yyyy'),  // Formata data para exibição.
+                        professorPrincipal: professorPrincipal, // Geralmente vazio para tipo VAGO.
+                        data: Utilities.formatDate(instanceDate, timeZone, 'dd/MM/yyyy'), // Formata data para exibição.
+                        instanceDateObj: instanceDate, // <-- INCLUDE THE ACTUAL DATE OBJECT FOR SORTING
                         diaSemana: instanceDiaSemana,
-                        horaInicio: formattedHoraInicio,
+                        horaInicio: formattedHoraInicio, // HH:mm string for sorting
                         tipoOriginal: originalType,
-                        statusOcupacao: instanceStatus,  // Será 'Disponivel'.
+                        statusOcupacao: instanceStatus, // Será 'Disponivel'.
                     });
                 }
             } else if (tipoReserva === TIPOS_RESERVA.SUBSTITUICAO) {
                 // Para Substituição, o horário deve ser do tipo FIXO.
-                // E NÃO pode estar com status REPOSICAO_AGENDADA (pois uma reposição já
-                // ocupou esse slot). Pode estar DISPONIVEL ou já ter uma
-                // SUBSTITUICAO_AGENDADA (permitindo talvez reagendar, mas a lógica de
-                // bookSlot trata isso).
-                if (originalType === TIPOS_HORARIO.FIXO &&
-                    instanceStatus !== STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
+                // E NÃO pode estar com status REPOSICAO_AGENDADA.
+                // Pode estar DISPONIVEL ou já ter uma SUBSTITUICAO_AGENDADA.
+                if (originalType === TIPOS_HORARIO.FIXO && instanceStatus !== STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
                     // Adiciona o horário à lista de disponíveis para substituição.
                     availableSlots.push({
                         idInstancia: instanceId,
                         baseId: baseId,
                         turma: turma,
-                        professorPrincipal:
-                            professorPrincipal,  // Professor original do horário fixo.
-                        data: Utilities.formatDate(instanceDate, timeZone, 'dd/MM/yyyy'),
+                        professorPrincipal: professorPrincipal, // Professor original do horário fixo.
+                        data: Utilities.formatDate(instanceDate, timeZone, 'dd/MM/yyyy'), // Formata data para exibição.
+                        instanceDateObj: instanceDate, // <-- INCLUDE THE ACTUAL DATE OBJECT FOR SORTING
                         diaSemana: instanceDiaSemana,
-                        horaInicio: formattedHoraInicio,
+                        horaInicio: formattedHoraInicio, // HH:mm string for sorting
                         tipoOriginal: originalType,
-                        statusOcupacao: instanceStatus,  // Pode ser 'Disponivel' ou
-                        // 'Substituicao Agendada'.
+                        statusOcupacao: instanceStatus, // Puede ser 'Disponivel' o 'Substituicao Agendada'.
                     });
                 }
             }
         }
 
-        Logger.log(
-            'Número de slots disponíveis encontrados: ' + availableSlots.length);
+        // --- ADD SORTING LOGIC HERE ---
+        availableSlots.sort((a, b) => {
+            // 1. Sort by Date (ascending)
+            // Use getTime() for reliable comparison of Date objects
+            const dateComparison = a.instanceDateObj.getTime() - b.instanceDateObj.getTime();
+            if (dateComparison !== 0) {
+                return dateComparison;
+            }
 
-        // Retorna JSON com sucesso e a lista de horários encontrados.
-        return JSON.stringify({
-            success: true,
-            message: 'Slots carregados com sucesso.',
-            data: availableSlots
+            // 2. If Dates are the same, sort by Time (ascending string comparison)
+            // String comparison for HH:mm format works correctly (e.g., "09:00" < "10:00")
+            const timeComparison = a.horaInicio.localeCompare(b.horaInicio);
+            if (timeComparison !== 0) {
+                return timeComparison;
+            }
+
+            // 3. If Date and Time are the same, sort by Turma (ascending string comparison)
+            const turmaComparison = a.turma.localeCompare(b.turma);
+            return turmaComparison;
         });
+        // --- END SORTING LOGIC ---
+
+
+        Logger.log('Número de slots disponíveis encontrados e ordenados: ' + availableSlots.length);
+
+        // Return JSON with success and the sorted list of available slots.
+        // Note: We are sending the instanceDateObj back in the data payload, which is fine.
+        return JSON.stringify({ success: true, message: 'Slots carregados com sucesso.', data: availableSlots });
 
     } catch (e) {
         // Em caso de erro inesperado.
-        Logger.log(
-            'Erro no getAvailableSlots: ' + e.message + ' Stack: ' + e.stack);
+        Logger.log('Erro no getAvailableSlots: ' + e.message + ' Stack: ' + e.stack);
         // Retorna JSON indicando falha.
-        return JSON.stringify({
-            success: false,
-            message: 'Ocorreu um erro interno ao buscar horários: ' + e.message,
-            data: null
-        });
+        return JSON.stringify({ success: false, message: 'Ocorreu um erro interno ao buscar horários: ' + e.message, data: null });
     }
 }
 
