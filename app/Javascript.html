@@ -709,149 +709,102 @@
     document.addEventListener('DOMContentLoaded', function () {
         logDebug("DOMContentLoaded event fired. Starting application initialization.");
         showLoading();
-        let completedCalls = 0;
-        const totalCalls = 4;
-        let userResponseData = null;
-        let initialDataError = false;
-        logDebug(`Initializing ${totalCalls} parallel backend calls for setup data.`);
-        function handleInitialDataSuccess(jsonStringResponse, callType) {
-            completedCalls++;
-            logDebug(`Initial call ${callType} SUCCEEDED (${completedCalls}/${totalCalls}). Processing...`);
+        displayMessage('Carregando dados iniciais...', 'info');
+        logDebug("Initiating single call for initial data: getInitialData");
+        google.script.run
+            .withSuccessHandler(onInitialDataLoaded)
+            .withFailureHandler(onInitialDataLoadFailed)
+            .getInitialData();
+        function onInitialDataLoaded(jsonStringResponse) {
+            logDebug("onInitialDataLoaded received response.");
             let response;
             try {
                 if (!jsonStringResponse) throw new Error("Response string is empty or null.");
                 response = JSON.parse(jsonStringResponse);
-                logDebug(`${callType} parsed response:`, response);
-                if (!response || !response.success) {
-                    const backendMsg = response.message || `Falha reportada pelo backend para ${callType}.`;
-                    throw new Error(backendMsg);
-                }
+                logDebug("Initial data response parsed successfully:", response);
             } catch (e) {
-                console.error(`Erro ao processar resposta JSON de ${callType}:`, e.message, jsonStringResponse);
-                handleInitialDataError({ message: `Erro ao processar dados de ${callType}. (${e.message})` }, callType);
+                console.error("Erro ao parsear JSON de dados iniciais:", e, jsonStringResponse);
+                onInitialDataLoadFailed({ message: `Erro ao processar dados iniciais: ${e.message}` });
                 return;
             }
-            try {
-                if (callType === 'getUserRole') {
-                    if (response.data && response.data.role) {
-                        userResponseData = response.data;
-                        currentUserRole = response.data.role;
-                        logDebug(`User role set: ${currentUserRole}, Email: ${userResponseData.email}`);
-                    } else {
-                        const roleErrorMsg = response.message || 'Não foi possível determinar o perfil do usuário.';
-                        logDebug(`getUserRole successful, but role determination failed: ${roleErrorMsg}`);
-                        handleInitialDataError({ message: roleErrorMsg }, callType);
-                    }
-                } else if (callType === 'getProfessorsList') {
-                    const professors = Array.isArray(response.data) ? response.data : [];
-                    logDebug(`Populating professor dropdowns with ${professors.length} professors.`);
-                    populateDropdown('reposicao-professor-real', professors, '-- Professores --');
-                    populateDropdown('substituicao-professor-real', professors, '-- Professores --');
-                } else if (callType === 'getTurmasList') {
-                    const turmas = Array.isArray(response.data) ? response.data : [];
-                    logDebug(`Received ${turmas.length} turmas (currently unused in booking form).`);
-                } else if (callType === 'getDisciplinesList') {
-                    const disciplines = Array.isArray(response.data) ? response.data : [];
-                    logDebug(`Populating discipline dropdowns with ${disciplines.length} disciplines.`);
-                    populateDropdown('reposicao-disciplina', disciplines, '-- Disciplinas --');
-                    populateDropdown('substituicao-disciplina', disciplines, '-- Disciplinas --');
-                }
-            } catch (processingError) {
-                console.error(`Error processing successful response for ${callType}:`, processingError);
-                handleInitialDataError({ message: `Erro ao usar dados de ${callType}: ${processingError.message}` }, callType);
-                return;
-            }
-            checkAllInitialCallsCompleted();
-        }
-        function handleInitialDataError(error, callType) {
-            if (!initialDataError || completedCalls < totalCalls) {
-                completedCalls++;
-            }
-            initialDataError = true;
-            console.error(`Initial call ${callType} FAILED (${completedCalls}/${totalCalls}):`, error.message);
-            const messageDiv = document.getElementById('message');
-            const errorMessage = `Erro na inicialização (${callType}): ${error.message || 'Erro desconhecido'}.`;
-            if (messageDiv && (!messageDiv.textContent || !messageDiv.textContent.includes("Ocorreu um erro durante a inicialização"))) {
-                displayMessage("Ocorreu um erro durante a inicialização. Algumas funcionalidades podem não estar disponíveis.", 'error');
-            }
-            if (callType === 'getUserRole') {
-                userResponseData = null;
-                currentUserRole = null;
-                logDebug("User role could not be fetched.");
-            } else if (callType === 'getProfessorsList') {
-                logDebug("Populating professor dropdowns with error message.");
-                populateDropdown('reposicao-professor-real', [], '-- Erro ao Carregar --');
-                populateDropdown('substituicao-professor-real', [], '-- Erro ao Carregar --');
-            } else if (callType === 'getDisciplinesList') {
-                logDebug("Populating discipline dropdowns with error message.");
-                populateDropdown('reposicao-disciplina', [], '-- Erro ao Carregar --');
-                populateDropdown('substituicao-disciplina', [], '-- Erro ao Carregar --');
-            }
-            checkAllInitialCallsCompleted();
-        }
-        function checkAllInitialCallsCompleted() {
-            logDebug(`checkAllInitialCallsCompleted called: ${completedCalls}/${totalCalls} calls completed. Initial error state: ${initialDataError}`);
-            if (completedCalls === totalCalls) {
-                logDebug("All initial backend calls have completed.");
-                hideLoading();
+            hideLoading();
+            if (response && response.data) {
+                const initialData = response.data;
+                let userResponseData = initialData.user || { role: null, email: '[Error]' };
+                currentUserRole = userResponseData.role;
                 const userEmailSpan = document.getElementById('user-email');
                 const userRoleSpan = document.getElementById('user-role');
-                const reposicaoSection = document.getElementById('reposicao-section');
-                const substituicaoSection = document.getElementById('substituicao-section');
                 logDebug("Updating user info display...");
                 if (userEmailSpan) {
-                    if (userResponseData && userResponseData.email) {
-                        userEmailSpan.textContent = userResponseData.email;
+                    userEmailSpan.textContent = userResponseData.email || 'N/A';
+                    if (userResponseData.email && userResponseData.email !== '[Error]' && userResponseData.email !== '[Unavailable]') {
                         userEmailSpan.href = `mailto:${userResponseData.email}`;
                     } else {
-                        userEmailSpan.textContent = 'N/A';
                         userEmailSpan.href = '#';
                     }
                 } else { console.warn("User email span not found."); }
                 if (userRoleSpan) {
-                    if (userResponseData && userResponseData.role) {
-                        userRoleSpan.textContent = userResponseData.role;
-                    } else {
-                        userRoleSpan.textContent = 'Erro ao Obter';
-                    }
+                    userRoleSpan.textContent = currentUserRole || 'Erro ao Obter';
                 } else { console.warn("User role span not found."); }
-                logDebug("Controlling visibility of booking sections based on role:", currentUserRole);
-                if (currentUserRole) {
-                    if (reposicaoSection) {
-                        const showReposicao = (currentUserRole === 'Admin' || currentUserRole === 'Professor');
-                        reposicaoSection.style.display = showReposicao ? 'block' : 'none';
-                        logDebug(`Reposicao section display set to: ${reposicaoSection.style.display}`);
-                    } else { console.warn("Reposicao section not found."); }
-                    if (substituicaoSection) {
-                        const showSubstituicao = (currentUserRole === 'Admin' || currentUserRole === 'Professor');
-                        substituicaoSection.style.display = showSubstituicao ? 'block' : 'none';
-                        logDebug(`Substituicao section display set to: ${substituicaoSection.style.display}`);
-                    } else { console.warn("Substituicao section not found."); }
-                } else {
-                    logDebug("Hiding booking sections because currentUserRole is null or invalid.");
-                    if (reposicaoSection) reposicaoSection.style.display = 'none';
-                    if (substituicaoSection) substituicaoSection.style.display = 'none';
+                if (!currentUserRole && response.success === false) {
+                    onInitialDataLoadFailed({ message: response.message || "Falha crítica ao carregar dados do usuário." });
+                    return;
                 }
+                const professors = Array.isArray(initialData.professors) ? initialData.professors : [];
+                logDebug(`Populating professor dropdowns with ${professors.length} professors.`);
+                populateDropdown('reposicao-professor-real', professors, '-- Professores --');
+                populateDropdown('substituicao-professor-real', professors, '-- Professores --');
+                const disciplines = Array.isArray(initialData.disciplines) ? initialData.disciplines : [];
+                logDebug(`Populating discipline dropdowns with ${disciplines.length} disciplines.`);
+                populateDropdown('reposicao-disciplina', disciplines, '-- Disciplinas --');
+                populateDropdown('substituicao-disciplina', disciplines, '-- Disciplinas --');
+                const reposicaoSection = document.getElementById('reposicao-section');
+                const substituicaoSection = document.getElementById('substituicao-section');
+                logDebug("Controlling visibility of booking sections based on role:", currentUserRole);
+                const showSections = (currentUserRole === 'Admin' || currentUserRole === 'Professor');
+                if (reposicaoSection) {
+                    reposicaoSection.style.display = showSections ? 'block' : 'none';
+                    logDebug(`Reposicao section display set to: ${reposicaoSection.style.display}`);
+                } else { console.warn("Reposicao section not found."); }
+                if (substituicaoSection) {
+                    substituicaoSection.style.display = showSections ? 'block' : 'none';
+                    logDebug(`Substituicao section display set to: ${substituicaoSection.style.display}`);
+                } else { console.warn("Substituicao section not found."); }
                 logDebug("Calling loadFilterOptions to populate grid filters.");
                 loadFilterOptions();
-                if (!initialDataError && !document.getElementById('message')?.textContent) {
-                    logDebug("Initialization seems successful, no error message displayed.");
-                } else if (initialDataError) {
-                    console.warn("Initialization completed with errors. Error message should be visible.");
-                } else {
-                    logDebug("Initialization completed (no errors reported), and a message might already be displayed (e.g., from filter loading).");
+                const messageDiv = document.getElementById('message');
+                if (response.message && response.message !== 'Dados iniciais carregados com sucesso.') {
+                    displayMessage(response.message, response.success ? 'info' : 'error');
+                } else if (messageDiv && messageDiv.textContent === 'Carregando dados iniciais...') {
+                    displayMessage('', 'info');
                 }
-                logDebug("Initialization sequence finished.");
+            } else {
+                onInitialDataLoadFailed({ message: (response && response.message) || "Resposta inválida do servidor ao carregar dados iniciais." });
             }
+            logDebug("Initialization sequence finished.");
         }
-        logDebug("Initiating getUserRole call.");
-        google.script.run.withSuccessHandler(responseString => handleInitialDataSuccess(responseString, 'getUserRole')).withFailureHandler(error => handleInitialDataError(error, 'getUserRole')).getUserRole();
-        logDebug("Initiating getProfessorsList call.");
-        google.script.run.withSuccessHandler(responseString => handleInitialDataSuccess(responseString, 'getProfessorsList')).withFailureHandler(error => handleInitialDataError(error, 'getProfessorsList')).getProfessorsList();
-        logDebug("Initiating getTurmasList call.");
-        google.script.run.withSuccessHandler(responseString => handleInitialDataSuccess(responseString, 'getTurmasList')).withFailureHandler(error => handleInitialDataError(error, 'getTurmasList')).getTurmasList();
-        logDebug("Initiating getDisciplinesList call.");
-        google.script.run.withSuccessHandler(responseString => handleInitialDataSuccess(responseString, 'getDisciplinesList')).withFailureHandler(error => handleInitialDataError(error, 'getDisciplinesList')).getDisciplinesList();
+        function onInitialDataLoadFailed(error) {
+            hideLoading();
+            console.error("Falha no carregamento inicial:", error);
+            const errorMsg = `Erro crítico na inicialização: ${error.message || 'Erro desconhecido'}. A aplicação pode não funcionar corretamente.`;
+            displayMessage(errorMsg, 'error');
+            try {
+                const userEmailSpan = document.getElementById('user-email');
+                const userRoleSpan = document.getElementById('user-role');
+                if (userEmailSpan) userEmailSpan.textContent = 'Erro';
+                if (userRoleSpan) userRoleSpan.textContent = 'Erro';
+                populateDropdown('reposicao-professor-real', [], '-- Erro --');
+                populateDropdown('substituicao-professor-real', [], '-- Erro --');
+                populateDropdown('reposicao-disciplina', [], '-- Erro --');
+                populateDropdown('substituicao-disciplina', [], '-- Erro --');
+            } catch (uiError) {
+                console.error("Error updating UI elements during initial load failure:", uiError);
+            }
+            const reposicaoSection = document.getElementById('reposicao-section');
+            const substituicaoSection = document.getElementById('substituicao-section');
+            if (reposicaoSection) reposicaoSection.style.display = 'none';
+            if (substituicaoSection) substituicaoSection.style.display = 'none';
+        }
     });
     logDebug("Defining global constants: STATUS_OCUPACAO, TIPOS_RESERVA, TIPOS_HORARIO");
     const STATUS_OCUPACAO = Object.freeze({

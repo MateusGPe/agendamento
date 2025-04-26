@@ -457,6 +457,10 @@ function cleanOldScheduleInstances() {
                 instancesSheet.getRange(1, 1, dataToWrite.length, numCols).setValues(dataToWrite);
             }
             Logger.log(`Sheet rewritten with ${rowsToKeep.length} data rows.`);
+            const cache = CacheService.getScriptCache();
+            const cacheKey = `SHEET_DATA_${SPREADSHEET_ID}_${SHEETS.SCHEDULE_INSTANCES}`;
+            cache.remove(cacheKey);
+            Logger.log(`Cache invalidated for sheet "${SHEETS.SCHEDULE_INSTANCES}" after cleanup rewrite.`);
         } else {
             Logger.log('No instances found before the cleanup date. No changes made to the sheet.');
         }
@@ -468,7 +472,7 @@ function cleanOldScheduleInstances() {
     }
 }
 function cleanupExcessVagoSlots() {
-    Logger.log('*** cleanupExcessVagoSlots START ***');
+    Logger.log('*** cleanupExcessVagoSlots START (Rewrite Method) ***');
     let lock = null;
     try {
         lock = acquireScriptLock_();
@@ -476,8 +480,9 @@ function cleanupExcessVagoSlots() {
         Logger.log(`Using threshold: ${threshold} (Fixo + Vago Booked)`);
         const timeZone = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
         const { header: instanceHeader, data: instanceData, sheet: instancesSheet } = getSheetData_(SHEETS.SCHEDULE_INSTANCES, HEADERS.SCHEDULE_INSTANCES);
-        const originalRowCount = instanceData.length;
-        if (originalRowCount === 0) {
+        const originalDataRowCount = instanceData.length;
+        const numCols = instanceHeader.length > 0 ? instanceHeader.length : (Object.keys(HEADERS.SCHEDULE_INSTANCES).length);
+        if (originalDataRowCount === 0) {
             Logger.log('No instances found to process.');
             releaseScriptLock_(lock); return;
         }
@@ -487,12 +492,13 @@ function cleanupExcessVagoSlots() {
         const statusCol = HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO;
         const maxIndexNeeded = Math.max(dateCol, turmaCol, typeCol, statusCol);
         if (instanceHeader.length <= maxIndexNeeded) {
-            throw new Error(`Planilha "${SHEETS.SCHEDULE_INSTANCES}" não contém todas as colunas necessárias para cleanupExcessVagoSlots.`);
+            throw new Error(`Planilha "${SHEETS.SCHEDULE_INSTANCES}" não contém todas as colunas necessárias (Index: ${maxIndexNeeded}) para cleanupExcessVagoSlots.`);
         }
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const groupedData = {};
-        Logger.log(`Processing ${originalRowCount} instance rows...`);
+        const rowsToDeleteIndices = new Set();
+        Logger.log(`Processing ${originalDataRowCount} instance rows to identify excess Vago slots...`);
         instanceData.forEach((row, index) => {
             if (!row || row.length <= maxIndexNeeded) return;
             const instanceUTCDate = formatValueToDate(row[dateCol]);
@@ -501,61 +507,78 @@ function cleanupExcessVagoSlots() {
             const instanceStatus = String(row[statusCol] || '').trim();
             if (!instanceUTCDate || !turma) return;
             let instanceLocalDate = null;
-            const rawDate = row[dateCol];
-            if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
-                instanceLocalDate = new Date(rawDate.getFullYear(), rawDate.getMonth(), rawDate.getDate());
-                if (instanceLocalDate < today) {
-                    return;
-                }
-            } else {
-                return;
-            }
+             const rawDate = row[dateCol];
+             if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
+                 instanceLocalDate = new Date(rawDate.getFullYear(), rawDate.getMonth(), rawDate.getDate());
+                 if (instanceLocalDate < today) {
+                     return;
+                 }
+             } else {
+                 return;
+             }
             const dateStringKey = Utilities.formatDate(instanceUTCDate, 'UTC', 'yyyy-MM-dd');
             if (!groupedData[dateStringKey]) groupedData[dateStringKey] = {};
             if (!groupedData[dateStringKey][turma]) {
-                groupedData[dateStringKey][turma] = { fixoCount: 0, vagoBookedCount: 0, availableVagoRows: [] };
+                groupedData[dateStringKey][turma] = { fixoCount: 0, vagoBookedCount: 0, availableVagoRowIndices: [] };
             }
             if (originalType === TIPOS_HORARIO.FIXO) {
                 groupedData[dateStringKey][turma].fixoCount++;
             } else if (originalType === TIPOS_HORARIO.VAGO) {
                 if (instanceStatus === STATUS_OCUPACAO.DISPONIVEL) {
-                    groupedData[dateStringKey][turma].availableVagoRows.push(index + 2);
-                } else {
+                    groupedData[dateStringKey][turma].availableVagoRowIndices.push(index + 2);
+                } else if (instanceStatus === STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
                     groupedData[dateStringKey][turma].vagoBookedCount++;
                 }
             }
         });
-        Logger.log(`Finished grouping data by Date/Turma.`);
-        const rowsToDelete = [];
+        Logger.log(`Finished grouping data. Identifying rows exceeding threshold...`);
         for (const dateKey in groupedData) {
             for (const turmaName in groupedData[dateKey]) {
                 const group = groupedData[dateKey][turmaName];
                 const triggerCount = group.fixoCount + group.vagoBookedCount;
                 if (triggerCount >= threshold) {
-                    Logger.log(`Threshold (${threshold}) MET for Turma "${turmaName}" on Date ${dateKey}. Trigger count: ${triggerCount}. Marking ${group.availableVagoRows.length} available Vago slots for deletion.`);
-                    rowsToDelete.push(...group.availableVagoRows);
+                    group.availableVagoRowIndices.forEach(rowIndex => rowsToDeleteIndices.add(rowIndex));
                 }
             }
         }
-        if (rowsToDelete.length > 0) {
-            Logger.log(`Preparing to delete ${rowsToDelete.length} rows...`);
-            rowsToDelete.sort((a, b) => b - a);
-            let deletedCount = 0;
-            for (const rowIndex of rowsToDelete) {
-                try {
-                    instancesSheet.deleteRow(rowIndex);
-                    deletedCount++;
-                } catch (e) {
-                    Logger.log(`ERROR deleting row ${rowIndex}: ${e.message}`);
+        if (rowsToDeleteIndices.size > 0) {
+            Logger.log(`Identified ${rowsToDeleteIndices.size} available Vago slot rows for deletion.`);
+            const rowsToKeep = [];
+            instanceData.forEach((row, index) => {
+                const currentRowIndex = index + 2;
+                if (!rowsToDeleteIndices.has(currentRowIndex)) {
+                    rowsToKeep.push(row);
                 }
+            });
+            Logger.log(`Calculated rows to keep: ${rowsToKeep.length} (Original: ${originalDataRowCount})`);
+            if (rowsToKeep.length < originalDataRowCount) {
+                Logger.log(`Rewriting sheet "${SHEETS.SCHEDULE_INSTANCES}" with filtered data...`);
+                const dataToWrite = [instanceHeader, ...rowsToKeep].map(row => {
+                    const paddedRow = [...row];
+                    while (paddedRow.length < numCols) paddedRow.push('');
+                    return paddedRow.slice(0, numCols);
+                });
+                instancesSheet.clearContents();
+                SpreadsheetApp.flush();
+                if (dataToWrite.length > 0) {
+                    instancesSheet.getRange(1, 1, dataToWrite.length, numCols).setValues(dataToWrite);
+                    Logger.log(`Sheet rewritten successfully with ${rowsToKeep.length} data rows.`);
+                } else {
+                    Logger.log(`Sheet cleared, but no data (including header) was identified to write back.`);
+                }
+                const cache = CacheService.getScriptCache();
+                const cacheKey = `SHEET_DATA_${SPREADSHEET_ID}_${SHEETS.SCHEDULE_INSTANCES}`;
+                cache.remove(cacheKey);
+                Logger.log(`Cache invalidated for sheet "${SHEETS.SCHEDULE_INSTANCES}" after Vago slot cleanup rewrite.`);
+            } else {
+                Logger.log('No changes needed. Number of rows to keep matches original count.');
             }
-            Logger.log(`Successfully deleted ${deletedCount} out of ${rowsToDelete.length} identified rows.`);
         } else {
             Logger.log('No available Vago slots needed removal based on threshold.');
         }
-        Logger.log('*** cleanupExcessVagoSlots FINISHED ***');
+        Logger.log('*** cleanupExcessVagoSlots FINISHED (Rewrite Method) ***');
     } catch (e) {
-        Logger.log(`ERROR in cleanupExcessVagoSlots: ${e.message}\nStack: ${e.stack}`);
+        Logger.log(`ERROR in cleanupExcessVagoSlots (Rewrite Method): ${e.message}\nStack: ${e.stack}`);
     } finally {
         releaseScriptLock_(lock);
     }
