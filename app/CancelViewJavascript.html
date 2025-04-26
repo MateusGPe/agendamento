@@ -1,14 +1,11 @@
+<!-- CancelViewJavascript.html -->
 <script>
-  // Simple Debug flag for this page
     const CANCEL_DEBUG = true;
-
     function logCancelDebug(...args) {
         if (CANCEL_DEBUG) {
             console.log("[CANCEL DEBUG]", ...args);
         }
     }
-
-    // --- Reusable UI Helpers ---
     function showLoading() {
         logCancelDebug("showLoading called");
         const loadingDiv = document.getElementById("loading");
@@ -20,13 +17,11 @@
             messageDiv.style.display = 'none';
         }
     }
-
     function hideLoading() {
         logCancelDebug("hideLoading called");
         const loadingDiv = document.getElementById("loading");
         if (loadingDiv) loadingDiv.style.display = "none";
     }
-
     function displayMessage(text, type = 'info') {
         const messageDiv = document.getElementById("message");
         logCancelDebug(`displayMessage called with text: "${text}", type: "${type}"`);
@@ -41,42 +36,29 @@
             }
         } else { console.warn("Element with ID 'message' not found."); }
     }
-
-    // --- Core Logic for Cancellation Page ---
-
-    /**
-     * Fetches cancellable bookings from the backend.
-     */
     function loadCancellableBookings() {
         logCancelDebug("loadCancellableBookings called");
         showLoading();
-        displayMessage(''); // Clear previous messages
-        document.getElementById('cancel-list-container').style.display = 'none'; // Hide table initially
-        document.getElementById('no-bookings-message').style.display = 'none'; // Hide 'not found' msg
-
+        displayMessage('');
+        document.getElementById('cancel-list-container').style.display = 'none';
+        document.getElementById('no-bookings-message').style.display = 'none';
         google.script.run
             .withSuccessHandler(onBookingsLoaded)
             .withFailureHandler(onBookingsLoadFailed)
-            .getCancellableBookings(); // NEW Backend function
+            .getCancellableBookings();
     }
-
-    /**
-     * Handles the successful response from getCancellableBookings.
-     */
     function onBookingsLoaded(jsonStringResponse) {
         hideLoading();
         logCancelDebug("onBookingsLoaded received response.");
         const container = document.getElementById('cancel-list-container');
         const tbody = document.getElementById('bookings-tbody');
         const noBookingsMsg = document.getElementById('no-bookings-message');
-
         if (!container || !tbody || !noBookingsMsg) {
             console.error("Critical Error: Table container or tbody or no-bookings message element not found.");
             displayMessage("Erro interno: Falha ao carregar elementos da página.", "error");
             return;
         }
-        tbody.innerHTML = ''; // Clear previous results
-
+        tbody.innerHTML = '';
         let response;
         try {
             response = JSON.parse(jsonStringResponse);
@@ -88,37 +70,30 @@
             noBookingsMsg.style.display = 'block';
             return;
         }
-
         if (!response || !response.success) {
             const errorMessage = (response && response.message) ? response.message : 'Erro desconhecido ao carregar reservas.';
             console.error("Falha ao carregar reservas:", errorMessage, response);
             displayMessage(errorMessage, 'error');
             container.style.display = 'none';
             noBookingsMsg.style.display = 'block';
-            noBookingsMsg.textContent = errorMessage; // Show error in the message area
+            noBookingsMsg.textContent = errorMessage;
             return;
         }
-
         const bookings = response.data;
-
         if (!Array.isArray(bookings) || bookings.length === 0) {
             logCancelDebug("No cancellable bookings found.");
             displayMessage(response.message || 'Nenhuma reserva futura agendada encontrada.', 'info');
             container.style.display = 'none';
             noBookingsMsg.style.display = 'block';
-            noBookingsMsg.textContent = 'Nenhuma reserva agendada futura encontrada.'; // Specific message
+            noBookingsMsg.textContent = 'Nenhuma reserva agendada futura encontrada.';
         } else {
             logCancelDebug(`Rendering ${bookings.length} bookings.`);
             displayMessage(response.message || `${bookings.length} reserva(s) encontrada(s).`, 'success');
             renderBookingsTable(bookings, tbody);
-            container.style.display = 'block'; // Show table container
+            container.style.display = 'block';
             noBookingsMsg.style.display = 'none';
         }
     }
-
-    /**
-     * Handles failures in fetching bookings.
-     */
     function onBookingsLoadFailed(error) {
         hideLoading();
         console.error("Erro na comunicação ao carregar reservas:", error);
@@ -128,16 +103,10 @@
         noBookingsMsg.textContent = 'Falha ao carregar reservas.';
         noBookingsMsg.style.display = 'block';
     }
-
-    /**
-     * Populates the table body with booking data.
-     */
     function renderBookingsTable(bookings, tbodyElement) {
         bookings.forEach(booking => {
             const row = tbodyElement.insertRow();
-            row.id = `booking-row-${booking.bookingId}`; // Add ID for potential update later
-
-            // Add cells in order matching the header in CancelView.html
+            row.id = `booking-row-${booking.bookingId}`;
             row.insertCell().textContent = booking.bookingId || 'N/D';
             row.insertCell().textContent = booking.bookingType || 'N/D';
             row.insertCell().textContent = booking.date || 'N/D';
@@ -145,22 +114,16 @@
             row.insertCell().textContent = booking.turma || 'N/D';
             row.insertCell().textContent = booking.disciplina || 'N/D';
             row.insertCell().textContent = booking.profReal || 'N/D';
-            row.insertCell().textContent = booking.profOrig || '-'; // Show dash if no original prof
+            row.insertCell().textContent = booking.profOrig || '-';
             row.insertCell().textContent = booking.criadoPor || 'N/D';
-
-            // Action cell with Cancel button
             const actionCell = row.insertCell();
             const cancelButton = document.createElement('button');
             cancelButton.textContent = 'Cancelar';
             cancelButton.classList.add('cancel-button');
-            cancelButton.onclick = () => confirmCancelBooking(booking.bookingId); // Pass booking ID
+            cancelButton.onclick = () => confirmCancelBooking(booking.bookingId);
             actionCell.appendChild(cancelButton);
         });
     }
-
-    /**
-     * Prompts user for confirmation before cancelling.
-     */
     function confirmCancelBooking(bookingId) {
         logCancelDebug(`confirmCancelBooking called for booking ID: ${bookingId}`);
         if (!bookingId) {
@@ -168,36 +131,26 @@
              displayMessage("Erro: ID da reserva ausente para cancelamento.", "error");
              return;
         }
-
-        // Find details from the table row for the confirmation message
         const row = document.getElementById(`booking-row-${bookingId}`);
         let details = `Reserva ID ${bookingId}`;
         if(row && row.cells.length > 6) {
             details = `${row.cells[1].textContent} em ${row.cells[2].textContent} ${row.cells[3].textContent} - Turma: ${row.cells[4].textContent} - Prof: ${row.cells[6].textContent}`;
         }
-
         const confirmation = confirm(`Tem certeza que deseja cancelar a seguinte reserva?\n\n${details}\n\nEsta ação não pode ser desfeita.`);
-
         if (confirmation) {
             logCancelDebug(`User confirmed cancellation for ${bookingId}. Calling backend.`);
             showLoading();
             displayMessage('Cancelando reserva...', 'info');
-            // Disable button to prevent double clicks
             const button = row ? row.querySelector('.cancel-button') : null;
             if (button) button.disabled = true;
-
             google.script.run
                 .withSuccessHandler(onCancelResponse)
                 .withFailureHandler(onCancelFailed)
-                .cancelBookingAdmin(bookingId); // NEW Backend function
+                .cancelBookingAdmin(bookingId);
         } else {
             logCancelDebug(`User cancelled cancellation for ${bookingId}.`);
         }
     }
-
-    /**
-     * Handles successful response from the backend cancellation function.
-     */
     function onCancelResponse(jsonStringResponse) {
         hideLoading();
         logCancelDebug("onCancelResponse received.");
@@ -208,20 +161,16 @@
         } catch (e) {
             console.error("Erro ao parsear JSON de resposta de cancelamento:", e, jsonStringResponse);
             displayMessage('Erro ao processar resposta do servidor após cancelamento.', 'error');
-            // Re-enable button if found (need bookingId from response?) - difficult without ID
             return;
         }
-
         if (response && response.success) {
             const bookingId = response.data ? response.data.cancelledBookingId : null;
             logCancelDebug(`Booking ${bookingId} cancelled successfully.`);
             displayMessage(response.message || 'Reserva cancelada com sucesso!', 'success');
-
-            // Visually update the row (e.g., strike-through, disable button)
             if (bookingId) {
                  const row = document.getElementById(`booking-row-${bookingId}`);
                  if (row) {
-                     row.classList.add('cancelled-row'); // Add class for styling
+                     row.classList.add('cancelled-row');
                      const button = row.querySelector('.cancel-button');
                      if (button) {
                          button.textContent = 'Cancelada';
@@ -229,15 +178,11 @@
                      }
                  }
             }
-            // Optional: Reload the entire list after a delay or provide a manual refresh button
-            // setTimeout(loadCancellableBookings, 2000); // Example reload
         } else {
-            // Backend reported failure
-            const bookingId = response.data ? response.data.failedBookingId : null; // Get ID if backend provides it on failure
+            const bookingId = response.data ? response.data.failedBookingId : null;
             const errorMessage = response && response.message ? response.message : "Ocorreu um erro desconhecido durante o cancelamento.";
             console.error("Backend cancellation failed:", errorMessage, response);
             displayMessage(errorMessage, 'error');
-            // Re-enable the button for retry if we have the ID
             if (bookingId) {
                  const row = document.getElementById(`booking-row-${bookingId}`);
                  const button = row ? row.querySelector('.cancel-button') : null;
@@ -245,24 +190,13 @@
             }
         }
     }
-
-    /**
-     * Handles communication failures during cancellation.
-     */
     function onCancelFailed(error) {
         hideLoading();
         console.error("Erro na comunicação ao cancelar reserva:", error);
         displayMessage('Erro na comunicação com o servidor ao tentar cancelar: ' + error.message, 'error');
-        // Consider re-enabling all buttons, though it's hard to know which one failed
          document.querySelectorAll('.cancel-button').forEach(btn => btn.disabled = false);
     }
-
-
-    // --- Initialization ---
     document.addEventListener('DOMContentLoaded', function () {
         logCancelDebug("CancelView DOM loaded.");
-        // Optional: Load bookings automatically on page load?
-        // loadCancellableBookings();
     });
-
 </script>

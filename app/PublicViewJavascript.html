@@ -1,15 +1,11 @@
+<!-- PublicViewJavascript.html -->
 <script>
-  // Simple Debug flag for this page
     const PUBLIC_DEBUG = true;
-
     function logPublicDebug(...args) {
         if (PUBLIC_DEBUG) {
             console.log("[PUBLIC DEBUG]", ...args);
         }
     }
-
-    // --- Reusable Helper Functions (copied/adapted from main JS) ---
-
     function showLoading() {
         logPublicDebug("showLoading called");
         const loadingDiv = document.getElementById("loading");
@@ -21,13 +17,11 @@
             messageDiv.style.display = 'none';
         }
     }
-
     function hideLoading() {
         logPublicDebug("hideLoading called");
         const loadingDiv = document.getElementById("loading");
         if (loadingDiv) loadingDiv.style.display = "none";
     }
-
     function displayMessage(text, type = 'info') {
         const messageDiv = document.getElementById("message");
         logPublicDebug(`displayMessage called with text: "${text}", type: "${type}"`);
@@ -44,7 +38,6 @@
             console.warn("Element with ID 'message' not found.");
         }
     }
-
     function formatYYYYMMDDToDDMMYYYY(dateString) {
         if (!dateString || typeof dateString !== 'string') return dateString;
         const parts = dateString.split('-');
@@ -54,30 +47,27 @@
             const month = parseInt(parts[1], 10);
             const day = parseInt(parts[2], 10);
             if (year > 1000 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-                 const dateObj = new Date(year, month - 1, day);
-                 if (!isNaN(dateObj.getTime()) && dateObj.getFullYear() === year && (dateObj.getMonth() + 1) === month && dateObj.getDate() === day) {
-                     const formattedDay = String(day).padStart(2, '0');
-                     const formattedMonth = String(month).padStart(2, '0');
-                     return `${formattedDay}/${formattedMonth}/${year}`;
-                 }
+                const dateObj = new Date(year, month - 1, day);
+                if (!isNaN(dateObj.getTime()) && dateObj.getFullYear() === year && (dateObj.getMonth() + 1) === month && dateObj.getDate() === day) {
+                    const formattedDay = String(day).padStart(2, '0');
+                    const formattedMonth = String(month).padStart(2, '0');
+                    return `${formattedDay}/${formattedMonth}/${year}`;
+                }
             }
         }
         return dateString;
     }
-
-     function populateDropdown(selectId, optionsArray, defaultText = "-- Selecione --") {
+    function populateDropdown(selectId, optionsArray, defaultText = "-- Selecione --") {
         logPublicDebug(`populateDropdown called for ID: '${selectId}'`);
         const selectElement = document.getElementById(selectId);
         if (!selectElement) { console.warn(`Dropdown '${selectId}' not found.`); return; }
-
-        selectElement.innerHTML = ''; // Clear existing options
+        selectElement.innerHTML = '';
         const defaultOption = document.createElement('option');
         defaultOption.value = "";
         defaultOption.textContent = defaultText;
         defaultOption.disabled = true;
         defaultOption.selected = true;
         selectElement.appendChild(defaultOption);
-
         if (optionsArray && Array.isArray(optionsArray)) {
             optionsArray.forEach(optionItem => {
                 const value = typeof optionItem === 'object' && optionItem !== null && optionItem.hasOwnProperty('value') ? String(optionItem.value).trim() : String(optionItem).trim();
@@ -91,20 +81,15 @@
             });
         }
         selectElement.disabled = false;
-        selectElement.selectedIndex = 0; // Ensure placeholder selected initially
+        selectElement.selectedIndex = 0;
         logPublicDebug(`Finished populating '${selectId}'. Total options: ${selectElement.options.length}`);
     }
-
-    /**
-     * Helper to format cell content with status for the read-only view.
-     */
     function formatPublicCellContent(mainContent, status) {
         const statusText = status && status.trim() !== '' ? status.trim() : 'Status Desconhecido';
         let statusClass = 'status-default';
         if (status === 'Disponivel') statusClass = 'status-disponivel';
         else if (status === 'Reposicao Agendada') statusClass = 'status-reposicao';
         else if (status === 'Substituicao Agendada') statusClass = 'status-substituicao';
-
         const statusSpan = `<span class="slot-status ${statusClass}">(${statusText})</span>`;
         if (mainContent && mainContent.trim() !== '') {
             const mainContentDiv = `<div class="slot-main-content">${mainContent.trim()}</div>`;
@@ -113,19 +98,14 @@
             return statusSpan;
         }
     }
-
-    // --- Specific Logic for Public View ---
-
     function loadWeekFilterOptions() {
         logPublicDebug("loadWeekFilterOptions called");
-        showLoading(); // Show loading while fetching weeks
-        // Use the existing backend function to get filters (it includes weeks)
+        showLoading();
         google.script.run
             .withSuccessHandler(onWeekFilterOptionsLoaded)
             .withFailureHandler(onWeekFilterOptionsFailed)
-            .getScheduleViewFilters(); // Reusing this as it contains week dates
+            .getScheduleViewFilters();
     }
-
     function onWeekFilterOptionsLoaded(jsonStringResponse) {
         hideLoading();
         logPublicDebug("onWeekFilterOptionsLoaded received response.");
@@ -139,7 +119,6 @@
             populateDropdown('week-filter', [], '-- Erro Semanas --');
             return;
         }
-
         if (!response || !response.success || !response.data || !Array.isArray(response.data.weekStartDates)) {
             const errorMessage = (response && response.message) ? response.message : 'Erro desconhecido ao carregar semanas.';
             console.error("Falha ao carregar semanas:", errorMessage, response);
@@ -147,17 +126,13 @@
             populateDropdown('week-filter', [], '-- Erro Semanas --');
             return;
         }
-
         const weeksForDropdown = response.data.weekStartDates.map(dateString => {
-             const formattedDate = formatYYYYMMDDToDDMMYYYY(dateString);
-             const displayText = (formattedDate !== dateString) ? `Semana de ${formattedDate}` : dateString;
-             return { value: dateString, text: displayText };
+            const formattedDate = formatYYYYMMDDToDDMMYYYY(dateString);
+            const displayText = (formattedDate !== dateString) ? `Semana de ${formattedDate}` : dateString;
+            return { value: dateString, text: displayText };
         }).filter(item => item.value);
-
         populateDropdown('week-filter', weeksForDropdown, '-- Selecione a Semana --');
         displayMessage('Selecione a semana desejada.', 'info');
-
-        // Auto-select current week (adapted from main JS)
         try {
             const today = new Date(); today.setHours(0, 0, 0, 0);
             const currentDayOfWeek = today.getDay();
@@ -169,76 +144,64 @@
             const day = String(mondayOfCurrentWeek.getDate()).padStart(2, '0');
             const currentWeekString = `${year}-${month}-${day}`;
             logPublicDebug("Calculated current week start date:", currentWeekString);
-
             const weekSelect = document.getElementById('week-filter');
             if (weekSelect) {
                 let found = false;
-                for(let i=0; i < weekSelect.options.length; i++){
-                    if(weekSelect.options[i].value === currentWeekString){
+                for (let i = 0; i < weekSelect.options.length; i++) {
+                    if (weekSelect.options[i].value === currentWeekString) {
                         weekSelect.selectedIndex = i;
                         found = true;
                         logPublicDebug("Current week selected in dropdown.");
                         break;
                     }
                 }
-                if(!found && weekSelect.options.length > 1) {
-                     weekSelect.selectedIndex = 1; // Default to first available week
-                     logPublicDebug("Current week not found, selected first available week.");
+                if (!found && weekSelect.options.length > 1) {
+                    weekSelect.selectedIndex = 1;
+                    logPublicDebug("Current week not found, selected first available week.");
                 }
             }
-        } catch(dateError) {
+        } catch (dateError) {
             console.error("Error calculating/selecting current week:", dateError);
         }
     }
-
     function onWeekFilterOptionsFailed(error) {
         hideLoading();
         console.error("Erro na comunicação ao carregar semanas:", error);
         displayMessage('Erro na comunicação com o servidor ao carregar semanas: ' + error.message, 'error');
         populateDropdown('week-filter', [], '-- Erro Semanas --');
     }
-
     function loadPublicSchedules() {
         logPublicDebug("loadPublicSchedules called");
         const weekFilter = document.getElementById('week-filter');
         const allSchedulesContainer = document.getElementById('all-schedules-container');
-
-        displayMessage(''); // Clear previous messages
-
+        displayMessage('');
         if (allSchedulesContainer) {
             allSchedulesContainer.innerHTML = '<p class="info-message">Carregando horários...</p>';
         } else {
-             console.error("Container 'all-schedules-container' not found!");
-             displayMessage("Erro interno: Container principal não encontrado.", "error");
-             return;
+            console.error("Container 'all-schedules-container' not found!");
+            displayMessage("Erro interno: Container principal não encontrado.", "error");
+            return;
         }
-
         const selectedWeek = weekFilter ? weekFilter.value : '';
-
         if (!selectedWeek) {
             logPublicDebug("Validation failed: Week not selected.");
             displayMessage('Por favor, selecione a Semana.', 'error');
             if (allSchedulesContainer) allSchedulesContainer.innerHTML = '<p class="info-message">Selecione a Semana e clique em "Buscar Horários".</p>';
             return;
         }
-
         logPublicDebug(`Fetching public schedules for week: ${selectedWeek}`);
         showLoading();
-
-        // Call the NEW backend function
         google.script.run
             .withSuccessHandler(onPublicSchedulesLoaded)
             .withFailureHandler(onPublicSchedulesLoadFailed)
-            .getPublicScheduleInstances(selectedWeek); // Function needs to be added to Code.gs
+            .getPublicScheduleInstances(selectedWeek);
     }
-
     function onPublicSchedulesLoaded(jsonStringResponse) {
         hideLoading();
         logPublicDebug("onPublicSchedulesLoaded received response.");
         const allSchedulesContainer = document.getElementById('all-schedules-container');
         if (!allSchedulesContainer) { console.error("Container 'all-schedules-container' not found!"); return; }
-        allSchedulesContainer.innerHTML = ''; // Clear loading message
-
+        allSchedulesContainer.innerHTML = '';
         let response;
         try {
             response = JSON.parse(jsonStringResponse);
@@ -249,7 +212,6 @@
             allSchedulesContainer.innerHTML = '<p class="error-message">Erro ao carregar horários.</p>';
             return;
         }
-
         if (!response || !response.success) {
             const errorMessage = (response && response.message) ? response.message : 'Erro desconhecido ao carregar horários públicos.';
             console.error("Falha ao carregar horários públicos:", errorMessage, response);
@@ -257,48 +219,37 @@
             allSchedulesContainer.innerHTML = `<p class="error-message">${errorMessage}</p>`;
             return;
         }
-
         const schedulesByTurma = response.data;
-
         if (!schedulesByTurma || typeof schedulesByTurma !== 'object' || Object.keys(schedulesByTurma).length === 0) {
             logPublicDebug("No schedule data found for any turma.");
             displayMessage(response.message || 'Nenhum horário encontrado para a semana selecionada.', 'info');
             allSchedulesContainer.innerHTML = '<p class="info-message">Nenhum horário encontrado para a semana selecionada.</p>';
             return;
         }
-
         displayMessage(response.message || 'Horários carregados com sucesso.', 'success');
         logPublicDebug(`Rendering schedules for ${Object.keys(schedulesByTurma).length} turmas.`);
-
-        // Sort turmas alphabetically for consistent display order
         const sortedTurmas = Object.keys(schedulesByTurma).sort((a, b) => a.localeCompare(b));
-
-        // Loop through each turma and render its schedule
         sortedTurmas.forEach(turmaName => {
             const turmaSlots = schedulesByTurma[turmaName];
             if (Array.isArray(turmaSlots) && turmaSlots.length > 0) {
-                 logPublicDebug(`Rendering schedule for Turma: ${turmaName} (${turmaSlots.length} slots)`);
-                 const turmaContainer = document.createElement('div');
-                 turmaContainer.classList.add('turma-schedule-container');
-
-                 const title = document.createElement('h3');
-                 title.classList.add('turma-title');
-                 title.textContent = `Turma: ${turmaName}`;
-                 turmaContainer.appendChild(title);
-
-                 const gridContainer = document.createElement('div');
-                 gridContainer.classList.add('schedule-container'); // Reuse class for scrolling
-                 renderPublicScheduleTable(turmaSlots, gridContainer); // Pass the specific container
-                 turmaContainer.appendChild(gridContainer);
-
-                 allSchedulesContainer.appendChild(turmaContainer);
+                logPublicDebug(`Rendering schedule for Turma: ${turmaName} (${turmaSlots.length} slots)`);
+                const turmaContainer = document.createElement('div');
+                turmaContainer.classList.add('turma-schedule-container');
+                const title = document.createElement('h3');
+                title.classList.add('turma-title');
+                title.textContent = `Turma: ${turmaName}`;
+                turmaContainer.appendChild(title);
+                const gridContainer = document.createElement('div');
+                gridContainer.classList.add('schedule-container');
+                renderPublicScheduleTable(turmaSlots, gridContainer);
+                turmaContainer.appendChild(gridContainer);
+                allSchedulesContainer.appendChild(turmaContainer);
             } else {
-                 logPublicDebug(`Skipping empty or invalid slot data for Turma: ${turmaName}`);
+                logPublicDebug(`Skipping empty or invalid slot data for Turma: ${turmaName}`);
             }
         });
-         logPublicDebug("Finished rendering all turma schedules.");
+        logPublicDebug("Finished rendering all turma schedules.");
     }
-
     function onPublicSchedulesLoadFailed(error) {
         hideLoading();
         console.error("Erro na comunicação ao carregar horários públicos:", error);
@@ -308,24 +259,12 @@
             allSchedulesContainer.innerHTML = '<p class="error-message">Erro ao carregar horários.</p>';
         }
     }
-
-    /**
-     * Renders a single schedule table for a specific turma (Read-Only).
-     * Adapted from the main renderScheduleTable, removing clickable logic.
-     */
-    /**
-     * Renders a single schedule table for a specific turma (Read-Only - Public View).
-     * Only shows Fixed slots and Booked Vago slots. Highlights booked slots.
-     * Hides the "(Disponivel)" status text for available Fixed slots.
-     */
     function renderPublicScheduleTable(slots, containerElement) {
         logPublicDebug("renderPublicScheduleTable called");
-        const daysOfWeek = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'/*, 'Domingo'*/];
-        const dayIndexMap = { 'Segunda': 0, 'Terça': 1, 'Quarta': 2, 'Quinta': 3, 'Sexta': 4, 'Sábado': 5/*, 'Domingo': 6*/ };
+        const daysOfWeek = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+        const dayIndexMap = { 'Segunda': 0, 'Terça': 1, 'Quarta': 2, 'Quinta': 3, 'Sexta': 4, 'Sábado': 5 };
         const gridData = {};
         const uniqueHours = new Set();
-
-        // Populate gridData (Backend already filtered)
         slots.forEach(slot => {
             if (slot && slot.diaSemana && slot.horaInicio) {
                 const dayIndex = dayIndexMap[slot.diaSemana];
@@ -336,137 +275,99 @@
                 } else { console.warn("Slot com dia da semana inválido:", slot); }
             } else { console.warn("Slot inválido/incompleto recebido:", slot); }
         });
-
         const sortedHours = Array.from(uniqueHours).sort((a, b) => a.localeCompare(b));
         const table = document.createElement('table');
         table.classList.add('schedule-grid-table');
-
         const thead = table.createTHead();
         const headerRow = thead.insertRow();
         headerRow.insertCell().outerHTML = "<th></th>";
         daysOfWeek.forEach(day => { headerRow.insertCell().outerHTML = `<th>${day}</th>`; });
-
         const tbody = table.createTBody();
         sortedHours.forEach(hour => {
             const row = tbody.insertRow();
             const hourCell = row.insertCell();
             hourCell.textContent = hour;
             hourCell.classList.add('hour-cell');
-
             daysOfWeek.forEach(day => {
                 const dayIndex = dayIndexMap[day];
                 const cell = row.insertCell();
                 cell.classList.add('slot-cell');
                 const slot = gridData[dayIndex] ? gridData[dayIndex][hour] : null;
-
                 if (slot) {
                     let mainContent = '';
                     let cellClasses = [];
-                    let statusToDisplay = slot.statusOcupacao; // Get the status
-
+                    let statusToDisplay = slot.statusOcupacao;
                     const disciplina = slot.disciplinaParaExibir || '';
                     const professor = slot.professorParaExibir || '';
                     const profOriginalBooking = slot.professorOriginalNaReserva || '';
                     const profOriginalInstance = slot.professorPrincipal || '';
                     const firstWordDiscipline = disciplina.split(' ')[0] || 'Aula';
-
-                    // Determine content and styling based on status
                     if (slot.statusOcupacao === STATUS_OCUPACAO.DISPONIVEL) {
-                         // Should only be 'Fixo' based on backend filter
-                         cellClasses.push('slot-available', 'slot-fixo');
-                         mainContent = `${firstWordDiscipline} - ${professor || 'N/D'}`;
-                         // *** CHANGE: Do not display status text for available fixed slots ***
-                         statusToDisplay = null; // Set status to null so it's not passed to formatter
-
+                        cellClasses.push('slot-available', 'slot-fixo');
+                        mainContent = `${firstWordDiscipline} - ${professor || 'N/D'}`;
+                        statusToDisplay = null;
                     } else if (slot.statusOcupacao === STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
-                         cellClasses.push('slot-booked-public', 'slot-reposicao');
-                         mainContent = `${firstWordDiscipline} - ${professor}`;
-                         // Keep statusToDisplay as slot.statusOcupacao
+                        cellClasses.push('slot-booked-public', 'slot-reposicao');
+                        mainContent = `${firstWordDiscipline} - ${professor}`;
                     } else if (slot.statusOcupacao === STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) {
-                         cellClasses.push('slot-booked-public', 'slot-substituicao');
+                        cellClasses.push('slot-booked-public', 'slot-substituicao');
                         let profText = professor;
                         const originalToShow = profOriginalBooking || profOriginalInstance;
                         if (originalToShow && originalToShow !== professor) profText = `${professor} (Orig: ${originalToShow})`;
                         mainContent = `${firstWordDiscipline} - ${profText}`;
-                        // Keep statusToDisplay as slot.statusOcupacao
                     } else {
-                        // Handle unexpected status
                         cellClasses.push('slot-unknown-status');
                         mainContent = `${firstWordDiscipline} - ${professor}`;
                         console.warn("Unexpected slot status found in public view render:", slot.statusOcupacao, slot);
-                        // Keep statusToDisplay as slot.statusOcupacao
                     }
-
                     cell.classList.add(...cellClasses);
-                    // *** CHANGE: Pass the potentially modified statusToDisplay ***
-                    // If statusToDisplay is null, the helper function won't add the status span
                     cell.innerHTML = formatPublicCellContent(mainContent, statusToDisplay);
-
-                    // Tooltip (unchanged)
                     let tooltipText = `Data: ${slot.data}\nHora: ${slot.horaInicio}\nTipo Original: ${slot.tipoOriginal}\nStatus: ${slot.statusOcupacao}`;
-                    // ... (rest of tooltip logic unchanged) ...
-                     if (disciplina) tooltipText += `\nDisciplina: ${disciplina}`;
-                     if (professor) tooltipText += `\nProfessor Atual: ${professor}`;
-                     if (slot.statusOcupacao === 'Substituicao Agendada') {
-                          const originalToShow = profOriginalBooking || profOriginalInstance;
-                          if (originalToShow && originalToShow !== professor) tooltipText += `\nProf. Original: ${originalToShow}`;
-                     } else if (slot.tipoOriginal === 'Fixo' && profOriginalInstance) {
-                          tooltipText += `\nProf. Base: ${profOriginalInstance}`;
-                     }
-                     cell.title = tooltipText;
-
-
+                    if (disciplina) tooltipText += `\nDisciplina: ${disciplina}`;
+                    if (professor) tooltipText += `\nProfessor Atual: ${professor}`;
+                    if (slot.statusOcupacao === 'Substituicao Agendada') {
+                        const originalToShow = profOriginalBooking || profOriginalInstance;
+                        if (originalToShow && originalToShow !== professor) tooltipText += `\nProf. Original: ${originalToShow}`;
+                    } else if (slot.tipoOriginal === 'Fixo' && profOriginalInstance) {
+                        tooltipText += `\nProf. Base: ${profOriginalInstance}`;
+                    }
+                    cell.title = tooltipText;
                 } else {
-                    // No slot data for this cell - mark as empty
                     cell.classList.add('slot-empty');
                 }
-            }); // End days loop
-        }); // End hours loop
-
+            });
+        });
         containerElement.appendChild(table);
         logPublicDebug("Finished rendering single public schedule table.");
     }
-
-     /**
-     * Helper to format cell content with status for the read-only view.
-     * Only adds status span if status is provided and not null/empty.
-     */
     function formatPublicCellContent(mainContent, status) {
-        let statusSpanHtml = ''; // Default to empty
-        if (status && String(status).trim() !== '') { // Check if status is valid
+        let statusSpanHtml = '';
+        if (status && String(status).trim() !== '') {
             const statusText = status.trim();
             let statusClass = 'status-default';
-            if (status === STATUS_OCUPACAO.DISPONIVEL) statusClass = 'status-disponivel'; // Although we hide it, keep class logic
+            if (status === STATUS_OCUPACAO.DISPONIVEL) statusClass = 'status-disponivel';
             else if (status === STATUS_OCUPACAO.REPOSICAO_AGENDADA) statusClass = 'status-reposicao';
             else if (status === STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) statusClass = 'status-substituicao';
             statusSpanHtml = `<span class="slot-status ${statusClass}">(${statusText})</span>`;
         }
-
         if (mainContent && mainContent.trim() !== '') {
             const mainContentDiv = `<div class="slot-main-content">${mainContent.trim()}</div>`;
-            return `${mainContentDiv}${statusSpanHtml}`; // Append status span only if it was generated
+            return `${mainContentDiv}${statusSpanHtml}`;
         } else {
-            return statusSpanHtml; // Return only status span if no main content (or empty if no status either)
+            return statusSpanHtml;
         }
     }
-
-
-    // --- Constants needed by the public renderer ---
     const STATUS_OCUPACAO = Object.freeze({
         DISPONIVEL: 'Disponivel',
         REPOSICAO_AGENDADA: 'Reposicao Agendada',
         SUBSTITUICAO_AGENDADA: 'Substituicao Agendada'
     });
-     const TIPOS_HORARIO = Object.freeze({ // Needed for potential future styling checks
-         FIXO: 'Fixo',
-         VAGO: 'Vago'
-     });
-
-
-    // --- Initialization ---
+    const TIPOS_HORARIO = Object.freeze({
+        FIXO: 'Fixo',
+        VAGO: 'Vago'
+    });
     document.addEventListener('DOMContentLoaded', function () {
         logPublicDebug("PublicView DOM loaded. Loading week filter options.");
-        loadWeekFilterOptions(); // Only load week options initially
+        loadWeekFilterOptions();
     });
-
 </script>

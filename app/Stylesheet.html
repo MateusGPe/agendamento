@@ -1,6 +1,5 @@
-<!-- Stylesheet.html -->
+<!-- PublicViewJavascript.html -->
 <style>
-  /* Base Styles (mostly from original Stylesheet.html) */
   body {
     font-family: 'Roboto', sans-serif;
     margin: 0;
@@ -10,10 +9,8 @@
     font-size: 16px;
     -webkit-text-size-adjust: 100%;
   }
-
   .container {
     max-width: 1100px;
-    /* Adjust max-width as needed */
     min-width: 300px;
     margin: 20px auto;
     background-color: #fff;
@@ -22,62 +19,51 @@
     border-radius: 8px;
     box-sizing: border-box;
   }
-
   h1,
   h2,
   h3 {
     color: #1a73e8;
-    /* Google Blue */
     margin-top: 0;
     margin-bottom: 0.8em;
   }
-
   h1 {
     border-bottom: 1px solid #eee;
     padding-bottom: 0.5em;
     margin-bottom: 1em;
     font-size: 1.8em;
   }
-
   h2 {
     font-size: 1.5em;
   }
-
   h3 {
     font-size: 1.2em;
   }
-
   p {
     line-height: 1.6;
     margin-bottom: 1em;
   }
-
   hr {
     margin: 30px 0;
     border: none;
     border-top: 1px solid #e0e0e0;
   }
-
   a {
     color: #1a73e8;
     text-decoration: none;
     font-weight: 500;
     transition: color 0.2s ease-in-out, text-decoration 0.2s ease-in-out;
   }
-
   a:hover,
   a:focus {
     color: #1558b3;
     text-decoration: underline;
     outline: none;
   }
-
   a:focus-visible {
     outline: 2px solid #1a73e8;
     outline-offset: 2px;
     border-radius: 2px;
   }
-
   button {
     background-color: #1a73e8;
     color: white;
@@ -96,56 +82,41 @@
     text-align: center;
     vertical-align: middle;
   }
-
   button:hover {
     background-color: #1558b3;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   }
-
   button[onclick*="cancelBookingForm"] {
     background-color: #f1f3f4;
-    /* Lighter grey */
     color: #5f6368;
-    /* Darker grey text */
   }
-
   button[onclick*="cancelBookingForm"]:hover {
     background-color: #e8eaed;
-    /* Slightly darker grey on hover */
   }
-
   button:disabled {
     background-color: #e0e0e0;
     color: #a0a0a0;
     cursor: not-allowed;
     box-shadow: none;
   }
-
-  /* Filter Section Styles (from original ScheduleView) */
   .filter-section {
     margin-bottom: 20px;
     padding: 15px;
     border: 1px solid #dadce0;
-    /* Google style border */
     border-radius: 8px;
     background-color: #f8f9fa;
-    /* Light grey background */
   }
-
   .filter-section h3 {
     margin-top: 0;
     margin-bottom: 1em;
   }
-
   .filter-section label {
     display: block;
     margin-bottom: 6px;
     font-weight: 500;
     font-size: 0.9em;
     color: #3c4043;
-    /* Dark grey text */
   }
-
   .filter-section select {
     width: 100%;
     padding: 10px 12px;
@@ -156,44 +127,46 @@
     background-color: #fff;
     font-size: 0.95em;
     height: 40px;
-    /* Consistent height */
     appearance: none;
-    /* Remove default dropdown arrow */
     background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%235f6368%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.4-5.4-12.8z%22%2F%3E%3C%2Fsvg%3E');
     background-repeat: no-repeat;
     background-position: right 12px center;
     background-size: 10px auto;
     padding-right: 35px;
-    /* Space for arrow */
   }
-
   .filter-section select:focus,
   .booking-form select:focus,
   .booking-form input[type="text"]:focus {
     outline: none;
     border-color: #1a73e8;
-    /* Blue border on focus */
     box-shadow: 0 0 0 1px #1a73e8;
-    /* Subtle blue glow */
   }
-
   .filter-section select:disabled {
     background-color: #e8eaed;
-    /* Disabled background */
     cursor: not-allowed;
   }
-
-
-  /* Schedule Grid Styles (from original ScheduleView) */
+  .turma-schedule-container {
+    margin-bottom: 30px;
+    padding-bottom: 15px;
+    border-bottom: 1px dashed #ccc;
+  }
+  .turma-schedule-container:last-child {
+    border-bottom: none;
+  }
+  .turma-title {
+    font-size: 1.4em;
+    color: #1a73e8;
+    margin-bottom: 15px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #eee;
+  }
   .schedule-container {
     margin-top: 20px;
     overflow-x: auto;
-    /* Allow horizontal scroll on small screens */
     border: 1px solid #ddd;
     border-radius: 4px;
     background-color: #fff;
   }
-
   .schedule-container p.info-message,
   .schedule-container p.error-message {
     padding: 25px 20px;
@@ -202,235 +175,144 @@
     font-style: italic;
     font-size: 1em;
   }
-
   .schedule-grid-table {
     width: 100%;
     min-width: 700px;
-    /* Ensure minimum width for layout */
     border-collapse: collapse;
     font-size: 0.85em;
-    /* Slightly smaller font in grid */
     table-layout: fixed;
-    /* Prevent content from stretching columns excessively */
   }
-
   .schedule-grid-table th,
   .schedule-grid-table td {
     border: 1px solid #e0e0e0;
     padding: 6px 8px;
-    /* Adjusted padding */
     text-align: center;
     vertical-align: middle;
-    /* width: 12.5%; Remove fixed width for better flexibility with table-layout: fixed */
     min-width: 80px;
     height: 60px;
-    /* Give cells a minimum height */
     word-wrap: break-word;
-    /* Allow long words to break */
     box-sizing: border-box;
   }
-
   .schedule-grid-table th {
     background-color: #f8f9fa;
-    /* Light grey header */
     color: #3c4043;
     font-weight: 500;
     border-bottom: 2px solid #ddd;
     position: sticky;
-    /* Sticky header */
     top: 0;
     z-index: 3;
-    /* Ensure header is above hour cell */
   }
-
   .schedule-grid-table td {
     background-color: #fff;
     position: relative;
-    /* Needed for absolute positioning of status */
     line-height: 1.3;
   }
-
   .schedule-grid-table tbody tr:nth-child(even) td {
     background-color: #f9f9f9;
-    /* Zebra striping */
   }
-
   .schedule-grid-table td.hour-cell {
     background-color: #e8f0fe;
-    /* Light blue for hour column */
     font-weight: bold;
     color: #1a73e8;
     width: 60px;
-    /* Fixed width for hour column */
     min-width: 50px;
     position: sticky;
-    /* Sticky hour column */
     left: 0;
     z-index: 2;
-    /* Below header, above data cells */
     text-align: center;
     padding: 6px 4px;
-    /* Adjust padding for hour cell */
   }
-
   .schedule-grid-table tbody tr:nth-child(even) td.hour-cell {
     background-color: #d2e3fc;
-    /* Darker blue for even rows */
   }
-
-
-  /* Cell Content and Status Styles */
   .slot-cell {
-    /* Base style for all data cells */
     transition: background-color 0.15s ease-in-out;
   }
-
   .slot-main-content {
     margin-bottom: 1px;
-    /* Space between main content and status */
   }
-
   .slot-status {
     display: block;
-    /* Ensure status is on its own line */
     font-size: 0.85em;
-    /* Smaller font for status */
     font-style: italic;
     color: #5f6368;
-    /* Grey for status text */
     margin-top: auto;
-    /* Push status towards bottom if cell height allows */
   }
-
   .slot-booked-public {
     font-weight: 700;
   }
-
-  /* Status specific text colors inside the span */
   .slot-status.status-disponivel {
     color: #137333;
   }
-
-  /* Green */
   .slot-status.status-reposicao {
     color: #137333;
   }
-
-  /* Green */
   .slot-status.status-substituicao {
     color: #a50e0e;
   }
-
-  /* Red */
   .slot-status.status-default {
     color: #5f6368;
   }
-
-  /* Default grey */
-
-
-  /* Cell Background/Border Styles based on Status/Type */
   .slot-empty {
     background-color: #f8f9fa;
-    /* Very light grey for empty cells */
     color: #adb5bd;
     font-style: italic;
   }
-
   .slot-available.slot-vago {
     background-color: #e6f4ea;
   }
-
-  /* Light green for Available Vago */
   .slot-available.slot-fixo {
     background-color: #e8f0fe;
   }
-
-  /* Light blue for Available Fixo */
   .slot-reposicao {
     background-color: #d4edda;
   }
-
-  /* Slightly darker green for Booked Reposicao */
   .slot-substituicao {
     background-color: #f8d7da;
   }
-
-  /* Light red for Booked Substituicao */
   .slot-unknown-status {
     background-color: #fff3cd;
   }
-
-  /* Light yellow for Unknown */
-
-  /* Clickable and Selected Cell Styles */
   .clickable-slot {
     cursor: pointer;
     font-weight: 500;
-    /* Make clickable text slightly bolder */
   }
-
   .clickable-slot:hover {
     background-color: #fff3cd !important;
-    /* Yellow highlight on hover - use important to override base */
     box-shadow: inset 0 0 0 2px #f79c00;
-    /* Inner border on hover */
   }
-
   .selected-cell {
     outline: 3px solid #1a73e8 !important;
-    /* Thick blue outline */
     outline-offset: -2px;
-    /* Inset outline slightly */
     background-color: #d2e3fc !important;
-    /* Highlight background when selected */
     z-index: 1;
-    /* Bring selected cell slightly forward if needed */
   }
-
-
-  /* Booking Section Styles (from original Index.html) */
   .section {
     margin-top: 30px;
-    /* Space above booking sections */
     margin-bottom: 30px;
     padding-top: 20px;
     border-top: 1px solid #eee;
-    /* Separator line */
   }
-
   .section:last-of-type {
     border-bottom: none;
   }
-
-  /* Style the explanatory paragraphs in booking sections */
   .section>p {
     font-size: 0.95em;
     color: #5f6368;
     margin-bottom: 15px;
   }
-
   .section>p .slot-type-vago {
     color: #137333;
     font-weight: bold;
   }
-
-  /* Green */
   .section>p .slot-type-fixo {
     color: #174ea6;
     font-weight: bold;
   }
-
-  /* Blue */
   .section>p .slot-status-disponivel {
     color: #137333;
     font-weight: bold;
   }
-
-  /* Green */
-
-
-  /* Booking Form Styles */
   .booking-form {
     margin-top: 15px;
     padding: 20px;
@@ -438,13 +320,10 @@
     border-radius: 8px;
     background-color: #f8f9fa;
   }
-
   .booking-form h3 {
     margin-bottom: 1em;
   }
-
   .booking-form p {
-    /* Slot info paragraph */
     margin-bottom: 1.5em;
     font-size: 0.95em;
     color: #5f6368;
@@ -453,16 +332,11 @@
     border-radius: 4px;
     border: 1px solid #e0e0e0;
   }
-
   .booking-form p span {
-    /* The actual slot info text */
     font-weight: 500;
     color: #202124;
-    /* Darker text */
     display: block;
-    /* Ensure it takes full width */
   }
-
   .booking-form label {
     display: block;
     margin-bottom: 6px;
@@ -470,7 +344,6 @@
     font-size: 0.9em;
     color: #3c4043;
   }
-
   .booking-form input[type="text"],
   .booking-form select {
     width: 100%;
@@ -482,41 +355,27 @@
     background-color: #fff;
     font-size: 0.95em;
     height: 40px;
-    /* Consistent height */
   }
-
   .booking-form select {
     appearance: none;
-    /* Remove default arrow */
     background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%235f6368%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.4-5.4-12.8z%22%2F%3E%3C%2Fsvg%3E');
     background-repeat: no-repeat;
     background-position: right 12px center;
     background-size: 10px auto;
     padding-right: 35px;
-    /* Space for arrow */
   }
-
-
-  /* Loading Indicator Styles */
   .loading {
     position: fixed;
-    /* Cover viewport */
     inset: 0;
     background: rgba(255, 255, 255, 0.85);
-    /* Semi-transparent white */
     display: flex;
-    /* Use flexbox for centering */
     justify-content: center;
     align-items: center;
     font-size: 1.5em;
     color: #1a73e8;
-    /* Blue */
     z-index: 1000;
-    /* Ensure it's on top */
   }
-
   .loading::before {
-    /* Spinner element */
     content: '';
     display: block;
     width: 30px;
@@ -524,19 +383,14 @@
     margin-right: 12px;
     border-radius: 50%;
     border: 4px solid #e9ecef;
-    /* Light grey track */
     border-top-color: #1a73e8;
-    /* Blue spinner */
     animation: spinner 0.75s linear infinite;
   }
-
   @keyframes spinner {
     to {
       transform: rotate(360deg);
     }
   }
-
-  /* Message Area Styles */
   .message {
     margin-top: 20px;
     padding: 12px 18px;
@@ -546,59 +400,39 @@
     font-size: 0.95em;
     border: 1px solid transparent;
     display: none;
-    /* Hidden by default, shown by JS */
   }
-
   .message:not(:empty) {
     display: block;
   }
-
-  /* Show if not empty */
   .message.success {
     background-color: #e6f4ea;
-    /* Light green */
     color: #137333;
-    /* Dark green */
     border-color: #a8d5b3;
   }
-
   .message.error {
     background-color: #fce8e6;
-    /* Light red */
     color: #d93025;
-    /* Dark red */
     border-color: #f5b4b0;
   }
-
   .message.info {
     background-color: #e8f0fe;
-    /* Light blue */
     color: #174ea6;
-    /* Dark blue */
     border-color: #a9c5f5;
   }
-
-
-  /* Responsive Styles */
   @media screen and (max-width: 768px) {
     .container {
       padding: 15px 10px;
       margin: 10px auto;
     }
-
     h1 {
       font-size: 1.6em;
     }
-
     h2 {
       font-size: 1.3em;
     }
-
     h3 {
       font-size: 1.1em;
     }
-
-    /* Make filter/booking buttons full width on mobile */
     .filter-section button,
     .booking-form button {
       width: 100%;
@@ -606,46 +440,81 @@
       margin-bottom: 10px;
       box-sizing: border-box;
     }
-
     .booking-form button:last-of-type {
       margin-bottom: 0;
     }
-
-    /* Adjust grid table font size on mobile */
     .schedule-grid-table {
       font-size: 0.75em;
       min-width: unset;
     }
-
-    /* Allow shrinking below 700px */
     .schedule-grid-table th,
     .schedule-grid-table td {
       padding: 4px 5px;
       min-width: 55px;
       height: 50px;
     }
-
-    /* Smaller padding/min-width/height */
     .schedule-grid-table td.hour-cell {
       width: 45px;
       min-width: 40px;
     }
-
-    /* Smaller hour cell */
     .slot-status {
       font-size: 0.8em;
     }
-
-    /* Even smaller status */
-
-
-    /* Inputs and Selects */
     .filter-section select,
     .booking-form input[type="text"],
     .booking-form select {
       font-size: 1em;
     }
-
-    /* Ensure inputs are usable */
+  }
+  .cancel-table-container {
+    margin-top: 20px;
+    max-height: 60vh;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+  }
+  .cancel-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+  }
+  .cancel-table th,
+  .cancel-table td {
+    border: 1px solid #e0e0e0;
+    padding: 8px 10px;
+    text-align: left;
+    vertical-align: middle;
+  }
+  .cancel-table thead th {
+    background-color: #f8f9fa;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    border-bottom: 2px solid #ddd;
+  }
+  .cancel-table tbody tr:nth-child(even) {
+    background-color: #f9f9f9;
+  }
+  .cancel-button {
+    background-color: #dc3545;
+    color: white;
+    padding: 5px 10px;
+    font-size: 0.9em;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+  }
+  .cancel-button:hover {
+    background-color: #c82333;
+  }
+  .cancel-button:disabled {
+    background-color: #e0e0e0;
+    cursor: not-allowed;
+  }
+  .cancelled-row td {
+    text-decoration: line-through;
+    color: #888;
+    background-color: #f1f1f1 !important;
   }
 </style>

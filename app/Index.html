@@ -1,109 +1,79 @@
 <!-- Index.html -->
 <!DOCTYPE html>
 <html>
-
 <head>
   <base target="_top">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <?!= include('Stylesheet'); ?>
 </head>
-
 <body>
   <div class="container">
     <h1>Agendamento e Visualização de Horários</h1>
-
-    <!-- User Info Section (from original Index.html) -->
     <p>Usuário: <a id="user-email" href="#">Carregando...</a> | Papel: <strong id="user-role">Carregando...</strong></p>
     <p>
       <a href="<?= ScriptApp.getService().getUrl() ?>?page=public">Visualizar Agendamentos</a><span> | </span>
       <a href="<?= ScriptApp.getService().getUrl() ?>?page=cancel">Cancelar Agendamentos</a>
     </p>
-
-    <!-- Filter Section (from original ScheduleView.html) -->
     <div class="filter-section">
       <h3>Filtros de Visualização</h3>
       <label for="turma-filter">Turma:</label>
       <select id="turma-filter" required>
         <option value="" disabled selected>-- Carregando Turmas --</option>
       </select>
-
       <label for="week-filter">Semana (começando na Segunda-feira):</label>
       <select id="week-filter" required>
         <option value="" disabled selected>-- Carregando Semanas --</option>
       </select>
-
       <button onclick="loadFilteredSchedule()">Buscar Horário</button>
     </div>
-
     <hr>
-
-    <!-- Schedule Grid Container (from original ScheduleView.html) -->
     <div id="schedule-container" class="schedule-container">
       <p class="info-message">Selecione a Turma e a Semana e clique em "Buscar Horário".</p>
     </div>
-
-    <!-- Loading Indicator and Message Area (Common) -->
-    <div id="loading" class="loading" style="display: none;">Carregando...</div>
+    <div id="loading" class="loading" style="display: none;">Carregando... Isso demora um pouco!!!</div>
     <div id="message" class="message"></div>
-
     <hr>
-
-    <!-- Reposição Section (from original Index.html - Modified) -->
     <div id="reposicao-section" class="section" style="display: none;">
       <h2>Agendar Reposição/Recuperação Paralela</h2>
-      <p>Selecione um horário <span class="slot-type-vago">VAGO</span> e <span class="slot-status-disponivel">DISPONÍVEL</span> na grade acima para agendar uma reposição.</p>
-      <!-- Original button and slots list removed -->
-
+      <p>Selecione um horário <span class="slot-type-vago">VAGO</span> e <span
+          class="slot-status-disponivel">DISPONÍVEL</span> na grade acima para agendar uma reposição.</p>
       <div id="reposicao-form" class="booking-form" style="display: none;">
         <h3>Detalhes da Reposição/Recuperação Paralela</h3>
         <p>Slot Selecionado: <span id="reposicao-selected-slot-info"></span></p>
         <input type="hidden" id="reposicao-selected-slot-id">
-
         <label for="reposicao-professor-real">Professor que irá repor:</label>
         <select id="reposicao-professor-real" required>
           <option value="" disabled selected>-- Carregando Professores --</option>
         </select>
-
         <label for="reposicao-disciplina">Disciplina da Reposição:</label>
         <select id="reposicao-disciplina" required>
           <option value="" disabled selected>-- Carregando Disciplinas --</option>
         </select>
-
         <button onclick="bookSlot('Reposicao')">Confirmar Agendamento de Reposição/Recuperação</button>
         <button type="button" onclick="cancelBookingForm('Reposicao')">Cancelar</button>
       </div>
     </div>
-
-    <!-- Substituição Section (from original Index.html - Modified) -->
     <div id="substituicao-section" class="section" style="display: none;">
       <h2>Agendar Substituição</h2>
-      <p>Selecione um horário <span class="slot-type-fixo">FIXO</span> e <span class="slot-status-disponivel">DISPONÍVEL</span> na grade acima para agendar uma substituição.</p>
-      <!-- Original button and slots list removed -->
-
+      <p>Selecione um horário <span class="slot-type-fixo">FIXO</span> e <span
+          class="slot-status-disponivel">DISPONÍVEL</span> na grade acima para agendar uma substituição.</p>
       <div id="substituicao-form" class="booking-form" style="display: none;">
         <h3>Detalhes da Substituição</h3>
         <p>Slot Selecionado: <span id="substituicao-selected-slot-info"></span></p>
         <input type="hidden" id="substituicao-selected-slot-id">
-
         <label for="substituicao-professor-real">Professor Substituto:</label>
         <select id="substituicao-professor-real" required>
           <option value="" disabled selected>-- Carregando Professores --</option>
         </select>
-
         <label for="substituicao-disciplina">Disciplina da Substituição:</label>
         <select id="substituicao-disciplina" required>
           <option value="" disabled selected>-- Carregando Disciplinas --</option>
         </select>
-
         <button onclick="bookSlot('Substituicao')">Confirmar Agendamento de Substituição</button>
         <button type="button" onclick="cancelBookingForm('Substituicao')">Cancelar</button>
       </div>
     </div>
-
-  </div> <!-- End Container -->
-
-  <!-- Include the merged Javascript -->
+  </div>
   <?!= include('Javascript'); ?>
 </body>
-
 </html>
