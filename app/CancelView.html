@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base target="_top">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Include the COMMON Stylesheet -->
+    <?!= include('Stylesheet'); ?>
+    <style>
+        /* Specific styles for cancellation view */
+        .cancel-table-container {
+            margin-top: 20px;
+            max-height: 60vh; /* Limit height and add scroll */
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .cancel-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9em;
+        }
+        .cancel-table th,
+        .cancel-table td {
+            border: 1px solid #e0e0e0;
+            padding: 8px 10px;
+            text-align: left;
+            vertical-align: middle;
+        }
+        .cancel-table thead th {
+            background-color: #f8f9fa;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            border-bottom: 2px solid #ddd;
+        }
+        .cancel-table tbody tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+         /* Style for cancel button */
+        .cancel-button {
+            background-color: #dc3545; /* Red */
+            color: white;
+            padding: 5px 10px;
+            font-size: 0.9em;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+        .cancel-button:hover {
+            background-color: #c82333; /* Darker red */
+        }
+        .cancel-button:disabled {
+             background-color: #e0e0e0;
+             cursor: not-allowed;
+        }
+        .cancelled-row td {
+            text-decoration: line-through;
+            color: #888;
+            background-color: #f1f1f1 !important; /* Override zebra striping */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Cancelar Reservas Agendadas</h1>
+        <p>Esta página permite que administradores visualizem e cancelem reservas futuras que ainda estão agendadas.</p>
+        <p><a href="<?= ScriptApp.getService().getUrl() ?>">← Voltar para Agendamento Principal</a></p>
+
+        <button id="load-bookings-btn" onclick="loadCancellableBookings()">Carregar Reservas Agendadas</button>
+
+        <div id="cancel-list-container" class="cancel-table-container" style="display: none;">
+            <table class="cancel-table">
+                <thead>
+                    <tr>
+                        <th>ID Reserva</th>
+                        <th>Tipo</th>
+                        <th>Data</th>
+                        <th>Hora</th>
+                        <th>Turma</th>
+                        <th>Disciplina</th>
+                        <th>Professor</th>
+                        <th>Prof. Original</th>
+                        <th>Agendado Por</th>
+                        <th>Ação</th>
+                    </tr>
+                </thead>
+                <tbody id="bookings-tbody">
+                    <!-- Booking rows will be added here -->
+                </tbody>
+            </table>
+        </div>
+        <p id="no-bookings-message" class="info-message" style="display: none; margin-top: 20px;">Nenhuma reserva agendada futura encontrada.</p>
+
+        <!-- Loading Indicator and Message Area -->
+        <div id="loading" class="loading" style="display: none;">Carregando...</div>
+        <div id="message" class="message"></div>
+
+    </div> <!-- End Container -->
+
+    <!-- Include the NEW Javascript for this page -->
+    <?!= include('CancelViewJavascript'); ?>
+</body>
+</html>

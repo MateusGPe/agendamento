@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base target="_top">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Include the SAME Stylesheet as the main app for consistency -->
+    <?!= include('Stylesheet'); ?>
+    <style>
+        /* Add specific styles for the public view if needed */
+        .turma-schedule-container {
+            margin-bottom: 30px; /* Space between turma tables */
+            padding-bottom: 15px;
+            border-bottom: 1px dashed #ccc;
+        }
+        .turma-schedule-container:last-child {
+            border-bottom: none;
+        }
+        .turma-title {
+            font-size: 1.4em;
+            color: #1a73e8;
+            margin-bottom: 15px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        /* Ensure grid table scrolls within its container if too wide */
+         .schedule-container {
+            overflow-x: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #fff;
+            margin-top: 0; /* Remove margin from main container */
+         }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Visualização Pública de Horários</h1>
+        <p>Selecione a semana para visualizar os horários de todas as turmas.</p>
+
+        <!-- Filter Section (Week Only) -->
+        <div class="filter-section">
+            <h3>Filtro de Visualização</h3>
+            <label for="week-filter">Semana (começando na Segunda-feira UTC):</label>
+            <select id="week-filter" required>
+                <option value="" disabled selected>-- Carregando Semanas --</option>
+            </select>
+            <button onclick="loadPublicSchedules()">Buscar Horários</button>
+        </div>
+
+        <hr>
+
+        <!-- Container for all turma schedules -->
+        <div id="all-schedules-container">
+            <!-- Schedule tables will be rendered here by JavaScript -->
+            <p class="info-message">Selecione a Semana e clique em "Buscar Horários".</p>
+        </div>
+
+        <!-- Loading Indicator and Message Area -->
+        <div id="loading" class="loading" style="display: none;">Carregando...</div>
+        <div id="message" class="message"></div>
+
+    </div> <!-- End Container -->
+
+    <!-- Include the NEW Javascript for this page -->
+    <?!= include('PublicViewJavascript'); ?>
+</body>
+</html>

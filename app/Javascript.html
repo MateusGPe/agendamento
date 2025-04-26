@@ -1,517 +1,1166 @@
 <!-- Javascript.html -->
 <script>
-    function onBackendResponse(jsonStringResponse) {
-        hideLoading();
-        const messageDiv = document.getElementById("message");
-        messageDiv.textContent = "";
-        messageDiv.className = "message";
+    // ==========================================================================
+    //                            DEBUG Configuration
+    // ==========================================================================
+    const DEBUG_MODE = true; // Set to true to enable console logs, false to disable
 
-        let response;
-        try {
-            response = JSON.parse(jsonStringResponse);
-            console.log("Parsed backend response:", response);
-        } catch (e) {
-            console.error(
-                "Erro ao parsear resposta JSON do backend:",
-                e,
-                jsonStringResponse
-            );
-            messageDiv.textContent = "Erro ao processar a resposta do servidor.";
-            messageDiv.className = "message error";
-            return;
-        }
-
-        if (!response || !response.success) {
-            const errorMessage =
-                response && response.message
-                    ? response.message
-                    : "Ocorreu um erro desconhecido.";
-            console.error("Backend operation failed:", errorMessage, response);
-            messageDiv.textContent = errorMessage;
-            messageDiv.className = "message error";
-        } else {
-            messageDiv.textContent =
-                response.message || "Operação concluída com sucesso.";
-            messageDiv.className = "message success";
-
-            document.getElementById("reposicao-form").style.display = "none";
-            document.getElementById("substituicao-form").style.display = "none";
+    /**
+     * Helper function for logging debug messages.
+     * Only logs if DEBUG_MODE is true.
+     * @param {...any} args Arguments to pass to console.log
+     */
+    function logDebug(...args) {
+        if (DEBUG_MODE) {
+            console.log("[DEBUG]", ...args);
         }
     }
+    // ==========================================================================
 
-    function onSlotsLoaded(jsonStringResponse, type) {
-        console.log("onSlotsLoaded chamada para tipo:", type);
-        console.log("Raw JSON string response:", jsonStringResponse); // Loga a string recebida
+    // --- Global Variable ---
+    let currentUserRole = null; // Store user role globally after fetch
 
-        hideLoading();
-
-        const slotsContainer = document.getElementById(type.toLowerCase() + '-slots'); // Container div
-        const messageDiv = document.getElementById('message');
-        messageDiv.textContent = '';
-        messageDiv.className = 'message';
-
-        if (!slotsContainer) {
-            console.error("Container de slots não encontrado para tipo:", type);
-            messageDiv.textContent = 'Erro interno: Container de exibição de horários não encontrado.';
-            messageDiv.className = 'message error';
-            return;
-        }
-        slotsContainer.innerHTML = ''; // Limpa o container
-
-        let response;
-        try {
-            response = JSON.parse(jsonStringResponse);
-            console.log("Parsed response data:", response);
-        } catch (e) {
-            console.error("Erro ao parsear JSON de slots:", e, jsonStringResponse);
-            messageDiv.textContent = 'Erro ao processar dados de horários recebidos.';
-            messageDiv.className = 'message error';
-            slotsContainer.innerHTML = '<p class="error-message">Erro ao carregar horários.</p>'; // Mensagem dentro do container
-            return; // Sai se não conseguir parsear
-        }
-        // --- Fim Parse ---
-
-
-        if (!response || !response.success) {
-            // Se a resposta parseada for nula ou não indicar sucesso (captura erros do backend também)
-            const errorMessage = (response && response.message) ? response.message : 'Erro desconhecido ao carregar horários.';
-            console.error("Falha ao carregar slots:", errorMessage, response);
-            messageDiv.textContent = errorMessage;
-            messageDiv.className = 'message error';
-            slotsContainer.innerHTML = '<p class="error-message">' + errorMessage + '</p>';
-            return;
-        }
-
-        const slots = response.data; // ACESSA O ARRAY AQUI!
-
-        // Agora verifica se o array de dados está vazio (verificação mais robusta)
-        if (!Array.isArray(slots) || slots.length === 0) { // Verifica se é array e se está vazio
-            const infoMessage = response.message || `Nenhum horário disponível encontrado para ${type.toLowerCase()}.`;
-            messageDiv.textContent = infoMessage; // Mensagem de sucesso mas lista vazia
-            messageDiv.className = 'message success'; // Indica que a chamada foi um sucesso, mas a lista está vazia
-            slotsContainer.innerHTML = '<p class="info-message">Nenhum horário disponível encontrado.</p>'; // Mensagem dentro do container
-            console.log("Slots array is empty or not array:", slots);
-            return;
-        }
-
-        // Mensagem de sucesso será definida após criar a tabela
-
-        // --- Criação da Tabela ---
-        const table = document.createElement('table');
-        table.classList.add('slots-table'); // Adiciona classe para estilização
-
-        // Cabeçalho da Tabela
-        const thead = table.createTHead();
-        const headerRow = thead.insertRow();
-        // *** IMPORTANTE: Mantenha a ordem e texto exatos para os data-labels ***
-        const headers = ['Data', 'Hora', 'Dia', 'Turma', 'Professor', 'Tipo', 'Status'];
-        headers.forEach(text => {
-            const th = document.createElement('th');
-            th.textContent = text;
-            headerRow.appendChild(th);
-        });
-
-        // Corpo da Tabela
-        const tbody = table.createTBody();
-
-        slots.forEach(slot => {
-            // Validação básica para garantir que o slot tem os campos mínimos necessários
-            if (slot && slot.idInstancia && slot.data && slot.horaInicio && slot.diaSemana && slot.turma && slot.tipoOriginal && slot.statusOcupacao && slot.hasOwnProperty('professorPrincipal')) {
-                const row = tbody.insertRow();
-                row.classList.add('slot-row'); // Classe para a linha
-                row.setAttribute('data-id-instancia', slot.idInstancia);
-                row.setAttribute('data-type', type);
-
-                // Cria string de informação combinada para passar ao selectSlot e para acessibilidade/tooltip (opcional)
-                let slotInfoText = `${slot.data} ${slot.horaInicio} (${slot.diaSemana}) - Turma: ${slot.turma}`;
-                let professorDisplay = '-'; // Padrão se não for Fixo ou não tiver professor
-                if (slot.tipoOriginal === 'Fixo' && slot.professorPrincipal && slot.professorPrincipal !== '') {
-                    slotInfoText += ` - Prof: ${slot.professorPrincipal}`;
-                    professorDisplay = slot.professorPrincipal;
-                }
-                slotInfoText += ` - Tipo: ${slot.tipoOriginal}, Status: ${slot.statusOcupacao}`;
-
-                // Define o evento de clique para a linha inteira
-                row.onclick = () => selectSlot(slot.idInstancia, type, slotInfoText); // Atualiza info na seleção
-
-                // Cria e popula as células (td) E ADICIONA DATA-LABEL
-                const cellData = row.insertCell();
-                cellData.textContent = slot.data;
-                cellData.setAttribute('data-label', headers[0]); // Data
-
-                const cellHora = row.insertCell();
-                cellHora.textContent = slot.horaInicio;
-                cellHora.setAttribute('data-label', headers[1]); // Hora
-
-                const cellDia = row.insertCell();
-                cellDia.textContent = slot.diaSemana;
-                cellDia.setAttribute('data-label', headers[2]); // Dia
-
-                const cellTurma = row.insertCell();
-                cellTurma.textContent = slot.turma;
-                cellTurma.setAttribute('data-label', headers[3]); // Turma
-
-                const cellProfessor = row.insertCell();
-                cellProfessor.textContent = professorDisplay; // Usa a variável definida acima
-                cellProfessor.setAttribute('data-label', headers[4]); // Professor
-
-                const cellTipo = row.insertCell();
-                cellTipo.textContent = slot.tipoOriginal;
-                cellTipo.setAttribute('data-label', headers[5]); // Tipo
-
-                const cellStatus = row.insertCell();
-                cellStatus.textContent = slot.statusOcupacao;
-                cellStatus.setAttribute('data-label', headers[6]); // Status
-
-            } else {
-                console.warn("Slot inválido encontrado nos dados recebidos (faltando campos?):", slot);
-            }
-        });
-
-        slotsContainer.appendChild(table); // Adiciona a tabela completa ao container
-
-        // Mensagem de sucesso apenas se a tabela foi criada e populada
-        messageDiv.textContent = response.message || 'Horários carregados com sucesso.';
-        messageDiv.className = 'message success';
-    }
-
+    // --- Loading and Message Display ---
     function showLoading() {
+        logDebug("showLoading called");
         const loadingDiv = document.getElementById("loading");
-        if (loadingDiv) loadingDiv.style.display = "flex";
+        if (loadingDiv) {
+            loadingDiv.style.display = "flex";
+        } else {
+            console.warn("Element with ID 'loading' not found.");
+        }
         const messageDiv = document.getElementById("message");
         if (messageDiv) {
             messageDiv.textContent = "";
             messageDiv.className = "message";
+            messageDiv.style.display = 'none'; // Ensure it's hidden initially
+        } else {
+            console.warn("Element with ID 'message' not found.");
         }
+        // *** FIX: Removed calls to cancelBookingForm from here ***
+        // logDebug("showLoading: Hiding booking forms."); // No longer doing this automatically here
+        // cancelBookingForm('Reposicao');
+        // cancelBookingForm('Substituicao');
     }
 
     function hideLoading() {
+        logDebug("hideLoading called");
         const loadingDiv = document.getElementById("loading");
-        if (loadingDiv) loadingDiv.style.display = "none";
-    }
-
-    function loadAvailableSlots(type) {
-        showLoading();
-        // Limpa formulários e slots anteriores ao buscar novos
-        const reposicaoForm = document.getElementById('reposicao-form');
-        const substituicaoForm = document.getElementById('substituicao-form');
-        const reposicaoSlots = document.getElementById('reposicao-slots');
-        const substituicaoSlots = document.getElementById('substituicao-slots');
-
-        if (reposicaoForm) reposicaoForm.style.display = 'none';
-        if (substituicaoForm) substituicaoForm.style.display = 'none';
-        if (reposicaoSlots) reposicaoSlots.innerHTML = ''; // Limpa container
-        if (substituicaoSlots) substituicaoSlots.innerHTML = ''; // Limpa container
-
-
-        google.script.run
-            .withSuccessHandler(responseString => onSlotsLoaded(responseString, type))
-            .withFailureHandler(error => {
-                hideLoading();
-                const messageDiv = document.getElementById('message');
-                messageDiv.textContent = 'Erro na comunicação com o servidor: ' + error.message;
-                messageDiv.className = 'message error';
-                // Limpar a lista de slots também em caso de falha completa na comunicação
-                const slotsDiv = document.getElementById(type.toLowerCase() + '-slots');
-                if (slotsDiv) slotsDiv.innerHTML = '<p class="error-message">Erro ao carregar horários.</p>'; // Mensagem dentro do container
-            })
-            .getAvailableSlots(type);
-    }
-
-    // Seleciona um slot (linha da tabela) e mostra o formulário de reserva (sem mudanças aqui)
-    function selectSlot(idInstancia, type, slotInfo) {
-        // Remove a classe 'selected' de todas as linhas em AMBAS as tabelas (se existirem)
-        document.querySelectorAll('.slots-table tbody tr.selected').forEach(item => item.classList.remove('selected'));
-
-        // Adiciona a classe 'selected' à linha clicada
-        const selectedRow = document.querySelector(`.slots-table tbody tr[data-id-instancia="${idInstancia}"][data-type="${type}"]`);
-        if (selectedRow) {
-            selectedRow.classList.add('selected');
+        if (loadingDiv) {
+            loadingDiv.style.display = "none";
+        } else {
+            console.warn("Element with ID 'loading' not found.");
         }
-
-        const formDiv = document.getElementById(type.toLowerCase() + '-form');
-        const slotIdInput = document.getElementById(type.toLowerCase() + '-selected-slot-id');
-        const slotInfoSpan = document.getElementById(type.toLowerCase() + '-selected-slot-info');
-
-        if (slotIdInput) slotIdInput.value = idInstancia;
-        if (slotInfoSpan) slotInfoSpan.textContent = slotInfo; // slotInfo já inclui a Turma e Prof Principal (se fixo)
-
-        // Resetar campos do formulário e definir required (sem mudanças aqui)
-        if (type === 'Reposicao') {
-            const alunoInput = document.getElementById('reposicao-aluno');
-            const professorSelect = document.getElementById('reposicao-professor-real');
-            const disciplinaSelect = document.getElementById('reposicao-disciplina');
-
-            if (alunoInput) { alunoInput.value = ''; alunoInput.required = false; }
-            if (professorSelect) { professorSelect.value = ''; professorSelect.required = true; }
-            if (disciplinaSelect) { disciplinaSelect.value = ''; disciplinaSelect.required = true; }
-
-        } else if (type === 'Substituicao') {
-            const realSelect = document.getElementById('substituicao-professor-real');
-            const disciplinaSelect = document.getElementById('substituicao-disciplina');
-
-            if (realSelect) { realSelect.value = ''; realSelect.required = true; }
-            if (disciplinaSelect) { disciplinaSelect.value = ''; disciplinaSelect.required = true; }
-        }
-
-        if (formDiv) formDiv.style.display = 'block';
-        document.getElementById('message').textContent = '';
-        document.getElementById('message').className = 'message';
-
     }
 
-    // Cancela a exibição do formulário de reserva (sem mudanças aqui)
-    function cancelBookingForm(type) {
-        const formDiv = document.getElementById(type.toLowerCase() + '-form');
-        if (formDiv) formDiv.style.display = 'none';
-        // Remove a classe 'selected' de todas as linhas da tabela relevante
-        document.querySelectorAll(`#${type.toLowerCase()}-slots .slots-table tbody tr.selected`).forEach(item => item.classList.remove('selected'));
-        document.getElementById('message').textContent = '';
-        document.getElementById('message').className = 'message';
-    }
-
-
-    // Envia os detalhes da reserva para o backend (sem mudanças aqui)
-    function bookSlot(type) {
-        showLoading();
-        const slotIdInput = document.getElementById(type.toLowerCase() + '-selected-slot-id');
-        const slotId = slotIdInput ? slotIdInput.value : null;
-
-        const bookingDetails = {
-            idInstancia: slotId,
-            tipoReserva: type
-        };
-
-        if (type === 'Reposicao') {
-            const professorSelect = document.getElementById('reposicao-professor-real');
-            const disciplinaSelect = document.getElementById('reposicao-disciplina');
-
-            bookingDetails.professorReal = professorSelect ? professorSelect.value : '';
-            bookingDetails.disciplinaReal = disciplinaSelect ? disciplinaSelect.value : '';
-
-            if (!bookingDetails.professorReal || bookingDetails.professorReal === '' || !bookingDetails.disciplinaReal || bookingDetails.disciplinaReal === '') {
-                hideLoading();
-                const messageDiv = document.getElementById('message');
-                messageDiv.textContent = 'Por favor, preencha todos os campos obrigatórios para reposição (Professor, Disciplina).';
-                messageDiv.className = 'message error';
-                return;
-            }
-        } else if (type === 'Substituicao') {
-            const realSelect = document.getElementById('substituicao-professor-real');
-            const disciplinaSelect = document.getElementById('substituicao-disciplina');
-
-            bookingDetails.professorReal = realSelect ? realSelect.value : '';
-            bookingDetails.disciplinaReal = disciplinaSelect ? disciplinaSelect.value : '';
-
-            if (!bookingDetails.professorReal || bookingDetails.professorReal === '' || !bookingDetails.disciplinaReal || bookingDetails.disciplinaReal === '') {
-                hideLoading();
-                const messageDiv = document.getElementById('message');
-                messageDiv.textContent = 'Por favor, preencha todos os campos obrigatórios para substituição (Professor Substituto, Disciplina).';
-                messageDiv.className = 'message error';
-                return;
+    function displayMessage(text, type = 'info') {
+        const messageDiv = document.getElementById("message");
+        logDebug(`displayMessage called with text: "${text}", type: "${type}"`);
+        if (messageDiv) {
+            messageDiv.textContent = text;
+            messageDiv.className = "message " + type;
+            // Show only if text is not empty
+            const show = (text && String(text).trim() !== '');
+            messageDiv.style.display = show ? 'block' : 'none';
+            logDebug(`Message div display set to: ${messageDiv.style.display}`);
+            // Scroll to message if it's an error or success and is being shown
+            if (show && (type === 'error' || type === 'success')) {
+                logDebug("Scrolling message into view.");
+                try {
+                     messageDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } catch (scrollError) {
+                     console.warn("Scrolling message into view failed:", scrollError);
+                     // Fallback scrolling
+                     messageDiv.scrollIntoView();
+                }
             }
         } else {
-            hideLoading();
-            const messageDiv = document.getElementById('message');
-            messageDiv.textContent = 'Tipo de agendamento desconhecido.';
-            messageDiv.className = 'message error';
-            return;
+            console.warn("Element with ID 'message' not found.");
         }
-
-        const jsonBookingDetailsString = JSON.stringify(bookingDetails);
-        console.log("Sending booking details as JSON:", jsonBookingDetailsString);
-
-
-        google.script.run
-            .withSuccessHandler(onBackendResponse)
-            .withFailureHandler(error => {
-                hideLoading();
-                const messageDiv = document.getElementById('message');
-                messageDiv.textContent = 'Erro na comunicação ao agendar: ' + error.message;
-                messageDiv.className = 'message error';
-            })
-            .bookSlot(jsonBookingDetailsString);
     }
 
-    // --- Função auxiliar para popular um dropdown (select) --- (sem mudanças aqui)
-    function populateDropdown(selectId, optionsArray) {
+    // --- Dropdown Population ---
+    function populateDropdown(selectId, optionsArray, defaultText = "-- Selecione --") {
+        logDebug(`populateDropdown called for ID: '${selectId}', Options count: ${Array.isArray(optionsArray) ? optionsArray.length : 'N/A'}, Default text: '${defaultText}'`);
         const selectElement = document.getElementById(selectId);
         if (!selectElement) {
-            console.warn("Dropdown com ID '" + selectId + "' não encontrado.");
+            console.warn(`Dropdown com ID '${selectId}' não encontrado.`);
             return;
         }
 
+        // Clear existing options except the potential placeholder
+        let placeholderFound = false;
         for (let i = selectElement.options.length - 1; i >= 0; i--) {
-            if (selectElement.options[i].value !== "") {
-                selectElement.remove(i);
-            }
-        }
-        if (selectElement.options.length === 0 || selectElement.options[0].value !== "") {
-            const defaultOption = document.createElement('option');
-            defaultOption.value = "";
-            defaultOption.textContent = "-- Selecione --";
-            defaultOption.disabled = true;
-            defaultOption.selected = true;
-            selectElement.insertBefore(defaultOption, selectElement.firstChild);
-        } else {
-            selectElement.selectedIndex = 0;
+             if (selectElement.options[i].value === "") { // Check if it's the placeholder
+                placeholderFound = true;
+                logDebug(`Placeholder found in '${selectId}'. Keeping it.`);
+                selectElement.options[i].textContent = defaultText; // Update text just in case
+                selectElement.options[i].disabled = true;
+                selectElement.options[i].selected = true;
+             } else {
+                 selectElement.remove(i); // Remove non-placeholder options
+             }
         }
 
+        // Ensure a placeholder exists or add one if none was found
+        if (!placeholderFound) {
+             logDebug(`No placeholder found in '${selectId}'. Adding one.`);
+             const defaultOption = document.createElement('option');
+             defaultOption.value = "";
+             defaultOption.textContent = defaultText;
+             defaultOption.disabled = true;
+             defaultOption.selected = true; // Select it by default
+             // Insert before the first option if one exists, otherwise append
+             if(selectElement.firstChild) {
+                 selectElement.insertBefore(defaultOption, selectElement.firstChild);
+             } else {
+                 selectElement.appendChild(defaultOption);
+             }
+        }
+        selectElement.selectedIndex = 0; // Force selection to the first option (placeholder)
+
+
+        // Populate with new options
+        let addedCount = 0;
         if (optionsArray && Array.isArray(optionsArray)) {
-            optionsArray.forEach(optionValue => {
-                if (optionValue && optionValue.trim() !== '') {
+            optionsArray.forEach((optionItem, index) => {
+                // Handle both simple arrays and arrays of {value, text} objects
+                const value = typeof optionItem === 'object' && optionItem !== null && optionItem.hasOwnProperty('value') ? String(optionItem.value).trim() : String(optionItem).trim();
+                const text = typeof optionItem === 'object' && optionItem !== null && optionItem.hasOwnProperty('text') ? String(optionItem.text).trim() : value;
+
+                if (value !== '') {
                     const option = document.createElement('option');
-                    option.value = optionValue;
-                    option.textContent = optionValue;
+                    option.value = value;
+                    option.textContent = text;
                     selectElement.appendChild(option);
+                    addedCount++;
+                    // logDebug(`Added option ${index}: value='${value}', text='${text}'`); // Can be too verbose
+                } else {
+                    logDebug(`Skipped empty option at index ${index}`);
                 }
             });
         }
-        console.log("Dropdown '" + selectId + "' populado com " + (optionsArray ? optionsArray.length : 0) + " opções (além da padrão).");
+        selectElement.disabled = false; // Enable the dropdown after populating
+        logDebug(`Finished populating '${selectId}'. Added ${addedCount} options. Total options (incl. placeholder): ${selectElement.options.length}`);
 
-        if (selectElement.options.length > 1 && selectElement.options[1] && selectElement.options[1].textContent.startsWith("-- Carregando ")) {
-            selectElement.remove(1);
-        }
-        if (selectElement.selectedIndex === -1 || selectElement.selectedIndex === 1 && selectElement.options[1].textContent.startsWith("-- Carregando ")) {
-            selectElement.selectedIndex = 0;
+        // Ensure the placeholder is selected if no other option was pre-selected
+        if (selectElement.selectedIndex === -1 || selectElement.selectedIndex === 0 ) { // Check if placeholder is selected or nothing
+             selectElement.selectedIndex = 0; // Ensure placeholder selected if nothing else is relevant
+             logDebug(`Placeholder remains selected for '${selectId}'.`);
         }
     }
 
 
-    // Inicialização - Carrega informações essenciais ao carregar a página (sem mudanças aqui)
-    document.addEventListener('DOMContentLoaded', function () {
-        console.log("DOM completamente carregado. Iniciando aplicação.");
+    // --- Date Formatting ---
+    function formatYYYYMMDDToDDMMYYYY(dateString) {
+        // logDebug(`formatYYYYMMDDToDDMMYYYY called with: '${dateString}'`); // Can be noisy
+        if (!dateString || typeof dateString !== 'string') {
+            logDebug("formatYYYYMMDDToDDMMYYYY: Input is not a valid string, returning original.");
+            return dateString;
+        }
+        const parts = dateString.split('-');
+        if (parts.length === 3) {
+            // Basic check for YYYY-MM-DD format
+            if (!/^\d{4}$/.test(parts[0]) || !/^\d{2}$/.test(parts[1]) || !/^\d{2}$/.test(parts[2])) {
+                logDebug("formatYYYYMMDDToDDMMYYYY: Input does not match YYYY-MM-DD pattern, returning original.");
+                return dateString; // Not in expected format
+            }
+            const year = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10); // 1-12
+            const day = parseInt(parts[2], 10);
+
+            // Basic validation of date components
+            if (year > 1000 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+                 // Check if the date is valid (e.g., handles Feb 30) using Date object
+                 const dateObj = new Date(year, month - 1, day); // Month is 0-indexed
+                 if (!isNaN(dateObj.getTime()) && dateObj.getFullYear() === year && (dateObj.getMonth() + 1) === month && dateObj.getDate() === day) {
+                     const formattedDay = String(day).padStart(2, '0');
+                     const formattedMonth = String(month).padStart(2, '0');
+                     const result = `${formattedDay}/${formattedMonth}/${year}`;
+                     // logDebug(`formatYYYYMMDDToDDMMYYYY: Formatted successfully to: '${result}'`);
+                     return result;
+                 } else {
+                     logDebug(`formatYYYYMMDDToDDMMYYYY: Date object validation failed for Y=${year}, M=${month}, D=${day}. Returning original.`);
+                     return dateString; // Date is invalid (e.g., Feb 30)
+                 }
+            } else {
+                logDebug(`formatYYYYMMDDToDDMMYYYY: Date components out of basic range (Y=${year}, M=${month}, D=${day}). Returning original.`);
+                return dateString; // Components out of reasonable range
+            }
+        }
+        logDebug("formatYYYYMMDDToDDMMYYYY: Input does not have 3 parts separated by '-', returning original.");
+        return dateString; // Return original if format is wrong
+    }
+
+
+    // --- Filter Loading ---
+    function loadFilterOptions() {
+        logDebug("loadFilterOptions called");
+        // No need for showLoading() here as it's part of the initial page load
+        google.script.run
+            .withSuccessHandler(onFilterOptionsLoaded)
+            .withFailureHandler(onFilterOptionsFailed)
+            .getScheduleViewFilters();
+    }
+
+    function onFilterOptionsLoaded(jsonStringResponse) {
+        logDebug("onFilterOptionsLoaded called with response string (length):", jsonStringResponse?.length);
+        // No need for hideLoading() here
+        let response;
+        try {
+            if (!jsonStringResponse) throw new Error("Response string is empty or null.");
+            response = JSON.parse(jsonStringResponse);
+            logDebug("Filter options response parsed successfully:", response);
+        } catch (e) {
+            console.error("Erro ao parsear JSON de filtros:", e, jsonStringResponse);
+            displayMessage('Erro ao processar filtros de horários.', 'error');
+            populateDropdown('turma-filter', [], '-- Erro Turmas --');
+            populateDropdown('week-filter', [], '-- Erro Semanas --');
+            return;
+        }
+
+        if (!response || !response.success) {
+            const errorMessage = (response && response.message) ? response.message : 'Erro desconhecido ao carregar filtros.';
+            console.error("Falha ao carregar filtros:", errorMessage, response);
+            displayMessage(errorMessage, 'error');
+            populateDropdown('turma-filter', [], '-- Erro Turmas --');
+            populateDropdown('week-filter', [], '-- Erro Semanas --');
+            return;
+        }
+
+        const data = response.data;
+        if (data && Array.isArray(data.turmas) && Array.isArray(data.weekStartDates)) {
+            logDebug("Populating Turma filter dropdown.");
+            populateDropdown('turma-filter', data.turmas, '-- Selecione a Turma --');
+
+            logDebug("Processing week start dates for dropdown.");
+            const weeksForDropdown = data.weekStartDates.map(dateString => {
+                const formattedDate = formatYYYYMMDDToDDMMYYYY(dateString);
+                // Check if formatting actually changed it, otherwise use original
+                const displayText = (formattedDate !== dateString) ? `Semana de ${formattedDate}` : dateString;
+                 return { value: dateString, text: displayText };
+            }).filter(item => item.value); // Filter out potential empty values
+            logDebug(`Processed ${weeksForDropdown.length} weeks for dropdown.`);
+
+            logDebug("Populating Week filter dropdown.");
+            populateDropdown('week-filter', weeksForDropdown, '-- Selecione a Semana --');
+            // Don't clear messages here, keep "Filtros carregados." or any error messages
+
+            // --- Auto-select current week ---
+            try {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const currentDayOfWeek = today.getDay(); // 0=Sunday, 1=Monday,...
+                const mondayOfCurrentWeek = new Date(today);
+                const daysToSubtract = (currentDayOfWeek === 0) ? 6 : currentDayOfWeek - 1;
+                mondayOfCurrentWeek.setDate(today.getDate() - daysToSubtract);
+
+                const year = mondayOfCurrentWeek.getFullYear();
+                const month = String(mondayOfCurrentWeek.getMonth() + 1).padStart(2, '0');
+                const day = String(mondayOfCurrentWeek.getDate()).padStart(2, '0');
+                const currentWeekString = `${year}-${month}-${day}`;
+                logDebug("Calculated current week start date for auto-select:", currentWeekString);
+
+                const weekSelect = document.getElementById('week-filter');
+                if (weekSelect) {
+                    logDebug("Found week-filter select element.");
+                    let foundOption = false;
+                    for (let i = 0; i < weekSelect.options.length; i++) {
+                        if (weekSelect.options[i].value === currentWeekString) {
+                            weekSelect.selectedIndex = i;
+                            foundOption = true;
+                            logDebug(`Current week '${currentWeekString}' found at index ${i} and selected.`);
+                            break;
+                        }
+                    }
+                     // Fallback if current week wasn't found
+                    if (!foundOption) {
+                         logDebug(`Current week '${currentWeekString}' not found in options. Defaulting to first week (index 1 if available).`);
+                         if (weekSelect.options.length > 1) {
+                            weekSelect.selectedIndex = 1; // Select the first actual week option
+                         } else {
+                             weekSelect.selectedIndex = 0; // Fallback to placeholder if only placeholder exists
+                         }
+                    }
+                } else {
+                    console.warn("Week filter select element ('week-filter') not found for auto-selection.");
+                }
+             } catch(dateError) {
+                 console.error("Error calculating or selecting current week:", dateError);
+             }
+            // --- End Auto-select ---
+
+        } else {
+            const errorMsg = 'Dados de filtros (turmas/semanas) incompletos ou em formato inesperado recebidos do backend.';
+            logDebug(errorMsg, data);
+            displayMessage(errorMsg, 'error');
+            populateDropdown('turma-filter', [], '-- Erro Turmas --');
+            populateDropdown('week-filter', [], '-- Erro Semanas --');
+        }
+    }
+
+    function onFilterOptionsFailed(error) {
+        // No hideLoading needed
+        console.error("Erro na comunicação ao carregar filtros:", error);
+        displayMessage('Erro na comunicação com o servidor ao carregar filtros: ' + error.message, 'error');
+        populateDropdown('turma-filter', [], '-- Erro Turmas --');
+        populateDropdown('week-filter', [], '-- Erro Semanas --');
+    }
+
+    // --- Schedule Loading and Rendering ---
+    function loadFilteredSchedule() {
+        logDebug("loadFilteredSchedule called");
+        const turmaFilter = document.getElementById('turma-filter');
+        const weekFilter = document.getElementById('week-filter');
+        const scheduleContainer = document.getElementById('schedule-container');
+
+        // Hide any open booking forms and clear message before loading
+        logDebug("Hiding booking forms and clearing messages before loading new schedule.");
+        cancelBookingForm('Reposicao');
+        cancelBookingForm('Substituicao');
+        displayMessage(''); // Clear previous messages
+
+        if (scheduleContainer) {
+            scheduleContainer.innerHTML = '<p class="info-message">Carregando horário...</p>'; // Placeholder while loading
+        } else {
+            console.error("Schedule container element not found!");
+            // Optionally display error message here?
+        }
+
+        const selectedTurma = turmaFilter ? turmaFilter.value : '';
+        const selectedWeek = weekFilter ? weekFilter.value : '';
+        logDebug(`Filters selected: Turma='${selectedTurma}', Week='${selectedWeek}'`);
+
+        // Validation
+        if (!selectedTurma) {
+            logDebug("Validation failed: Turma not selected.");
+            displayMessage('Por favor, selecione a Turma.', 'error');
+            if (scheduleContainer) scheduleContainer.innerHTML = '<p class="info-message">Selecione a Turma e a Semana e clique em "Buscar Horário".</p>';
+            return;
+        }
+        if (!selectedWeek) {
+            logDebug("Validation failed: Week not selected.");
+            displayMessage('Por favor, selecione a Semana.', 'error');
+            if (scheduleContainer) scheduleContainer.innerHTML = '<p class="info-message">Selecione a Turma e a Semana e clique em "Buscar Horário".</p>';
+            return;
+        }
+
+        showLoading(); // Show loading indicator
+
+        logDebug("Calling backend: getFilteredScheduleInstances");
+        google.script.run
+            .withSuccessHandler(onScheduleLoaded)
+            .withFailureHandler(onScheduleLoadFailed)
+            .getFilteredScheduleInstances(selectedTurma, selectedWeek);
+    }
+
+    function onScheduleLoaded(jsonStringResponse) {
+        logDebug("onScheduleLoaded called with response string (length):", jsonStringResponse?.length);
+        hideLoading();
+        const scheduleContainer = document.getElementById('schedule-container');
+        if (!scheduleContainer) {
+            console.error("Schedule container not found!");
+            displayMessage('Erro interno: Container de horário não encontrado.', 'error');
+            return;
+        }
+        scheduleContainer.innerHTML = ''; // Clear loading message
+
+        let response;
+        try {
+            if (!jsonStringResponse) throw new Error("Response string is empty or null.");
+            response = JSON.parse(jsonStringResponse);
+            logDebug("Filtered schedule response parsed successfully:", response);
+        } catch (e) {
+            console.error("Erro ao parsear JSON de horários filtrados:", e, jsonStringResponse);
+            displayMessage('Erro ao processar dados de horários filtrados.', 'error');
+            scheduleContainer.innerHTML = '<p class="error-message">Erro ao carregar horário.</p>';
+            return;
+        }
+
+        if (!response || !response.success) {
+            const errorMessage = (response && response.message) ? response.message : 'Erro desconhecido ao carregar horários.';
+            console.error("Falha ao carregar horários filtrados:", errorMessage, response);
+            displayMessage(errorMessage, 'error');
+            scheduleContainer.innerHTML = `<p class="error-message">${errorMessage}</p>`;
+            return;
+        }
+
+        const slots = response.data;
+
+        if (!Array.isArray(slots)) {
+             const errorMsg = "Formato de dados inesperado recebido para horários (não é um array).";
+             logDebug(errorMsg, slots);
+             displayMessage(errorMsg, 'error');
+             scheduleContainer.innerHTML = '<p class="error-message">Erro interno: formato de dados inválido.</p>';
+             return;
+        }
+
+        if (slots.length === 0) {
+            logDebug("Nenhum horário encontrado para os filtros selecionados.");
+            // Use info type for "not found" message
+            displayMessage(response.message || 'Nenhum horário encontrado para a turma e semana selecionadas.', 'info');
+            scheduleContainer.innerHTML = '<p class="info-message">Nenhum horário encontrado para os filtros selecionados.</p>';
+            return;
+        }
+
+        // Display success message only if data is found
+        logDebug(`Received ${slots.length} slots. Rendering schedule table.`);
+        displayMessage(response.message || 'Horário carregado com sucesso.', 'success');
+        renderScheduleTable(slots, scheduleContainer); // Render the grid
+    }
+
+    function onScheduleLoadFailed(error) {
+        logDebug("onScheduleLoadFailed called:", error);
+        hideLoading();
+        console.error("Erro na comunicação ao carregar horários:", error);
+        displayMessage('Erro na comunicação com o servidor ao buscar horários: ' + error.message, 'error');
+        const scheduleContainer = document.getElementById('schedule-container');
+        if (scheduleContainer) {
+            scheduleContainer.innerHTML = '<p class="error-message">Erro ao carregar horário.</p>';
+        }
+    }
+
+    /**
+     * Helper to format cell content with status.
+     */
+    function formatCellContent(mainContent, status) {
+        // logDebug(`formatCellContent called: mainContent='${mainContent}', status='${status}'`); // Very noisy
+        const statusText = status && status.trim() !== '' ? status.trim() : 'Status Desconhecido';
+        // Simple status mapping to classes for styling the span itself
+        let statusClass = 'status-default';
+        if (status === STATUS_OCUPACAO.DISPONIVEL) statusClass = 'status-disponivel';
+        else if (status === STATUS_OCUPACAO.REPOSICAO_AGENDADA) statusClass = 'status-reposicao';
+        else if (status === STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) statusClass = 'status-substituicao';
+
+        const statusSpan = `<span class="slot-status ${statusClass}">(${statusText})</span>`;
+
+        if (mainContent && mainContent.trim() !== '') {
+            // Ensure main content wraps if needed
+            const mainContentDiv = `<div class="slot-main-content">${mainContent.trim()}</div>`;
+            return `${mainContentDiv}${statusSpan}`;
+        } else {
+            // If no main content, just return the status span
+            return statusSpan;
+        }
+    }
+
+
+    /**
+     * Renders the schedule data into an HTML table grid.
+     * Makes appropriate cells clickable for booking.
+     * @param {Array<Object>} slots Array of slot objects fetched from backend.
+     * @param {HTMLElement} containerElement The HTML element to append the table to.
+     */
+     function renderScheduleTable(slots, containerElement) {
+        logDebug("renderScheduleTable called");
+        const daysOfWeek = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'/*, 'Domingo'*/];
+        const dayIndexMap = { 'Segunda': 0, 'Terça': 1, 'Quarta': 2, 'Quinta': 3, 'Sexta': 4, 'Sábado': 5/*, 'Domingo': 6 */};
+        const gridData = {}; // Use object for sparse data: { dayIndex: { hour: slot } }
+        const uniqueHours = new Set();
+
+        // 1. Organize slots into the grid structure and collect unique hours
+        logDebug("Organizing slots into gridData...");
+        slots.forEach((slot, index) => {
+            // Basic validation before processing
+            if (!slot || !slot.diaSemana || !slot.horaInicio || !slot.hasOwnProperty('statusOcupacao') || !slot.hasOwnProperty('tipoOriginal') || !slot.hasOwnProperty('idInstancia')) {
+                 console.warn(`Slot inválido ou incompleto encontrado no índice ${index}, pulando:`, slot);
+                 return; // Skip this slot
+            }
+
+            const dayIndex = dayIndexMap[slot.diaSemana];
+            if (dayIndex !== undefined) { // Check if day is valid
+                if (!gridData[dayIndex]) {
+                    gridData[dayIndex] = {}; // Initialize day object if needed
+                }
+                // Store the whole slot object keyed by hour for that day
+                gridData[dayIndex][slot.horaInicio] = slot;
+                uniqueHours.add(slot.horaInicio); // Collect unique start times
+            } else {
+                 console.warn("Slot com Dia da Semana inválido:", slot.diaSemana, slot);
+            }
+        });
+        logDebug(`Organized gridData. Found ${uniqueHours.size} unique hours.`);
+
+        // 2. Sort hours and create table structure
+        const sortedHours = Array.from(uniqueHours).sort((a, b) => a.localeCompare(b)); // Sort HH:mm strings
+        const table = document.createElement('table');
+        table.classList.add('schedule-grid-table');
+
+        // Header Row
+        logDebug("Creating table header.");
+        const thead = table.createTHead();
+        const headerRow = thead.insertRow();
+        headerRow.insertCell().outerHTML = "<th></th>"; // Empty corner cell
+        daysOfWeek.forEach(day => {
+            headerRow.insertCell().outerHTML = `<th>${day}</th>`;
+        });
+
+        // Body Rows
+        logDebug("Creating table body rows.");
+        const tbody = table.createTBody();
+        sortedHours.forEach((hour, hourIndex) => {
+            // logDebug(`Creating row for hour: ${hour}`); // Noisy
+            const row = tbody.insertRow();
+            // Hour Cell (sticky)
+            const hourCell = row.insertCell();
+            hourCell.textContent = hour;
+            hourCell.classList.add('hour-cell');
+
+            // Data Cells for each day
+            daysOfWeek.forEach((day, dayIndexLoop) => {
+                const currentDayIndex = dayIndexMap[day]; // Get the numeric index (0-6)
+                const cell = row.insertCell();
+                cell.classList.add('slot-cell'); // Base class for all cells
+
+                const slot = gridData[currentDayIndex] ? gridData[currentDayIndex][hour] : null; // Get slot data for this day/hour
+                // logDebug(`Processing cell: Day=${day}(${currentDayIndex}), Hour=${hour}, Found slot: ${!!slot}`); // Noisy
+
+                if (slot) {
+                    // --- Determine Cell Content and Class ---
+                    let mainContent = '';
+                    let cellClasses = ['slot-occupied']; // Start with base occupied class
+                    const disciplina = slot.disciplinaParaExibir || ''; // Prefer display discipline
+                    const professor = slot.professorParaExibir || ''; // Prefer display professor
+                    const profOriginalBooking = slot.professorOriginalNaReserva || ''; // Original from booking detail
+                    const profOriginalInstance = slot.professorPrincipal || ''; // Original from instance itself
+                    const firstWordDiscipline = disciplina.split(' ')[0] || 'Aula'; // Get first word
+
+                    let possibleBookingType = null; // Track if booking is possible and what type
+                    let isClickable = false;
+
+                    // Define content and classes based on status
+                    if (slot.statusOcupacao === STATUS_OCUPACAO.DISPONIVEL) {
+                        cellClasses = ['slot-available']; // Base available class
+                        mainContent = `${firstWordDiscipline} - ${professor || 'Professor N/D'}`; // Show base prof/discipline
+                        // Determine clickability and type
+                        if (slot.tipoOriginal === TIPOS_HORARIO.VAGO) {
+                            mainContent = `Vago`; // More explicit for Vago
+                            cellClasses.push('slot-vago');
+                            // Check if current user can book Reposicao
+                            if (currentUserRole === 'Admin' || currentUserRole === 'Professor' || currentUserRole === 'Aluno') {
+                                isClickable = true;
+                                possibleBookingType = TIPOS_RESERVA.REPOSICAO;
+                                cellClasses.push('clickable-slot', 'clickable-reposicao');
+                                // logDebug(`Cell [${day}, ${hour}] marked as CLICKABLE for REPOSICAO.`);
+                            }
+                        } else if (slot.tipoOriginal === TIPOS_HORARIO.FIXO) {
+                            cellClasses.push('slot-fixo');
+                             // Check if current user can book Substituicao
+                            if (currentUserRole === 'Admin' || currentUserRole === 'Professor') {
+                                isClickable = true;
+                                possibleBookingType = TIPOS_RESERVA.SUBSTITUICAO;
+                                cellClasses.push('clickable-slot', 'clickable-substituicao');
+                                // logDebug(`Cell [${day}, ${hour}] marked as CLICKABLE for SUBSTITUICAO.`);
+                            }
+                        }
+
+                    } else if (slot.statusOcupacao === STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
+                         mainContent = `${firstWordDiscipline} - ${professor}`; // Real prof/discipline
+                         cellClasses.push('slot-reposicao');
+                    } else if (slot.statusOcupacao === STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) {
+                        // Show substitute professor, optionally mention original
+                        let profText = professor; // Substitute professor
+                        const originalToShow = profOriginalBooking || profOriginalInstance; // Prefer original from booking, fallback to instance
+                        if (originalToShow && originalToShow !== professor) {
+                            profText = `${professor} (Orig: ${originalToShow})`;
+                        }
+                        mainContent = `${firstWordDiscipline} - ${profText}`;
+                        cellClasses.push('slot-substituicao');
+                    } else {
+                        // Fallback for unknown status
+                        mainContent = `${firstWordDiscipline} - ${professor}`;
+                        cellClasses.push('slot-unknown-status');
+                        console.warn(`Slot with unknown status encountered: ${slot.statusOcupacao}`, slot);
+                    }
+
+                    // Add final classes and content
+                    cell.classList.add(...cellClasses);
+                    cell.innerHTML = formatCellContent(mainContent, slot.statusOcupacao); // Use helper for final formatting
+
+                    // --- Add Tooltip ---
+                    let tooltipText = `Data: ${slot.data}\nHora: ${slot.horaInicio}\nTurma: ${slot.turma}\nTipo Original: ${slot.tipoOriginal}\nStatus: ${slot.statusOcupacao}`;
+                    if (disciplina) tooltipText += `\nDisciplina: ${disciplina}`;
+                    if (professor) tooltipText += `\nProfessor Atual: ${professor}`;
+                     // Add original professor info clearly based on context
+                     if (slot.statusOcupacao === STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) {
+                         const originalToShow = profOriginalBooking || profOriginalInstance;
+                         if (originalToShow && originalToShow !== professor) {
+                             tooltipText += `\nProfessor Original: ${originalToShow}`;
+                         }
+                     } else if (slot.tipoOriginal === TIPOS_HORARIO.FIXO && profOriginalInstance) {
+                         tooltipText += `\nProfessor Base: ${profOriginalInstance}`;
+                     }
+                    tooltipText += `\nID Instância: ${slot.idInstancia}`; // Ensure ID is in tooltip
+                    cell.title = tooltipText;
+
+
+                    // --- Add OnClick Handler (if clickable) ---
+                    if (isClickable && possibleBookingType) {
+                         // Create info string for the form display
+                         let slotInfoText = `${slot.data} ${slot.horaInicio} (${slot.diaSemana}) - Turma: ${slot.turma}`;
+                         if (slot.tipoOriginal === TIPOS_HORARIO.FIXO && profOriginalInstance) {
+                             slotInfoText += ` - Prof. Base: ${profOriginalInstance}`;
+                         }
+                         slotInfoText += ` - Tipo: ${slot.tipoOriginal}, Status: ${slot.statusOcupacao}`;
+
+                         // *** DEBUG LOG 1 (from previous attempt) ***
+                         logDebug(`[renderScheduleTable] Attaching click handler for cell: Day=${day}, Hour=${hour}, ID=${slot.idInstancia}, Type=${possibleBookingType}`);
+                         if (!slot.idInstancia || String(slot.idInstancia).trim() === '') {
+                             console.error(`[renderScheduleTable] *** CRITICAL ERROR: slot.idInstancia is invalid ('${slot.idInstancia}') for clickable cell! Click will likely fail.`, slot);
+                         }
+
+                         // Set the onclick event using a closure to capture the correct values
+                         // Ensure idInstancia is treated as a string
+                         const currentIdInstancia = String(slot.idInstancia || '');
+                         const currentBookingType = possibleBookingType;
+                         const currentSlotInfoText = slotInfoText;
+
+                         cell.onclick = () => {
+                            logDebug(`Cell clicked! Calling selectSlot with ID='${currentIdInstancia}', Type='${currentBookingType}'`);
+                            selectSlot(currentIdInstancia, currentBookingType, currentSlotInfoText);
+                         };
+                    }
+
+                } else {
+                    // No slot data for this cell - mark as empty
+                    cell.classList.add('slot-empty');
+                }
+            }); // End days loop
+        }); // End hours loop
+
+        // 3. Append table to container
+        logDebug("Appending table to schedule-container.");
+        containerElement.appendChild(table);
+        logDebug("renderScheduleTable finished.");
+    }
+
+
+    // --- Slot Selection (from Grid) and Booking Form Handling ---
+
+    /**
+     * Handles clicking on a clickable slot in the grid.
+     * Checks permissions, highlights the cell, and shows the relevant booking form.
+     * @param {string} idInstancia The ID of the selected instance.
+     * @param {string} bookingType The type of booking attempted ('Reposicao' or 'Substituicao').
+     * @param {string} slotInfo Text description of the slot for display.
+     */
+    function selectSlot(idInstancia, bookingType, slotInfo) {
+        // *** DEBUG LOG 2 (from previous attempt) ***
+        logDebug(`[selectSlot] Function called with: idInstancia='${idInstancia}' (type: ${typeof idInstancia}), bookingType='${bookingType}', currentUserRole='${currentUserRole}'`);
+        displayMessage(''); // Clear previous messages
+
+        // 1. Validate Inputs First
+        if (!idInstancia || String(idInstancia).trim() === '') {
+             console.error(`[selectSlot] *** CRITICAL ERROR: Received invalid idInstancia ('${idInstancia}')! Cannot proceed.`);
+             displayMessage('Erro interno: ID do horário selecionado é inválido.', 'error');
+             return;
+        }
+        if (!bookingType || (bookingType !== TIPOS_RESERVA.REPOSICAO && bookingType !== TIPOS_RESERVA.SUBSTITUICAO)) {
+            console.error(`[selectSlot] *** CRITICAL ERROR: Received invalid bookingType ('${bookingType}')! Cannot proceed.`);
+            displayMessage('Erro interno: Tipo de agendamento inválido.', 'error');
+            return;
+        }
+
+
+        // 2. Permission Check
+        logDebug(`[selectSlot] Checking permissions...`);
+        let canBook = false;
+        if (bookingType === TIPOS_RESERVA.REPOSICAO && (currentUserRole === 'Admin' || currentUserRole === 'Professor' || currentUserRole === 'Aluno')) {
+            canBook = true;
+            logDebug("[selectSlot] Permission GRANTED for Reposicao.");
+        } else if (bookingType === TIPOS_RESERVA.SUBSTITUICAO && (currentUserRole === 'Admin' || currentUserRole === 'Professor')) {
+            canBook = true;
+            logDebug("[selectSlot] Permission GRANTED for Substituicao.");
+        }
+
+        if (!canBook) {
+            const deniedMsg = `Seu perfil (${currentUserRole || 'N/D'}) não permite agendar ${bookingType.toLowerCase()}s.`;
+            logDebug(`[selectSlot] Permission DENIED. Role: '${currentUserRole}', Required for '${bookingType}'. Message: ${deniedMsg}`);
+            displayMessage(deniedMsg, 'error');
+            // Optional: Remove selection if any was previously made visually
+            document.querySelectorAll('.schedule-grid-table td.selected-cell').forEach(cell => cell.classList.remove('selected-cell'));
+            return; // Stop processing
+        }
+
+        // 3. Visual Selection
+        logDebug(`[selectSlot] Applying visual selection for ID: ${idInstancia}`);
+        // Remove selection from any previously selected cell
+        document.querySelectorAll('.schedule-grid-table td.selected-cell').forEach(cell => {
+            cell.classList.remove('selected-cell');
+            // logDebug("Removed selected-cell class from:", cell); // Can be noisy
+        });
+
+        // Find and add selection to the clicked cell
+        // NOTE: Finding by title is brittle. Using data attributes would be better.
+        let clickedCell = null;
+        try {
+            // Use querySelector for potentially better performance if unique enough
+             clickedCell = document.querySelector(`.schedule-grid-table td.clickable-slot[title*="ID Instância: ${idInstancia}"]`);
+             // Fallback to iterating if querySelector fails (e.g., complex titles)
+             if (!clickedCell) {
+                logDebug("[selectSlot] querySelector failed to find cell by title/ID, attempting Array.find...");
+                clickedCell = Array.from(document.querySelectorAll('.schedule-grid-table td.clickable-slot'))
+                                  .find(cell => cell.title && cell.title.includes(`ID Instância: ${idInstancia}`));
+            }
+        } catch (selectorError) {
+            console.error("[selectSlot] Error finding clicked cell:", selectorError);
+        }
+
+        if (clickedCell) {
+            clickedCell.classList.add('selected-cell');
+            logDebug("[selectSlot] Added 'selected-cell' class to:", clickedCell);
+        } else {
+            // This might happen if the grid re-rendered between click and this execution,
+            // or if the title matching failed.
+            console.warn("[selectSlot] Could not find the specific table cell to apply visual selection for ID:", idInstancia);
+        }
+
+
+        // 4. Prepare and Show Form
+        logDebug(`[selectSlot] Preparing form for type: ${bookingType}`);
+        const formPrefix = bookingType.toLowerCase(); // 'reposicao' or 'substituicao'
+        const formDivId = formPrefix + '-form';
+        const otherFormDivId = (bookingType === TIPOS_RESERVA.REPOSICAO ? 'substituicao' : 'reposicao') + '-form';
+
+        const formDiv = document.getElementById(formDivId);
+        const otherFormDiv = document.getElementById(otherFormDivId);
+        const slotIdInput = document.getElementById(formPrefix + '-selected-slot-id');
+        const slotInfoSpan = document.getElementById(formPrefix + '-selected-slot-info');
+        const professorSelect = document.getElementById(formPrefix + '-professor-real');
+        const disciplinaSelect = document.getElementById(formPrefix + '-disciplina');
+
+        // Hide the other form first
+        if (otherFormDiv) {
+            logDebug(`[selectSlot] Hiding other form: #${otherFormDivId}`);
+            otherFormDiv.style.display = 'none';
+        } else {
+            console.warn(`[selectSlot] Other form element '#${otherFormDivId}' not found.`);
+        }
+
+        // Check if essential form elements exist
+        if (!formDiv || !slotIdInput || !slotInfoSpan || !professorSelect || !disciplinaSelect) {
+            console.error(`[selectSlot] One or more form elements not found for booking type '${bookingType}'. IDs checked: #${formDivId}, #${formPrefix}-selected-slot-id, #${formPrefix}-selected-slot-info, #${formPrefix}-professor-real, #${formPrefix}-disciplina`);
+            displayMessage('Erro interno: Componentes do formulário de agendamento não encontrados.', 'error');
+            return;
+        }
+        logDebug(`[selectSlot] All form elements found for type '${bookingType}'.`);
+
+        // Populate form details
+        // *** DEBUG LOG 4 & 5 (from previous attempt, combined) ***
+        logDebug(`[selectSlot] Setting hidden input '#${formPrefix}-selected-slot-id' value to: '${idInstancia}'`);
+        slotIdInput.value = idInstancia; // Set the value
+        logDebug(`[selectSlot] Value of '#${formPrefix}-selected-slot-id' AFTER setting: '${slotIdInput.value}'`);
+
+        logDebug(`[selectSlot] Setting slot info span text.`);
+        slotInfoSpan.textContent = slotInfo;
+
+        // Reset form fields (important!)
+        logDebug(`[selectSlot] Resetting dropdowns for form '${bookingType}'.`);
+        professorSelect.selectedIndex = 0; // Reset to placeholder
+        professorSelect.required = true;
+        disciplinaSelect.selectedIndex = 0; // Reset to placeholder
+        disciplinaSelect.required = true;
+
+        // Show the form and scroll to it
+        logDebug(`[selectSlot] Displaying form '#${formDivId}' and scrolling into view.`);
+        formDiv.style.display = 'block';
+        try {
+            formDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } catch (scrollError) {
+            console.warn("[selectSlot] Scrolling form into view failed:", scrollError);
+            formDiv.scrollIntoView(); // Fallback
+        }
+        logDebug("[selectSlot] finished.");
+    }
+
+    /**
+     * Hides the specified booking form and removes cell selection.
+     * IMPORTANT: Also resets the form fields including the hidden ID.
+     * @param {string} type 'Reposicao' or 'Substituicao'.
+     */
+    function cancelBookingForm(type) {
+        logDebug(`cancelBookingForm called for type: ${type}`);
+        const formPrefix = type.toLowerCase();
+        const formDiv = document.getElementById(formPrefix + '-form');
+
+        if (formDiv) {
+            if (formDiv.style.display !== 'none') {
+                logDebug(`Hiding form '#${formPrefix}-form'.`);
+                formDiv.style.display = 'none';
+
+                // Reset fields when cancelling
+                logDebug(`Resetting fields for form '#${formPrefix}-form'.`);
+                const professorSelect = document.getElementById(formPrefix + '-professor-real');
+                const disciplinaSelect = document.getElementById(formPrefix + '-disciplina');
+                const slotIdInput = document.getElementById(formPrefix + '-selected-slot-id');
+                const slotInfoSpan = document.getElementById(formPrefix + '-selected-slot-info');
+
+                if (professorSelect) professorSelect.selectedIndex = 0;
+                if (disciplinaSelect) disciplinaSelect.selectedIndex = 0;
+                if (slotIdInput) {
+                    logDebug(`Resetting value of '#${formPrefix}-selected-slot-id' from '${slotIdInput.value}' to ''.`);
+                    slotIdInput.value = ''; // Explicitly clear the hidden ID
+                }
+                if (slotInfoSpan) slotInfoSpan.textContent = '';
+                logDebug("Form fields reset.");
+            } else {
+                // logDebug(`Form '#${formPrefix}-form' was already hidden.`); // Noisy
+            }
+        } else {
+            console.warn(`Form element '#${formPrefix}-form' not found during cancel.`);
+        }
+
+        // Remove visual selection from the grid
+        const selectedCells = document.querySelectorAll('.schedule-grid-table td.selected-cell');
+        if (selectedCells.length > 0) {
+            logDebug("Removing visual selection from grid cells.");
+            selectedCells.forEach(cell => cell.classList.remove('selected-cell'));
+        }
+        // Don't clear the main message automatically on cancel
+        // displayMessage('');
+    }
+
+    // --- Booking Submission ---
+    /**
+     * Sends the booking details to the backend.
+     * @param {string} type 'Reposicao' or 'Substituicao'.
+     */
+    function bookSlot(type) {
+        logDebug(`bookSlot called for type: ${type}`);
+        // *** FIX: Call showLoading AFTER reading values, not before ***
+        // showLoading(); // Moved lower
+
+        displayMessage(''); // Clear previous messages
+
+        const formPrefix = type.toLowerCase();
+        const slotIdInput = document.getElementById(formPrefix + '-selected-slot-id');
+        const professorSelect = document.getElementById(formPrefix + '-professor-real');
+        const disciplinaSelect = document.getElementById(formPrefix + '-disciplina');
+
+        // Check if elements exist before accessing value
+        if (!slotIdInput || !professorSelect || !disciplinaSelect) {
+             console.error(`[bookSlot] Critical Error: One or more form input elements not found for type '${type}'. Aborting.`);
+             // hideLoading(); // Not called yet
+             displayMessage(`Erro interno: Não foi possível encontrar os campos do formulário de ${type}.`, 'error');
+             return;
+        }
+
+        const slotId = slotIdInput.value; // Read value *before* potentially clearing it
+        const professorReal = professorSelect.value;
+        const disciplinaReal = disciplinaSelect.value;
+
+        // *** DEBUG LOG 6 (from previous attempt) ***
+        logDebug(`[bookSlot] Reading value from hidden input '#${formPrefix}-selected-slot-id': '${slotId}'`);
+        logDebug(`[bookSlot] Reading value from professor select: '${professorReal}'`);
+        logDebug(`[bookSlot] Reading value from disciplina select: '${disciplinaReal}'`);
+
+        // Basic frontend validation
+        logDebug("[bookSlot] Performing frontend validation...");
+        if (!slotId || slotId.trim() === '') { // Check specifically for empty string or null/undefined
+            // hideLoading(); // Not called yet
+            console.error(`[bookSlot] Validation failed: slotId is invalid ('${slotId}').`);
+            displayMessage('Erro: Nenhum horário selecionado. Por favor, clique novamente no horário desejado na grade.', 'error'); // More helpful message
+            return;
+        }
+        if (!professorReal || professorReal === '') {
+            // hideLoading(); // Not called yet
+            console.warn(`[bookSlot] Validation failed: Professor not selected.`);
+            displayMessage(`Por favor, selecione o Professor para ${type.toLowerCase()}.`, 'error');
+            professorSelect.focus(); // Focus the required field
+            return;
+        }
+        if (!disciplinaReal || disciplinaReal === '') {
+             // hideLoading(); // Not called yet
+             console.warn(`[bookSlot] Validation failed: Disciplina not selected.`);
+             displayMessage(`Por favor, selecione a Disciplina para ${type.toLowerCase()}.`, 'error');
+             disciplinaSelect.focus(); // Focus the required field
+             return;
+         }
+        logDebug("[bookSlot] Frontend validation passed.");
+
+        // *** FIX: Call showLoading now that validation passed and values are stored ***
         showLoading();
 
-        let completedCalls = 0;
-        const totalCalls = 4;
-        let userResponse = null;
-        let hasInitializationError = false;
+        // Prepare data payload
+        const bookingDetails = {
+            idInstancia: slotId,
+            tipoReserva: type, // 'Reposicao' or 'Substituicao'
+            professorReal: professorReal,
+            disciplinaReal: disciplinaReal
+            // Add other fields like 'alunos' if they exist in the form and are needed
+            // alunos: document.getElementById('some-aluno-input') ? document.getElementById('some-aluno-input').value : ''
+        };
 
-        function handleSuccess(jsonStringResponse, callType) {
+        const jsonBookingDetailsString = JSON.stringify(bookingDetails);
+        logDebug("[bookSlot] Sending booking details to backend:", jsonBookingDetailsString);
+
+        // Call backend function
+        google.script.run
+            .withSuccessHandler(onBackendResponse) // Use a common success handler
+            .withFailureHandler(onBookingFailure) // Use a common failure handler
+            .bookSlot(jsonBookingDetailsString);
+        logDebug("[bookSlot] Backend call initiated.");
+    }
+
+    /**
+     * Handles successful response from the backend bookSlot function.
+     * @param {string} jsonStringResponse JSON string from the backend.
+     */
+    function onBackendResponse(jsonStringResponse) {
+        logDebug("onBackendResponse (bookSlot success) called with response string (length):", jsonStringResponse?.length);
+        hideLoading();
+        let response;
+        try {
+            if (!jsonStringResponse) throw new Error("Response string is empty or null.");
+            response = JSON.parse(jsonStringResponse);
+            logDebug("Parsed backend booking response:", response);
+        } catch (e) {
+            console.error("Erro ao parsear resposta JSON do backend (bookSlot):", e, jsonStringResponse);
+            displayMessage("Erro ao processar a resposta do servidor após agendamento.", 'error');
+            return;
+        }
+
+        if (response && response.success) {
+            // Success! Display message, hide form, reload schedule
+            const successMsg = response.message || `Agendamento realizado com sucesso!`;
+            logDebug("Booking successful:", successMsg, response.data);
+            displayMessage(successMsg, 'success');
+            // Hide *both* forms explicitly after success
+            logDebug("Hiding booking forms after successful booking.");
+            cancelBookingForm('Reposicao'); // This will also reset fields, which is fine now
+            cancelBookingForm('Substituicao');
+            // Reload the current schedule view to reflect the change
+            logDebug("Reloading schedule grid after successful booking.");
+            loadFilteredSchedule();
+        } else {
+            // Backend reported failure
+            const errorMessage = response && response.message ? response.message : "Ocorreu um erro desconhecido durante o agendamento.";
+            console.error("Backend booking operation failed:", errorMessage, response);
+            displayMessage(errorMessage, 'error');
+            logDebug("Booking failed on backend. Keeping form open.");
+            // Keep the form open so the user can potentially correct details or retry
+        }
+    }
+
+    /**
+     * Handles failure in communication with the backend bookSlot function.
+     * @param {Error} error Error object from the Apps Script failure handler.
+     */
+     function onBookingFailure(error) {
+         logDebug("onBookingFailure (bookSlot communication error) called:", error);
+         hideLoading();
+         console.error("Erro na comunicação ao agendar:", error);
+         displayMessage('Erro na comunicação com o servidor ao tentar agendar: ' + error.message, 'error');
+         logDebug("Communication failed. Keeping form open.");
+         // Keep the form open
+     }
+
+
+    // --- Initialization (DOMContentLoaded) ---
+    document.addEventListener('DOMContentLoaded', function () {
+        logDebug("DOMContentLoaded event fired. Starting application initialization.");
+        showLoading(); // Show loading indicator initially
+
+        let completedCalls = 0;
+        const totalCalls = 4; // getUserRole, getProfessorsList, getTurmasList, getDisciplinesList
+        let userResponseData = null; // To store {role, email}
+        let initialDataError = false;
+
+        logDebug(`Initializing ${totalCalls} parallel backend calls for setup data.`);
+
+        // Success handler for initial data loading calls
+        function handleInitialDataSuccess(jsonStringResponse, callType) {
             completedCalls++;
-            console.log(`Call ${callType} completed successfully.`);
+            logDebug(`Initial call ${callType} SUCCEEDED (${completedCalls}/${totalCalls}). Processing...`);
             let response;
             try {
+                if (!jsonStringResponse) throw new Error("Response string is empty or null.");
                 response = JSON.parse(jsonStringResponse);
-                console.log(`${callType} parsed response:`, response);
+                logDebug(`${callType} parsed response:`, response);
+                if (!response || !response.success) {
+                    // Handle cases where backend reports success:false
+                    const backendMsg = response.message || `Falha reportada pelo backend para ${callType}.`;
+                    throw new Error(backendMsg);
+                }
             } catch (e) {
-                console.error(`Erro ao parsear JSON de ${callType}:`, e, jsonStringResponse);
-                handleError({ message: `Erro ao processar dados de ${callType}.` }, callType);
-                return;
+                console.error(`Erro ao processar resposta JSON de ${callType}:`, e.message, jsonStringResponse);
+                // Call failure handler to manage state and UI
+                handleInitialDataError({ message: `Erro ao processar dados de ${callType}. (${e.message})` }, callType);
+                return; // Stop processing this response
             }
-            if (!response || !response.success) {
-                const errorMsg = response && response.message ? `Falha ao carregar ${callType}: ${response.message}` : `Falha desconhecida ao carregar ${callType}.`;
-                console.error(`Falha reportada pelo backend para ${callType}:`, errorMsg, response);
-                handleError({ message: errorMsg }, callType);
-                return;
+
+            // Process successful data
+            try {
+                if (callType === 'getUserRole') {
+                    if (response.data && response.data.role) {
+                        userResponseData = response.data; // Store {role, email}
+                        currentUserRole = response.data.role; // Set global variable
+                        logDebug(`User role set: ${currentUserRole}, Email: ${userResponseData.email}`);
+                    } else {
+                         // Handle case where user role couldn't be determined but call was successful
+                         const roleErrorMsg = response.message || 'Não foi possível determinar o perfil do usuário.';
+                         logDebug(`getUserRole successful, but role determination failed: ${roleErrorMsg}`);
+                         handleInitialDataError({ message: roleErrorMsg }, callType); // Treat as error for UI setup
+                    }
+                } else if (callType === 'getProfessorsList') {
+                    const professors = Array.isArray(response.data) ? response.data : [];
+                    logDebug(`Populating professor dropdowns with ${professors.length} professors.`);
+                    populateDropdown('reposicao-professor-real', professors, '-- Professores --');
+                    populateDropdown('substituicao-professor-real', professors, '-- Professores --');
+                } else if (callType === 'getTurmasList') {
+                     const turmas = Array.isArray(response.data) ? response.data : [];
+                     logDebug(`Received ${turmas.length} turmas (currently unused in booking form).`);
+                     // If needed later: populateDropdown('some-id', turmas);
+                } else if (callType === 'getDisciplinesList') {
+                    const disciplines = Array.isArray(response.data) ? response.data : [];
+                    logDebug(`Populating discipline dropdowns with ${disciplines.length} disciplines.`);
+                    populateDropdown('reposicao-disciplina', disciplines, '-- Disciplinas --');
+                    populateDropdown('substituicao-disciplina', disciplines, '-- Disciplinas --');
+                }
+            } catch (processingError) {
+                 // Catch errors during the processing of *valid* JSON data
+                 console.error(`Error processing successful response for ${callType}:`, processingError);
+                 handleInitialDataError({ message: `Erro ao usar dados de ${callType}: ${processingError.message}` }, callType);
+                 return;
             }
-            if (callType === 'getUserRole') {
-                userResponse = response;
-            } else if (callType === 'getProfessorsList') {
-                const professors = Array.isArray(response.data) ? response.data : [];
-                populateDropdown('reposicao-professor-real', professors);
-                populateDropdown('substituicao-professor-real', professors);
-            } else if (callType === 'getTurmasList') {
-                const turmas = Array.isArray(response.data) ? response.data : [];
-                // populateDropdown('reposicao-turma-agendada', turmas); // Comentado no HTML
-                // populateDropdown('substituicao-turma-agendada', turmas); // Comentado no HTML
-            } else if (callType === 'getDisciplinesList') {
-                const disciplines = Array.isArray(response.data) ? response.data : [];
-                populateDropdown('reposicao-disciplina', disciplines);
-                populateDropdown('substituicao-disciplina', disciplines);
-            }
-            checkAllCallsCompleted();
+
+            checkAllInitialCallsCompleted(); // Check if all initial calls are done
         }
 
-        function handleError(error, callType) {
-            if (completedCalls < totalCalls) completedCalls++;
-            hasInitializationError = true;
-            console.error(`Call ${callType} failed:`, error);
+        // Failure handler for initial data loading calls (communication errors)
+        function handleInitialDataError(error, callType) {
+            // Ensure completedCalls is incremented even on failure to eventually finish initialization
+            // Use a flag to avoid incrementing multiple times if multiple handlers fail around the same time
+            if (!initialDataError || completedCalls < totalCalls) {
+                 completedCalls++;
+            }
+            initialDataError = true; // Mark that an error occurred
+
+            console.error(`Initial call ${callType} FAILED (${completedCalls}/${totalCalls}):`, error.message);
             const messageDiv = document.getElementById('message');
             const errorMessage = `Erro na inicialização (${callType}): ${error.message || 'Erro desconhecido'}.`;
-            console.error(errorMessage);
-            if (messageDiv && (!messageDiv.textContent || messageDiv.className !== 'message error')) {
-                messageDiv.textContent = "Ocorreu um erro durante a inicialização. Verifique o console para detalhes.";
-                messageDiv.className = 'message error';
+            // Display a general error message once
+            if (messageDiv && (!messageDiv.textContent || !messageDiv.textContent.includes("Ocorreu um erro durante a inicialização"))) {
+                displayMessage("Ocorreu um erro durante a inicialização. Algumas funcionalidades podem não estar disponíveis.", 'error');
             }
-            if (callType === 'getProfessorsList') {
-                populateDropdown('reposicao-professor-real', []);
-                populateDropdown('substituicao-professor-real', []);
-            } else if (callType === 'getTurmasList') {
-                // populateDropdown('reposicao-turma-agendada', []); // Comentado no HTML
-                // populateDropdown('substituicao-turma-agendada', []); // Comentado no HTML
+
+            // Handle specific call failures (e.g., disable dropdowns)
+            if (callType === 'getUserRole') {
+                 userResponseData = null; // Ensure user data is null on error
+                 currentUserRole = null;
+                 logDebug("User role could not be fetched.");
+            } else if (callType === 'getProfessorsList') {
+                logDebug("Populating professor dropdowns with error message.");
+                populateDropdown('reposicao-professor-real', [], '-- Erro ao Carregar --');
+                populateDropdown('substituicao-professor-real', [], '-- Erro ao Carregar --');
             } else if (callType === 'getDisciplinesList') {
-                populateDropdown('reposicao-disciplina', []);
-                populateDropdown('substituicao-disciplina', []);
+                logDebug("Populating discipline dropdowns with error message.");
+                populateDropdown('reposicao-disciplina', [], '-- Erro ao Carregar --');
+                populateDropdown('substituicao-disciplina', [], '-- Erro ao Carregar --');
             }
-            checkAllCallsCompleted();
+            // Ensure check is called even on error
+            checkAllInitialCallsCompleted();
         }
 
-        function checkAllCallsCompleted() {
-            console.log(`checkAllCallsCompleted: ${completedCalls}/${totalCalls} calls completed.`);
+        // Checks if all initial async calls have finished (success or fail)
+        function checkAllInitialCallsCompleted() {
+            logDebug(`checkAllInitialCallsCompleted called: ${completedCalls}/${totalCalls} calls completed. Initial error state: ${initialDataError}`);
             if (completedCalls === totalCalls) {
-                hideLoading();
-                const messageDiv = document.getElementById('message');
+                logDebug("All initial backend calls have completed.");
+                // --- Final UI Setup after all initial data is loaded (or failed) ---
+                hideLoading(); // Hide loading indicator *after* all initial calls
+
                 const userEmailSpan = document.getElementById('user-email');
                 const userRoleSpan = document.getElementById('user-role');
                 const reposicaoSection = document.getElementById('reposicao-section');
                 const substituicaoSection = document.getElementById('substituicao-section');
-                const userRole = userResponse && userResponse.success && userResponse.data ? userResponse.data.role : null;
-                const userEmail = userResponse && userResponse.success && userResponse.data ? userResponse.data.email : null;
 
+                // Update User Info Display
+                logDebug("Updating user info display...");
                 if (userEmailSpan) {
-                    userEmailSpan.textContent = userEmail || 'N/A';
-                    userEmailSpan.href = userEmail ? `mailto:${userEmail}` : '#';
-                }
-                if (userRoleSpan) userRoleSpan.textContent = userRole || 'Não Determinado';
+                     if (userResponseData && userResponseData.email) {
+                         userEmailSpan.textContent = userResponseData.email;
+                         userEmailSpan.href = `mailto:${userResponseData.email}`;
+                     } else {
+                         userEmailSpan.textContent = 'N/A';
+                         userEmailSpan.href = '#';
+                     }
+                } else { console.warn("User email span not found."); }
 
-                if (hasInitializationError) {
-                    if (messageDiv && messageDiv.className !== 'message error') {
-                        messageDiv.textContent = "Ocorreram erros durante a inicialização. Funcionalidades podem estar limitadas.";
-                        messageDiv.className = 'message error';
-                    }
-                    console.warn("Initialization completed with errors.");
-                    if (userRole) {
-                        if (reposicaoSection) reposicaoSection.style.display = (userRole === 'Admin' || userRole === 'Professor' || userRole === 'Aluno') ? 'block' : 'none';
-                        if (substituicaoSection) substituicaoSection.style.display = (userRole === 'Admin' || userRole === 'Professor') ? 'block' : 'none';
-                    } else {
-                        if (reposicaoSection) reposicaoSection.style.display = 'none';
-                        if (substituicaoSection) substituicaoSection.style.display = 'none';
-                        if (userRoleSpan) userRoleSpan.textContent = 'Erro ao Obter';
-                        if (messageDiv) {
-                            messageDiv.textContent = (userResponse && userResponse.message) || 'Falha ao obter informações do usuário. Acesso negado.';
-                            messageDiv.className = 'message error';
-                        }
-                    }
+                if (userRoleSpan) {
+                     if (userResponseData && userResponseData.role) {
+                         userRoleSpan.textContent = userResponseData.role;
+                     } else {
+                         userRoleSpan.textContent = 'Erro ao Obter';
+                     }
+                } else { console.warn("User role span not found."); }
+
+                // Control Visibility of Booking Sections based on Role
+                logDebug("Controlling visibility of booking sections based on role:", currentUserRole);
+                if (currentUserRole) { // Use the global variable set in handleSuccess or null if error
+                    if (reposicaoSection) {
+                        const showReposicao = (currentUserRole === 'Admin' || currentUserRole === 'Professor' || currentUserRole === 'Aluno');
+                        reposicaoSection.style.display = showReposicao ? 'block' : 'none';
+                        logDebug(`Reposicao section display set to: ${reposicaoSection.style.display}`);
+                    } else { console.warn("Reposicao section not found."); }
+
+                    if (substituicaoSection) {
+                         const showSubstituicao = (currentUserRole === 'Admin' || currentUserRole === 'Professor');
+                         substituicaoSection.style.display = showSubstituicao ? 'block' : 'none';
+                         logDebug(`Substituicao section display set to: ${substituicaoSection.style.display}`);
+                    } else { console.warn("Substituicao section not found."); }
+
                 } else {
-                    if (userRole) {
-                        if (reposicaoSection) reposicaoSection.style.display = (userRole === 'Admin' || userRole === 'Professor' || userRole === 'Aluno') ? 'block' : 'none';
-                        if (substituicaoSection) substituicaoSection.style.display = (userRole === 'Admin' || userRole === 'Professor') ? 'block' : 'none';
-                        if (messageDiv) {
-                            messageDiv.textContent = userResponse.message || '';
-                            messageDiv.className = userResponse.message ? 'message success' : 'message';
-                        }
-                        console.log("Initialization completed successfully.");
-                    } else {
-                        if (messageDiv) {
-                            messageDiv.textContent = (userResponse && userResponse.message) || 'Não foi possível determinar seu acesso. Entre em contato com o administrador.';
-                            messageDiv.className = 'message error';
-                        }
-                        if (reposicaoSection) reposicaoSection.style.display = 'none';
-                        if (substituicaoSection) substituicaoSection.style.display = 'none';
-                        if (userRoleSpan) userRoleSpan.textContent = 'Acesso Indefinido';
-                        console.warn("Initialization completed without errors, but user role could not be determined.");
-                    }
+                    // Hide sections if role couldn't be determined or fetched
+                    logDebug("Hiding booking sections because currentUserRole is null or invalid.");
+                    if (reposicaoSection) reposicaoSection.style.display = 'none';
+                    if (substituicaoSection) substituicaoSection.style.display = 'none';
                 }
-                console.log("checkAllCallsCompleted finished.");
-            }
+
+                // Load Filter Options (Turmas/Semanas for the grid) - Needs to run after initial setup is done
+                logDebug("Calling loadFilterOptions to populate grid filters.");
+                loadFilterOptions();
+
+                // Display final initialization message (only if no error occurred previously and no other message is showing)
+                 if (!initialDataError && !document.getElementById('message')?.textContent) {
+                    logDebug("Initialization seems successful, no error message displayed.");
+                    // Optionally display a generic ready message or clear any info message from filter loading
+                    // displayMessage("Aplicação pronta.", "info"); // Example
+                 } else if (initialDataError) {
+                    console.warn("Initialization completed with errors. Error message should be visible.");
+                 } else {
+                     logDebug("Initialization completed (no errors reported), and a message might already be displayed (e.g., from filter loading).");
+                 }
+                logDebug("Initialization sequence finished.");
+            } // End if (completedCalls === totalCalls)
         }
 
-        google.script.run.withSuccessHandler(responseString => handleSuccess(responseString, 'getUserRole')).withFailureHandler(error => handleError(error, 'getUserRole')).getUserRole();
-        google.script.run.withSuccessHandler(responseString => handleSuccess(responseString, 'getProfessorsList')).withFailureHandler(error => handleError(error, 'getProfessorsList')).getProfessorsList();
-        google.script.run.withSuccessHandler(responseString => handleSuccess(responseString, 'getTurmasList')).withFailureHandler(error => handleError(error, 'getTurmasList')).getTurmasList();
-        google.script.run.withSuccessHandler(responseString => handleSuccess(responseString, 'getDisciplinesList')).withFailureHandler(error => handleError(error, 'getDisciplinesList')).getDisciplinesList();
-    }); // Fim DOMContentLoaded
+        // --- Initiate the parallel calls ---
+        logDebug("Initiating getUserRole call.");
+        google.script.run.withSuccessHandler(responseString => handleInitialDataSuccess(responseString, 'getUserRole')).withFailureHandler(error => handleInitialDataError(error, 'getUserRole')).getUserRole();
+        logDebug("Initiating getProfessorsList call.");
+        google.script.run.withSuccessHandler(responseString => handleInitialDataSuccess(responseString, 'getProfessorsList')).withFailureHandler(error => handleInitialDataError(error, 'getProfessorsList')).getProfessorsList();
+        logDebug("Initiating getTurmasList call.");
+        google.script.run.withSuccessHandler(responseString => handleInitialDataSuccess(responseString, 'getTurmasList')).withFailureHandler(error => handleInitialDataError(error, 'getTurmasList')).getTurmasList(); // Kept call for now
+        logDebug("Initiating getDisciplinesList call.");
+        google.script.run.withSuccessHandler(responseString => handleInitialDataSuccess(responseString, 'getDisciplinesList')).withFailureHandler(error => handleInitialDataError(error, 'getDisciplinesList')).getDisciplinesList();
+
+    }); // End DOMContentLoaded
+
+    // --- Define Constants used across functions ---
+    logDebug("Defining global constants: STATUS_OCUPACAO, TIPOS_RESERVA, TIPOS_HORARIO");
+    const STATUS_OCUPACAO = Object.freeze({
+        DISPONIVEL: 'Disponivel',
+        REPOSICAO_AGENDADA: 'Reposicao Agendada',
+        SUBSTITUICAO_AGENDADA: 'Substituicao Agendada'
+    });
+    const TIPOS_RESERVA = Object.freeze({
+        REPOSICAO: 'Reposicao',
+        SUBSTITUICAO: 'Substituicao'
+    });
+    const TIPOS_HORARIO = Object.freeze({
+        FIXO: 'Fixo',
+        VAGO: 'Vago'
+    });
 
 </script>

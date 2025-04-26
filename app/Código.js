@@ -24,2765 +24,2396 @@
 
 // Code.gs
 // Obs: Comentários gerados por IA.
-// Obtém o ID da planilha Google Sheets atualmente ativa onde o script está
-// sendo executado.
 const SPREADSHEET_ID = SpreadsheetApp.getActiveSpreadsheet().getId();
+const SCRIPT_LOCK_TIMEOUT_MS = 15000; // Timeout for script lock (15 seconds)
 
-// Define um objeto para armazenar os nomes exatos das abas (planilhas) usadas
-// no script. Isso torna o código mais legível e fácil de manter, evitando erros
-// de digitação nos nomes das planilhas.
-const SHEETS = {
-    CONFIG: 'Configuracoes',  // Aba para configurações gerais do sistema.
-    AUTHORIZED_USERS: 'Usuarios Autorizados',  // Aba para listar usuários e seus
-    // papéis (Admin, Professor).
-    BASE_SCHEDULES: 'Horarios Base',  // Aba com os horários "modelo" ou
-    // "template" que se repetem.
-    SCHEDULE_INSTANCES:
-        'Instancias de Horarios',  // Aba onde as ocorrências futuras dos horários
-    // base são geradas.
-    BOOKING_DETAILS: 'Reservas Detalhadas',  // Aba para registrar os detalhes de
-    // cada reserva feita.
-    DISCIPLINES: 'Disciplinas'  // Aba para listar as disciplinas disponíveis.
-};
+// Sheet Names
+const SHEETS = Object.freeze({
+  CONFIG: 'Configuracoes',
+  AUTHORIZED_USERS: 'Usuarios Autorizados',
+  BASE_SCHEDULES: 'Horarios Base',
+  SCHEDULE_INSTANCES: 'Instancias de Horarios',
+  BOOKING_DETAILS: 'Reservas Detalhadas',
+  DISCIPLINES: 'Disciplinas'
+});
 
-// Define objetos para mapear nomes de colunas legíveis para seus índices (base
-// 0) em cada planilha. Essencial para acessar os dados corretos nas células,
-// mesmo que a ordem das colunas mude (embora exija atualização aqui).
-const HEADERS = {
-    // Índices das colunas na aba 'Configuracoes'
-    CONFIG: {
-        NOME: 0,  // Coluna A: Nome da configuração
-        VALOR: 1  // Coluna B: Valor da configuração
-    },
-    // Índices das colunas na aba 'Usuarios Autorizados'
-    AUTHORIZED_USERS: {
-        EMAIL: 0,  // Coluna A: Email do usuário
-        NOME: 1,   // Coluna B: Nome do usuário
-        PAPEL: 2   // Coluna C: Papel/Função do usuário (Admin, Professor)
-    },
-    // Índices das colunas na aba 'Horarios Base'
-    BASE_SCHEDULES: {
-        ID: 0,           // Coluna A: Identificador único para o horário base
-        TIPO: 1,         // Coluna B: Tipo do horário (Fixo, Vago)
-        DIA_SEMANA: 2,   // Coluna C: Dia da semana (Segunda, Terça, etc.)
-        HORA_INICIO: 3,  // Coluna D: Hora de início do horário (formato HH:mm)
-        DURACAO: 4,  // Coluna E: Duração em minutos (pode não ser usado ativamente
-        // no código fornecido, mas está definido)
-        PROFESSOR_PRINCIPAL: 5,  // Coluna F: Professor associado a este horário
-        // (relevante para horários Fixos)
-        TURMA_PADRAO: 6,       // Coluna G: Turma padrão associada a este horário
-        DISCIPLINA_PADRAO: 7,  // Coluna H: Disciplina padrão (pode não ser usado
-        // ativamente no código fornecido, mas está definido)
-        CAPACIDADE: 8,  // Coluna I: Capacidade de alunos (pode não ser usado
-        // ativamente no código fornecido, mas está definido)
-        OBSERVATIONS: 9  // Coluna J: Observações gerais (pode não ser usado
-        // ativamente no código fornecido, mas está definido)
-    },
-    // Índices das colunas na aba 'Instancias de Horarios'
-    SCHEDULE_INSTANCES: {
-        ID_INSTANCIA: 0,  // Coluna A: Identificador único para esta ocorrência
-        // específica do horário
-        ID_BASE_HORARIO: 1,  // Coluna B: ID do horário base correspondente
-        TURMA: 2,  // Coluna C: Turma associada a esta instância (geralmente copiada
-        // do horário base)
-        PROFESSOR_PRINCIPAL: 3,  // Coluna D: Professor principal associado
-        // (relevante se for tipo Fixo)
-        DATA: 4,        // Coluna E: Data específica desta instância
-        DIA_SEMANA: 5,  // Coluna F: Dia da semana (redundante com Data, mas pode
-        // facilitar filtros)
-        HORA_INICIO: 6,    // Coluna G: Hora de início (copiada do horário base)
-        TIPO_ORIGINAL: 7,  // Coluna H: Tipo original do horário base (Fixo, Vago)
-        STATUS_OCUPACAO: 8,  // Coluna I: Status atual da instância (Disponivel,
-        // Reposicao Agendada, Substituicao Agendada)
-        ID_RESERVA:
-            9,  // Coluna J: ID da reserva que ocupou esta instância (se aplicável)
-        ID_EVENTO_CALENDAR: 10  // Coluna K: ID do evento no Google Calendar
-        // associado a esta instância/reserva
-    },
-    // Índices das colunas na aba 'Reservas Detalhadas'
-    BOOKING_DETAILS: {
-        ID_RESERVA: 0,    // Coluna A: Identificador único da reserva
-        TIPO_RESERVA: 1,  // Coluna B: Tipo da reserva (Reposicao, Substituicao)
-        ID_INSTANCIA: 2,  // Coluna C: ID da instância de horário que foi reservada
-        PROFESSOR_REAL:
-            3,  // Coluna D: Professor que efetivamente ministrará a aula (pode ser
-        // diferente do original em substituições)
-        PROFESSOR_ORIGINAL: 4,  // Coluna E: Professor original do horário
-        // (relevante para Substituições)
-        ALUNOS: 5,  // Coluna F: Nomes dos alunos (se aplicável, formato livre)
-        TURMAS_AGENDADA: 6,  // Coluna G: Turma(s) para a qual a reserva foi feita
-        // (pode ser a mesma da instância ou diferente)
-        DISCIPLINA_REAL: 7,  // Coluna H: Disciplina que será ministrada
-        DATA_HORA_INICIO_EFETIVA:
-            8,  // Coluna I: Data e hora de início combinadas da aula agendada
-        STATUS_RESERVA: 9,  // Coluna J: Status da reserva (Agendada, Realizada,
-        // Cancelada - apenas 'Agendada' é usada aqui)
-        DATA_CRIACAO: 10,  // Coluna K: Data e hora em que a reserva foi criada
-        CRIADO_POR: 11     // Coluna L: Email do usuário que criou a reserva
-    },
-    // Índices das colunas na aba 'Disciplinas'
-    DISCIPLINES: {
-        NOME: 0  // Coluna A: Nome da disciplina
-    }
-};
+// Column Indices (0-based) - Grouped by Sheet
+const HEADERS = Object.freeze({
+  CONFIG: Object.freeze({ NOME: 0, VALOR: 1 }),
+  AUTHORIZED_USERS: Object.freeze({ EMAIL: 0, NOME: 1, PAPEL: 2 }),
+  BASE_SCHEDULES: Object.freeze({
+    ID: 0, TIPO: 1, DIA_SEMANA: 2, HORA_INICIO: 3, DURACAO: 4,
+    PROFESSOR_PRINCIPAL: 5, TURMA_PADRAO: 6, DISCIPLINA_PADRAO: 7,
+    CAPACIDADE: 8, OBSERVATIONS: 9
+  }),
+  SCHEDULE_INSTANCES: Object.freeze({
+    ID_INSTANCIA: 0, ID_BASE_HORARIO: 1, TURMA: 2, PROFESSOR_PRINCIPAL: 3,
+    DATA: 4, DIA_SEMANA: 5, HORA_INICIO: 6, TIPO_ORIGINAL: 7,
+    STATUS_OCUPACAO: 8, ID_RESERVA: 9, ID_EVENTO_CALENDAR: 10
+  }),
+  BOOKING_DETAILS: Object.freeze({
+    ID_RESERVA: 0, TIPO_RESERVA: 1, ID_INSTANCIA: 2, PROFESSOR_REAL: 3,
+    PROFESSOR_ORIGINAL: 4, ALUNOS: 5, TURMAS_AGENDADA: 6, DISCIPLINA_REAL: 7,
+    DATA_HORA_INICIO_EFETIVA: 8, STATUS_RESERVA: 9, DATA_CRIACAO: 10,
+    CRIADO_POR: 11
+  }),
+  DISCIPLINES: Object.freeze({ NOME: 0 })
+});
 
-// Define os valores padrão para o status de ocupação de uma instância de
-// horário.
-const STATUS_OCUPACAO = {
-    DISPONIVEL: 'Disponivel',  // O horário está livre para ser agendado.
-    REPOSICAO_AGENDADA: 'Reposicao Agendada',  // Uma aula de reposição foi
-    // agendada neste horário.
-    SUBSTITUICAO_AGENDADA: 'Substituicao Agendada'  // Uma aula de substituição
-    // foi agendada neste horário.
-};
+// Statuses, Types, Roles
+const STATUS_OCUPACAO = Object.freeze({
+  DISPONIVEL: 'Disponivel',
+  REPOSICAO_AGENDADA: 'Reposicao Agendada',
+  SUBSTITUICAO_AGENDADA: 'Substituicao Agendada'
+});
+const TIPOS_RESERVA = Object.freeze({
+  REPOSICAO: 'Reposicao',
+  SUBSTITUICAO: 'Substituicao'
+});
+const TIPOS_HORARIO = Object.freeze({
+  FIXO: 'Fixo',
+  VAGO: 'Vago'
+});
+const USER_ROLES = Object.freeze({
+  ADMIN: 'Admin',
+  PROFESSOR: 'Professor',
+  ALUNO: 'Aluno'
+});
 
-// Define os tipos de reserva possíveis.
-const TIPOS_RESERVA = {
-    REPOSICAO: 'Reposicao',  // Agendamento em um horário originalmente "Vago".
-    SUBSTITUICAO:
-        'Substituicao'  // Agendamento em um horário originalmente "Fixo",
-    // substituindo o professor/aula original.
-};
+// Email Configuration
+const ADMIN_COPY_EMAILS = ["cae.itq@ifsp.edu.br", "mtm.itq@ifsp.edu.br"]; // Fixed BCC list
+const EMAIL_SENDER_NAME = 'Sistema de Reservas IFSP';
 
-// Define os tipos de horário base.
-const TIPOS_HORARIO = {
-    FIXO: 'Fixo',  // Horário regular com professor e turma definidos.
-    VAGO: 'Vago'  // Horário disponível na grade, sem aula fixa associada, usado
-    // para reposições.
-};
-
+// ==========================================================================
+//                            Utility & Helper Functions
+// ==========================================================================
 
 /**
- * Tenta converter um valor bruto (geralmente de uma célula da planilha) para um
- * objeto Date válido. Trata casos específicos como a data "zero" do Google
- * Sheets (30/12/1899) que pode ocorrer se uma célula de hora for formatada
- * incorretamente como data, retornando null nesses casos.
- * @param {*} rawValue O valor lido da célula.
- * @returns {Date|null} Um objeto Date válido ou null se a conversão falhar ou
- *     for a data "zero".
+ * Standardized JSON response creation. Logs failures server-side.
+ * @param {boolean} success - Whether the operation succeeded.
+ * @param {string} message - A descriptive message.
+ * @param {*} [data=null] - Optional data payload.
+ * @returns {string} JSON string representation.
+ */
+function createJsonResponse(success, message, data = null) {
+  if (!success) {
+    Logger.log(`Operation Failed: ${message}`);
+    if (data && data.error) {
+      Logger.log(`Error Details: ${data.error.message || data.error}`);
+      if (data.error.stack) Logger.log(`Stack: ${data.error.stack}`);
+    } else if (data && data.bookingId) {
+      Logger.log(`Associated Booking ID (if any): ${data.bookingId}`);
+    }
+  }
+  return JSON.stringify({ success, message, data });
+}
+
+/**
+ * Gets the active/effective user's email safely.
+ * @returns {string} The user's email.
+ * @throws {Error} If the user email cannot be retrieved.
+ */
+function getActiveUserEmail_() {
+  try {
+    // Prioritize getEffectiveUser for broader compatibility (triggers, etc.)
+    // Fallback to getActiveUser if effective user isn't available (less common for web apps)
+    const email = Session.getEffectiveUser().getEmail() || Session.getActiveUser().getEmail();
+    if (!email) throw new Error("Session.getEffectiveUser().getEmail() returned empty.");
+    return email;
+  } catch (e) {
+    Logger.log('CRITICAL: Failed to get active/effective user email: ' + e.message);
+    throw new Error('Não foi possível identificar o usuário logado.');
+  }
+}
+
+/**
+ * Gets a sheet by name and handles not found errors.
+ * @param {string} sheetName - The name of the sheet.
+ * @returns {GoogleAppsScript.Spreadsheet.Sheet} The sheet object.
+ * @throws {Error} If the sheet is not found.
+ */
+function getSheetByName_(sheetName) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    Logger.log(`CRITICAL: Sheet "${sheetName}" not found.`);
+    throw new Error(`Erro interno: Planilha "${sheetName}" não encontrada.`);
+  }
+  return sheet;
+}
+
+/**
+ * Reads data from a sheet, handling empty sheets and providing header/data separately.
+ * Optionally checks for a minimum number of columns based on header definitions.
+ * @param {string} sheetName - The name of the sheet.
+ * @param {object} [headersDefinition=null] - Optional: The HEADERS[SHEET_KEY] object for column count check.
+ * @returns {{header: string[], data: any[][], sheet: GoogleAppsScript.Spreadsheet.Sheet}}
+ * @throws {Error} If the sheet is not found.
+ */
+function getSheetData_(sheetName, headersDefinition = null) {
+  const sheet = getSheetByName_(sheetName);
+  const range = sheet.getDataRange();
+  const values = range.getValues(); // Use getValues to preserve Date objects etc.
+
+  if (!values || values.length === 0) {
+    Logger.log(`Sheet "${sheetName}" is completely empty.`);
+    return { header: [], data: [], sheet: sheet };
+  }
+
+  const header = values[0];
+  const data = values.length > 1 ? values.slice(1) : [];
+
+  // Optional minimum column check
+  if (headersDefinition) {
+    const expectedMinCols = Math.max(...Object.values(headersDefinition)) + 1;
+    if (header.length < expectedMinCols) {
+      Logger.log(`WARNING: Sheet "${sheetName}" header has ${header.length} columns, but expected at least ${expectedMinCols} based on HEADERS definition. Data processing might fail.`);
+    }
+  }
+
+  if (data.length === 0) {
+    Logger.log(`Sheet "${sheetName}" contains only a header row or is empty.`);
+  }
+
+  return { header, data, sheet };
+}
+
+/**
+ * Finds the 1-based row index of a row matching a specific ID in a 2D data array.
+ * Assumes the first row of the data array corresponds to row 2 in the sheet.
+ * @param {any[][]} data - The 2D array of data (excluding header).
+ * @param {number} idColumnIndex - The 0-based index of the column containing the ID.
+ * @param {string} targetId - The ID to search for (will be trimmed).
+ * @returns {number} The 1-based row index in the *sheet*, or -1 if not found or invalid input.
+ */
+function findRowIndexById_(data, idColumnIndex, targetId) {
+  if (!targetId || typeof targetId !== 'string' || idColumnIndex < 0) return -1;
+  const trimmedTargetId = targetId.trim();
+  if (trimmedTargetId === '') return -1;
+
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+    // Check if row exists and has the ID column
+    if (row && row.length > idColumnIndex) {
+      const currentIdRaw = row[idColumnIndex];
+      // Check if ID is string or number before converting/trimming
+      if (typeof currentIdRaw === 'string' || typeof currentIdRaw === 'number') {
+        const currentId = String(currentIdRaw).trim();
+        if (currentId === trimmedTargetId) {
+          return i + 2; // Return 1-based sheet row index
+        }
+      }
+    }
+  }
+  return -1; // Not found
+}
+
+/**
+ * Acquires a script lock with a timeout, throwing an error if unsuccessful.
+ * @param {number} timeoutMilliseconds - Timeout duration.
+ * @returns {GoogleAppsScript.Lock.Lock} The acquired lock.
+ * @throws {Error} If the lock cannot be acquired within the timeout.
+ */
+function acquireScriptLock_(timeoutMilliseconds = SCRIPT_LOCK_TIMEOUT_MS) {
+  const lock = LockService.getScriptLock();
+  try {
+    Logger.log(`Attempting to acquire script lock (timeout: ${timeoutMilliseconds}ms)...`);
+    lock.waitLock(timeoutMilliseconds);
+    Logger.log("Script lock acquired.");
+    return lock;
+  } catch (e) {
+    Logger.log(`Failed to acquire script lock within ${timeoutMilliseconds}ms: ${e.message}`);
+    throw new Error('O sistema está ocupado processando outra solicitação. Tente novamente em alguns instantes.');
+  }
+}
+
+/**
+ * Releases a script lock safely, logging warnings if release fails.
+ * @param {GoogleAppsScript.Lock.Lock | null} lock - The lock object to release.
+ */
+function releaseScriptLock_(lock) {
+  if (lock && typeof lock.releaseLock === 'function') {
+    try {
+      lock.releaseLock();
+      Logger.log("Script lock released.");
+    } catch (e) {
+      Logger.log(`Warning: Error releasing script lock (may have expired or already released): ${e.message}`);
+    }
+  } else {
+    // Logger.log("No valid lock object provided to releaseScriptLock_."); // Can be noisy
+  }
+}
+
+/**
+ * Safely updates a specific row in a sheet. Pads/trims data to match column count.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The sheet object.
+ * @param {number} rowIndex - The 1-based row index to update.
+ * @param {number} numCols - The total number of columns the sheet range should cover.
+ * @param {any[]} updatedRowData - The 1D array of data for the row.
+ * @throws {Error} If the update fails.
+ */
+function updateSheetRow_(sheet, rowIndex, numCols, updatedRowData) {
+  try {
+    if (!sheet || typeof sheet.getRange !== 'function') throw new Error("Invalid sheet object provided for update.");
+    if (rowIndex < 1) throw new Error(`Invalid row index: ${rowIndex}.`);
+    if (numCols < 1) throw new Error(`Invalid number of columns: ${numCols}.`);
+    if (!Array.isArray(updatedRowData)) throw new Error("updatedRowData must be an array.");
+
+    const finalRowData = [...updatedRowData];
+    while (finalRowData.length < numCols) finalRowData.push('');
+    if (finalRowData.length > numCols) finalRowData.length = numCols;
+
+    sheet.getRange(rowIndex, 1, 1, numCols).setValues([finalRowData]);
+    Logger.log(`Row ${rowIndex} in sheet "${sheet.getName()}" updated successfully.`);
+  } catch (e) {
+    Logger.log(`ERROR updating row ${rowIndex} in sheet "${sheet.getName()}": ${e.message}`);
+    throw new Error(`Erro interno ao atualizar dados na planilha "${sheet.getName()}" (linha ${rowIndex}): ${e.message}`);
+  }
+}
+
+/**
+ * Appends a new row safely to a sheet. Pads/trims data to match column count.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The sheet object.
+ * @param {number} numCols - The expected number of columns.
+ * @param {any[]} newRowData - The 1D array of data for the new row.
+ * @throws {Error} If the append operation fails.
+ */
+function appendSheetRow_(sheet, numCols, newRowData) {
+  try {
+    if (!sheet || typeof sheet.appendRow !== 'function') throw new Error("Invalid sheet object provided for append.");
+    if (numCols < 1) throw new Error(`Invalid number of columns: ${numCols}.`);
+    if (!Array.isArray(newRowData)) throw new Error("newRowData must be an array.");
+
+    const finalRowData = [...newRowData];
+    while (finalRowData.length < numCols) finalRowData.push('');
+    if (finalRowData.length > numCols) finalRowData.length = numCols;
+
+    sheet.appendRow(finalRowData);
+    // Logger.log(`Row appended successfully to sheet "${sheet.getName()}".`); // Can be verbose
+  } catch (e) {
+    Logger.log(`ERROR appending row to sheet "${sheet.getName()}": ${e.message}`);
+    throw new Error(`Erro interno ao adicionar dados na planilha "${sheet.getName()}": ${e.message}`);
+  }
+}
+
+// ==========================================================================
+//                            Formatting Helpers
+// ==========================================================================
+
+/**
+ * Tries to convert a value to a valid Date object normalized to UTC midnight.
+ * Handles Sheets' "zero date" (1899-12-30) by returning null.
+ * @param {*} rawValue - The value from the sheet cell.
+ * @returns {Date|null} A valid Date object (UTC midnight) or null.
  */
 function formatValueToDate(rawValue) {
-    // Verifica se já é um objeto Date e se é um tempo válido
-    if (rawValue instanceof Date && !isNaN(rawValue.getTime())) {
-        // Verifica se a data é 30/12/1899 (artefato comum do Google Sheets para
-        // horas sem data)
-        if (rawValue.getFullYear() === 1899 && rawValue.getMonth() === 11 &&
-            rawValue.getDate() === 30) {
-            // Mesmo sendo 30/12/1899, se tiver hora, minuto ou segundo, poderia ser
-            // uma hora válida, mas a lógica atual retorna null. Se for exatamente
-            // meia-noite (00:00:00), definitivamente deve ser null.
-            if (rawValue.getHours() === 0 && rawValue.getMinutes() === 0 &&
-                rawValue.getSeconds() === 0) {
-                return null;  // Retorna null para a data "zero" exata.
-            }
-            // Considerando que 30/12/1899 geralmente indica um problema de
-            // formatação, retorna null mesmo se houver horas/minutos.
-            return null;
-        }
-        // Se for uma data válida e não for 30/12/1899, retorna o objeto Date.
-        return rawValue;
+  if (rawValue instanceof Date && !isNaN(rawValue.getTime())) {
+    // Explicitly check for and reject the 1899 date artifact
+    if (rawValue.getFullYear() === 1899 && rawValue.getMonth() === 11 && rawValue.getDate() === 30) {
+      // Logger.log(`formatValueToDate: Detected 1899-12-30 artifact, returning null.`); // Optional log
+      return null;
     }
-
-    // Se não for um objeto Date válido, retorna null.
-    return null;
+    // Return a *new* Date object representing UTC midnight for consistent date comparisons
+    return new Date(Date.UTC(rawValue.getFullYear(), rawValue.getMonth(), rawValue.getDate()));
+  }
+  return null;
 }
 
 /**
- * Converte um valor (string 'dd/MM/yyyy' ou objeto Date) para um objeto Date válido.
- * Retorna null se o valor for inválido ou o formato incorreto para string.
- * A hora é definida para 00:00:00.
- * @param {*} value O valor lido da célula (pode ser string 'dd/MM/yyyy', Date, etc.).
- * @returns {Date|null} O objeto Date válido ou null se a conversão falhar ou for inválida.
+ * Parses a string in 'dd/MM/yyyy' format or a Date object to a Date object normalized to UTC midnight.
+ * @param {*} value - String 'dd/MM/yyyy', Date object, or other.
+ * @returns {Date|null} The Date object (UTC midnight) or null if invalid.
  */
 function parseDDMMYYYY(value) {
-    // 1. Verifica se o valor já é um objeto Date válido
-    if (value instanceof Date && !isNaN(value.getTime())) {
-        // É um objeto Date válido. Zero a hora e retorna.
-        const date = new Date(value.getTime()); // Cria uma cópia para não modificar o original (embora getValues retorne cópias)
-        date.setHours(0, 0, 0, 0);
-        return date;
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    // Normalize existing Date objects to UTC midnight
+    return new Date(Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()));
+  }
+
+  if (typeof value === 'string') {
+    const dateString = value.trim();
+    // Allow ., / or - as separators
+    const parts = dateString.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+    if (!parts) return null;
+
+    const day = parseInt(parts[1], 10);
+    const month = parseInt(parts[2], 10) - 1; // 0-indexed for Date constructor
+    const year = parseInt(parts[3], 10);
+
+    // Check basic validity and create UTC date
+    if (month >= 0 && month <= 11 && day >= 1 && day <= 31 && year >= 1000) {
+      const date = new Date(Date.UTC(year, month, day));
+      // Final check: Ensure created date components match input (handles Feb 30 etc.)
+      if (date.getUTCFullYear() === year && date.getUTCMonth() === month && date.getUTCDate() === day) {
+        return date; // Already normalized to UTC midnight
+      }
     }
-
-    // 2. Se não for um Date object, verifica se é uma string para tentar parsear
-    if (typeof value === 'string') {
-        const dateString = value.trim();
-        const parts = dateString.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
-        if (!parts) {
-            // Não corresponde ao formato esperado 'dd/MM/yyyy'
-            Logger.log(`parseDDMMYYYY: String "${dateString}" não corresponde ao formato dd/MM/yyyy.`);
-            return null;
-        }
-
-        const day = parseInt(parts[1], 10);
-        const month = parseInt(parts[2], 10) - 1; // Mês é baseado em zero (0-11)
-        const year = parseInt(parts[3], 10);
-
-        // Validação básica dos componentes
-        if (month < 0 || month > 11 || day < 1 || day > 31 || year < 1000) {
-            Logger.log(`parseDDMMYYYY: Componentes de data inválidos: Dia=${day}, Mês=${month + 1}, Ano=${year} na string "${dateString}".`);
-            return null;
-        }
-
-        // Cria o objeto Date. O construtor Date corrigirá dias inválidos (ex: 30 de Fev),
-        // então verificamos se a data resultante corresponde às partes de entrada.
-        const date = new Date(year, month, day);
-
-        // Verifica se o Date object criado corresponde às partes originais
-        if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) {
-            // A data de entrada era inválida (ex: 30/02/2023)
-            Logger.log(`parseDDMMYYYY: Data criada não corresponde aos componentes (provavelmente data inválida como 30/02): "${dateString}".`);
-            return null;
-        }
-
-        // Zera o tempo para comparação apenas de datas
-        date.setHours(0, 0, 0, 0);
-        return date;
-    }
-
-    // 3. Se não for nem Date nem string, é um tipo inesperado
-    Logger.log(`parseDDMMYYYY: Tipo de valor inesperado recebido: ${typeof value}. Valor: "${value}".`);
-    return null;
+    return null; // Invalid date components or failed validation
+  }
+  return null; // Not a Date or parseable string
 }
 
+
 /**
- * Formata um valor bruto (Date, string ou número) para uma string de hora no
- * formato "HH:mm".
- * @param {*} rawValue O valor lido da célula (pode ser Date, string "HH:MM" ou
- *     número entre 0 e 1).
- * @param {string} timeZone O fuso horário da planilha (ex:
- *     "America/Sao_Paulo").
- * @returns {string|null} A hora formatada como "HH:mm" ou null se a formatação
- *     falhar.
+ * Formats a value (Date, string, or Sheets time number) to "HH:mm" string using the sheet's timezone.
+ * Handles Sheets' "zero date" artifact if it contains time components.
+ * @param {*} rawValue - The value from the sheet.
+ * @param {string} timeZone - The spreadsheet's time zone ID (e.g., "America/Sao_Paulo").
+ * @returns {string|null} Formatted time string "HH:mm" or null.
  */
 function formatValueToHHMM(rawValue, timeZone) {
-    // Se for um objeto Date válido
+  try {
+    if (!timeZone) { // Safety check for timezone
+      Logger.log("Warning: Timezone not provided to formatValueToHHMM. Using default.");
+      timeZone = Session.getScriptTimeZone(); // Fallback to script timezone
+    }
+
     if (rawValue instanceof Date && !isNaN(rawValue.getTime())) {
-        // Formata a data usando o fuso horário fornecido para o formato HH:mm.
-        return Utilities.formatDate(rawValue, timeZone, 'HH:mm');
-    }
-    // Se for uma string
-    else if (typeof rawValue === 'string') {
-        // Tenta encontrar um padrão HH:MM ou HH:MM:SS na string (ignorando espaços
-        // em branco)
-        const timeMatch = rawValue.trim().match(/^(\d{1,2}):(\d{2})(:\d{2})?$/);
-        if (timeMatch) {
-            const hour = parseInt(timeMatch[1], 10);
-            const minute = parseInt(timeMatch[2], 10);
-            // Valida se a hora e o minuto estão dentro dos limites permitidos (0-23
-            // para hora, 0-59 para minuto)
-            if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
-                // Retorna a string formatada com zero à esquerda se necessário.
-                return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-            }
+      // Handle the 1899 "zero date" case specifically if it has time components
+      if (rawValue.getFullYear() === 1899 && rawValue.getMonth() === 11 && rawValue.getDate() === 30) {
+        // Format time part only if it's not exactly midnight
+        if (rawValue.getHours() !== 0 || rawValue.getMinutes() !== 0 || rawValue.getSeconds() !== 0 || rawValue.getMilliseconds() !== 0) {
+          return Utilities.formatDate(rawValue, timeZone, 'HH:mm');
+        } else {
+          return null; // Treat exact 1899-12-30 00:00:00 as invalid time
         }
+      }
+      // Format regular dates
+      return Utilities.formatDate(rawValue, timeZone, 'HH:mm');
     }
-    // Se for um número (formato de hora do Google Sheets, onde 0 = 00:00, 0.5 =
-    // 12:00, 1 = 24:00)
-    else if (typeof rawValue === 'number' && rawValue >= 0 && rawValue <= 1) {
-        // Converte a fração do dia para minutos totais.
-        const totalMinutes = Math.round(rawValue * 24 * 60);
-        // Calcula as horas e minutos.
-        const hours = Math.floor(totalMinutes / 60);
-        const minutes = totalMinutes % 60;
-        // Valida se a hora e o minuto calculados são válidos.
-        if (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
-            // Retorna a string formatada com zero à esquerda.
-            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    if (typeof rawValue === 'string') {
+      const timeMatch = rawValue.trim().match(/^(\d{1,2}):(\d{2})(:\d{2})?(\s*(?:AM|PM))?$/i);
+      if (timeMatch) {
+        let hour = parseInt(timeMatch[1], 10);
+        const minute = parseInt(timeMatch[2], 10);
+        const ampm = (timeMatch[4] || '').trim().toUpperCase();
+
+        if (ampm === 'PM' && hour < 12) hour += 12;
+        if (ampm === 'AM' && hour === 12) hour = 0; // Midnight case
+
+        if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+          return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
         }
+      }
     }
-    // Se nenhum dos formatos for reconhecido ou for inválido, retorna null.
+    if (typeof rawValue === 'number' && rawValue >= 0 && rawValue <= 1) { // Includes 0 and 1
+      // Using modulo arithmetic on total minutes is generally safer for precision
+      const totalMinutes = Math.round(rawValue * 1440); // 24 * 60
+      // Handle the edge case where rawValue is exactly 1 (representing 24:00 or 00:00 of next day technically)
+      if (totalMinutes === 1440) return "00:00";
+
+      const hours = Math.floor(totalMinutes / 60) % 24; // Use modulo 24 for hours
+      const minutes = totalMinutes % 60;
+
+      if (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+      }
+    }
+    return null; // Could not format
+  } catch (e) {
+    Logger.log(`Error in formatValueToHHMM for value "${rawValue}" (Type: ${typeof rawValue}): ${e.message}`);
     return null;
+  }
 }
 
+
+// ==========================================================================
+//                       Configuration & Authorization
+// ==========================================================================
+
 /**
- * Obtém o papel (role) de um usuário específico buscando seu email na planilha
- * 'Usuarios Autorizados'. Esta é uma função interna, chamada por outras
- * funções.
- * @param {string} userEmail O email do usuário a ser procurado.
- * @returns {string|null} O papel do usuário ('Admin', 'Professor') ou null se
- *     não encontrado ou inválido.
+ * Gets a configuration value from the 'Configuracoes' sheet. Caches values.
+ * @param {string} configName - The name of the configuration setting.
+ * @returns {string|Date|null} The configuration value or null if not found/error.
  */
-function getUserRolePlain(userEmail) {
-    // Acessa a planilha de usuários autorizados pelo nome definido em SHEETS.
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
-        SHEETS.AUTHORIZED_USERS);
-    // Verifica se a planilha foi encontrada.
-    if (!sheet) {
-        Logger.log(`Planilha "${SHEETS.AUTHORIZED_USERS}" não encontrada em getUserRolePlain.`);
-        return null;  // Retorna null se a planilha não existe.
-    }
-    // Obtém todos os dados da planilha.
-    const data = sheet.getDataRange().getValues();
-    // Verifica se há dados além do cabeçalho.
-    if (data.length <= 1) {
-        Logger.log(
-            `Planilha "${SHEETS.AUTHORIZED_USERS}" vazia ou apenas cabeçalho.`);
-        return null;  // Retorna null se a planilha estiver vazia.
+const getConfigValue = (() => {
+  const cache = {};
+  let configData = null;
+  let hasReadSheet = false;
+
+  return (configName) => {
+    if (configName in cache) {
+      return cache[configName];
     }
 
-    // Itera pelas linhas de dados (começando da segunda linha, índice 1, para
-    // pular o cabeçalho).
-    for (let i = 1; i < data.length; i++) {
-        // Verifica se a linha atual existe, tem colunas suficientes, e se a coluna
-        // de email existe, é uma string não vazia.
-        if (data[i] && data[i].length > HEADERS.AUTHORIZED_USERS.PAPEL &&
-            data[i][HEADERS.AUTHORIZED_USERS.EMAIL] &&
-            typeof data[i][HEADERS.AUTHORIZED_USERS.EMAIL] === 'string' &&
-            data[i][HEADERS.AUTHORIZED_USERS.EMAIL].trim() !== '' &&
-            data[i][HEADERS.AUTHORIZED_USERS.EMAIL].trim() === userEmail) {
-            // Se o email corresponder (após remover espaços extras), obtém o papel da
-            // coluna correspondente.
-            const role = data[i][HEADERS.AUTHORIZED_USERS.PAPEL];
-
-            // Verifica se o papel encontrado é um dos papéis válidos definidos.
-            if (['Admin', 'Professor'].includes(role)) {
-                return role;  // Retorna o papel válido encontrado.
-            } else {
-                // Se o papel na planilha for inválido, registra um log.
-                Logger.log(
-                    `Papel inválido encontrado para o usuário ${userEmail} na linha ${i + 1} da planilha "${SHEETS.AUTHORIZED_USERS}": "${role}".`);
-                // Continua procurando, caso o email apareça novamente com um papel
-                // válido (embora isso não devesse ocorrer).
-            }
+    if (!configData && !hasReadSheet) {
+      try {
+        const sheet = getSheetByName_(SHEETS.CONFIG);
+        const numRows = sheet.getLastRow();
+        if (numRows < 2) {
+          configData = [];
+        } else {
+          configData = sheet.getRange(2, HEADERS.CONFIG.NOME + 1, numRows - 1, 2).getValues();
         }
-    }
-    // Se o loop terminar sem encontrar o email, registra um log.
-    Logger.log(`Usuário "${userEmail}" não encontrado na lista de autorizados da planilha "${SHEETS.AUTHORIZED_USERS}".`);
-    return null;  // Retorna null se o usuário não foi encontrado.
-}
-
-/**
- * Obtém o valor de uma configuração específica da planilha 'Configuracoes'.
- * @param {string} configName O nome da configuração a ser buscada na coluna
- *     NOME.
- * @returns {string|null} O valor da configuração como string, ou null se não
- *     for encontrada.
- */
-function getConfigValue(configName) {
-    // Acessa a planilha de configurações.
-    const sheet =
-        SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.CONFIG);
-    // Verifica se a planilha existe.
-    if (!sheet) {
-        Logger.log(`Planilha "${SHEETS.CONFIG}" não encontrada.`);
-        return null;
+        hasReadSheet = true;
+      } catch (e) {
+        Logger.log(`Error reading config sheet in getConfigValue: ${e.message}`);
+        configData = [];
+        hasReadSheet = true;
+      }
     }
 
-    // Obtém todos os dados da planilha.
-    const data = sheet.getDataRange().getValues();
-    // Verifica se há dados além do cabeçalho.
-    if (data.length <= 1) {
-        Logger.log(`Planilha "${SHEETS.CONFIG}" vazia ou apenas cabeçalho.`);
-        return null;
+    if (!configData || configData.length === 0) {
+      if (!cache.hasOwnProperty(configName)) {
+        Logger.log(`Configuração "${configName}" não encontrada (sheet empty or read error).`);
+        cache[configName] = null;
+      }
+      return null;
     }
 
-    // Itera pelas linhas de dados (a partir da segunda linha).
-    for (let i = 1; i < data.length; i++) {
-        // Verifica se a linha existe, tem colunas suficientes e se o nome na coluna
-        // NOME corresponde ao solicitado.
-        if (data[i] && data[i].length > HEADERS.CONFIG.VALOR &&
-            data[i][HEADERS.CONFIG.NOME] === configName) {
-            // Retorna o valor da coluna VALOR, convertido para string e sem espaços
-            // extras. Usa '' como fallback caso a célula esteja vazia (null ou
-            // undefined) antes de chamar trim().
-            let value = data[i][HEADERS.CONFIG.VALOR]
-            if (value instanceof Date) {
-                return value;
-            }
-            return String(value || '').trim();
+    const configRow = configData.find(row => row && row[0] === configName);
+
+    if (configRow) {
+      let value = configRow[1];
+      if (value instanceof Date && !isNaN(value.getTime())) {
+        if (value.getFullYear() === 1899 && value.getMonth() === 11 && value.getDate() === 30) {
+          try {
+            const timeZone = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+            const formattedTime = formatValueToHHMM(value, timeZone);
+            if (formattedTime) { cache[configName] = formattedTime; return formattedTime; }
+          } catch (tzError) { /* Ignore */ }
+        } else {
+          cache[configName] = value;
+          return value;
         }
+      }
+      const stringValue = String(value || '').trim();
+      cache[configName] = stringValue;
+      return stringValue;
     }
-    // Se o loop terminar sem encontrar a configuração, registra um log.
-    Logger.log(`Configuração "${configName}" não encontrada na planilha "${SHEETS.CONFIG}".`);
-    return null;  // Retorna null se a configuração não foi encontrada.
-}
+
+    if (!cache.hasOwnProperty(configName)) {
+      Logger.log(`Configuração "${configName}" não encontrada na planilha "${SHEETS.CONFIG}".`);
+      cache[configName] = null;
+    }
+    return null;
+  };
+})();
+
 
 /**
- * Função principal que responde a requisições GET (quando o script é acessado
- * como Web App). Verifica a autorização do usuário e serve a interface HTML
- * principal ou sub-páginas.
- * @param {object} e O objeto de evento do Google Apps Script contendo parâmetros
- *     da requisição.
- * @returns {HtmlService.HtmlOutput} O conteúdo HTML a ser exibido para o
- *     usuário.
+ * Gets the role of a user based on their email from 'Usuarios Autorizados' sheet. (Internal use)
+ * @param {string} userEmail - The email to look up.
+ * @returns {string|null} The user's role (Admin, Professor, Aluno) or null.
  */
-function doGet(e) {
-    // Obtém o email do usuário que está acessando o Web App.
-    const userEmail = Session.getActiveUser().getEmail();
-    Logger.log(`Acesso Web App por: ${userEmail}. Parâmetros: ${JSON.stringify(e.parameter)}`);
+function getUserRolePlain_(userEmail) {
+  if (!userEmail) return null;
+  const trimmedEmail = userEmail.trim().toLowerCase();
+  if (trimmedEmail === '') return null;
 
-    // Verifica o papel (role) do usuário usando a função auxiliar.
-    const userRole = getUserRolePlain(userEmail);
+  try {
+    // Read only necessary columns for optimization
+    const userSheet = getSheetByName_(SHEETS.AUTHORIZED_USERS);
+    const lastRow = userSheet.getLastRow();
+    if (lastRow < 2) return null; // No data
 
-    // Se o usuário não tiver um papel definido (não autorizado), retorna uma
-    // página de acesso negado, independentemente da página solicitada.
-    if (!userRole) {
-        Logger.log(`Acesso negado para usuário: ${userEmail}. Papel: ${userRole}`);
-        // Cria uma página HTML simples informando o acesso negado.
-        return HtmlService
-            .createHtmlOutput(
-                '<h1>Acesso Negado</h1>' +
-                '<p>Seu usuário (' + userEmail +
-                ') não tem permissão para acessar esta aplicação. Entre em contato com o administrador.</p>')
-            .setTitle('Acesso Negado');  // Define o título da página.
+    const emailCol = HEADERS.AUTHORIZED_USERS.EMAIL + 1; // 1-based
+    const roleCol = HEADERS.AUTHORIZED_USERS.PAPEL + 1; // 1-based
+    const maxCol = Math.max(emailCol, roleCol);
+    if (userSheet.getLastColumn() < maxCol) {
+      Logger.log(`WARNING: Sheet "${SHEETS.AUTHORIZED_USERS}" has fewer columns (${userSheet.getLastColumn()}) than expected (${maxCol}). Role lookup might fail.`);
+      return null;
     }
 
-    // --- Roteamento para sub-páginas ---
-    const page = e.parameter.page; // Obtém o parâmetro 'page' da URL
+    // Read only email and role columns
+    const range = userSheet.getRange(2, 1, lastRow - 1, maxCol);
+    const data = range.getValues();
 
-    if (page === 'scheduleView') {
-        Logger.log('Servindo ScheduleView.html');
-        // Se a página solicitada for 'scheduleView', serve o HTML correspondente.
-        // Não precisamos passar o papel do usuário aqui, pois a ScheduleViewJS
-        // fará a própria checagem ao carregar filtros/dados.
-        return HtmlService.createTemplateFromFile('ScheduleView')
-            .evaluate()
-            .setTitle('Visualizar Horários - Sistema de Agendamento');
-    } else {
-        // Página padrão (se nenhum parâmetro 'page' ou um parâmetro
-        // desconhecido for especificado)
-        Logger.log('Servindo Index.html (padrão)');
-        const htmlOutput = HtmlService.createTemplateFromFile('Index');
-        // Passa o papel do usuário para o template HTML principal.
-        htmlOutput.userRole = userRole;
-        // Avalia o template e retorna o HTML final.
-        return htmlOutput.evaluate().setTitle(
-            'Sistema de Agendamento');  // Define o título da página principal.
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      // Adjust column indices back to 0-based for the sliced 'data' array
+      const emailInSheet = String(row[emailCol - 1] || '').trim().toLowerCase();
+      if (emailInSheet === trimmedEmail) {
+        const role = String(row[roleCol - 1] || '').trim();
+        if (Object.values(USER_ROLES).includes(role)) {
+          return role;
+        } else if (role !== '') {
+          Logger.log(`Invalid/Unrecognized role "${role}" found for user ${trimmedEmail}.`);
+        }
+        // Assuming first match is definitive, even if invalid role found later
+        return null; // Found email but role is invalid or empty
+      }
     }
+    // Logger.log(`User "${trimmedEmail}" not found in ${SHEETS.AUTHORIZED_USERS}.`); // Can be verbose
+    return null; // User email not found
+  } catch (e) {
+    Logger.log(`Error in getUserRolePlain_ for ${trimmedEmail}: ${e.message}`);
+    return null;
+  }
 }
 
-/**
- * Função utilitária para ser usada dentro dos templates HTML (arquivos .html).
- * Permite incluir o conteúdo de outros arquivos HTML (ex: CSS, JS em blocos
- * <style> ou <script>). Uso no HTML: <?!= include('NomeDoArquivoSemExtensao');
- * ?>
- * @param {string} filename O nome do arquivo (sem a extensão .html) a ser
- *     incluído.
- * @returns {string} O conteúdo do arquivo solicitado.
- */
-function include(filename) {
-    return HtmlService.createHtmlOutputFromFile(filename).getContent();
-}
-
+// ==========================================================================
+//                        Client-Side Callable Functions
+// ==========================================================================
 
 /**
- * Função exposta para ser chamada pelo lado do cliente (JavaScript no
- * navegador). Retorna o papel e o email do usuário atual em formato JSON.
- * @returns {string} Uma string JSON contendo {success, message, data: {role,
- *     email}}.
+ * [CLIENT CALLABLE] Gets the current user's role and email.
+ * @returns {string} JSON {success, message, data: {role, email}}
  */
 function getUserRole() {
-    Logger.log('*** getUserRole chamada ***');  // Log de início da função.
-    // Obtém o email do usuário ativo na sessão.
-    const userEmail = Session.getActiveUser().getEmail();
-    Logger.log('Tentando obter papel para email: ' + userEmail);  // Log do email.
-
-    // Chama a função interna para buscar o papel na planilha.
-    const userRole = getUserRolePlain(userEmail);
-
-    // Retorna uma string JSON com o resultado da operação.
-    return JSON.stringify({
-        success: true,  // Indica que a função em si executou (não necessariamente
-        // que encontrou o papel).
-        message: userRole ?
-            'Papel do usuário obtido.' :
-            'Usuário não encontrado ou não autorizado.',  // Mensagem informativa.
-        data: {
-            role: userRole,   // O papel encontrado (ou null).
-            email: userEmail  // O email do usuário.
-        }
-    });
+  Logger.log('*** getUserRole called ***');
+  let userEmail = '[Unavailable]';
+  try {
+    userEmail = getActiveUserEmail_();
+    const userRole = getUserRolePlain_(userEmail);
+    const message = userRole ? 'Papel do usuário obtido.' : 'Usuário não encontrado ou não autorizado.';
+    return createJsonResponse(true, message, { role: userRole, email: userEmail });
+  } catch (e) {
+    return createJsonResponse(false, e.message || 'Erro inesperado ao obter informações do usuário.', { role: null, email: userEmail });
+  }
 }
 
 /**
- * Função exposta para ser chamada pelo lado do cliente.
- * Retorna uma lista dos nomes dos professores cadastrados na planilha 'Usuarios
- * Autorizados'.
- * @returns {string} Uma string JSON contendo {success, message, data: [lista de
- *     nomes]}.
+ * [CLIENT CALLABLE] Gets a sorted list of professor names.
+ * @returns {string} JSON {success, message, data: [professor names]}
  */
 function getProfessorsList() {
-    Logger.log('*** getProfessorsList chamada ***');
-    try {
-        // Acessa a planilha de usuários autorizados.
-        const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
-            SHEETS.AUTHORIZED_USERS);
-        // Verifica se a planilha existe.
-        if (!sheet) {
-            Logger.log(`Erro: Planilha "${SHEETS.AUTHORIZED_USERS}" não encontrada em getProfessorsList.`);
-            // Retorna JSON indicando falha interna.
-            return JSON.stringify({
-                success: false,
-                message: `Erro interno: Planilha "${SHEETS.AUTHORIZED_USERS}" não encontrada.`,
-                data: []
-            });
+  Logger.log('*** getProfessorsList called ***');
+  try {
+    const { data, header } = getSheetData_(SHEETS.AUTHORIZED_USERS, HEADERS.AUTHORIZED_USERS);
+    const professors = new Set();
+    const nameCol = HEADERS.AUTHORIZED_USERS.NOME;
+    const roleCol = HEADERS.AUTHORIZED_USERS.PAPEL;
+    const requiredCols = Math.max(nameCol, roleCol) + 1;
+
+    if (header.length < requiredCols) {
+      Logger.log(`WARNING: Sheet "${SHEETS.AUTHORIZED_USERS}" columns (${header.length}) insufficient to get Professors. Need ${requiredCols}.`);
+    } else if (data.length > 0) {
+      data.forEach(row => {
+        if (row && row.length >= requiredCols) { // Check individual row length too
+          const role = String(row[roleCol] || '').trim();
+          const name = String(row[nameCol] || '').trim();
+          if (role === USER_ROLES.PROFESSOR && name !== '') {
+            professors.add(name);
+          }
         }
-
-        // Obtém todos os dados.
-        const data = sheet.getDataRange().getValues();
-        // Verifica se há dados além do cabeçalho.
-        if (data.length <= 1) {
-            Logger.log(
-                `Planilha "${SHEETS.AUTHORIZED_USERS}" vazia ou apenas cabeçalho.`);
-            // Retorna JSON indicando sucesso, mas com lista vazia.
-            return JSON.stringify({
-                success: true,
-                message: 'Nenhum usuário autorizado encontrado.',
-                data: []
-            });
-        }
-
-        const professors = [];  // Array para armazenar os nomes dos professores.
-
-        // Itera pelas linhas de dados (a partir da segunda linha).
-        for (let i = 1; i < data.length; i++) {
-            const row = data[i];
-
-            // Verifica se a linha existe e tem colunas suficientes (até a coluna
-            // PAPEL).
-            if (row && row.length > HEADERS.AUTHORIZED_USERS.PAPEL) {
-                // Obtém o papel e o nome, convertendo para string e removendo espaços
-                // extras.
-                const userRole =
-                    String(row[HEADERS.AUTHORIZED_USERS.PAPEL] || '').trim();
-                const userName =
-                    String(row[HEADERS.AUTHORIZED_USERS.NOME] || '').trim();
-
-                // Se o papel for 'Professor' e o nome não estiver vazio, adiciona à
-                // lista.
-                if (userRole === 'Professor' && userName !== '') {
-                    professors.push(userName);
-                }
-            }
-        }
-
-        // Ordena a lista de nomes de professores em ordem alfabética.
-        professors.sort();
-
-        Logger.log(`Encontrados ${professors.length} professores.`);
-        // Retorna JSON indicando sucesso e a lista de nomes.
-        return JSON.stringify({
-            success: true,
-            message: 'Lista de professores obtida com sucesso.',
-            data: professors
-        });
-
-    } catch (e) {
-        // Em caso de erro inesperado durante a execução.
-        Logger.log(
-            'Erro em getProfessorsList: ' + e.message + ' Stack: ' + e.stack);
-        // Retorna JSON indicando falha e a mensagem de erro.
-        return JSON.stringify({
-            success: false,
-            message: 'Ocorreu um erro ao obter a lista de professores: ' + e.message,
-            data: []
-        });
+      });
     }
+    const sortedProfessors = Array.from(professors).sort((a, b) => a.localeCompare(b));
+    Logger.log(`Found ${sortedProfessors.length} unique professors.`);
+    return createJsonResponse(true, 'Lista de professores obtida com sucesso.', sortedProfessors);
+  } catch (e) {
+    return createJsonResponse(false, `Erro ao obter lista de professores: ${e.message}`, []);
+  }
 }
 
 /**
- * Função exposta para ser chamada pelo lado do cliente.
- * Retorna a lista de turmas disponíveis, lendo da configuração 'Turmas
- * Disponiveis' na planilha 'Configuracoes'.
- * @returns {string} Uma string JSON contendo {success, message, data: [lista de
- *     turmas]}.
+ * [CLIENT CALLABLE] Gets the list of available class groups (Turmas) from config.
+ * @returns {string} JSON {success, message, data: [turma names]}
  */
 function getTurmasList() {
-    Logger.log('*** getTurmasList chamada ***');
-    try {
-        // Obtém o valor da configuração 'Turmas Disponiveis'.
-        const turmasConfig = getConfigValue('Turmas Disponiveis');
-        // Verifica se a configuração foi encontrada e não está vazia.
-        if (!turmasConfig || turmasConfig === '') {
-            Logger.log(
-                'Configuração \'Turmas Disponiveis\' não encontrada ou vazia.');
-            // Retorna sucesso, mas com lista vazia e mensagem informativa.
-            return JSON.stringify({
-                success: true,
-                message: 'Configuração de turmas não encontrada ou vazia.',
-                data: []
-            });
-        }
-        // Divide a string da configuração pela vírgula, remove espaços de cada item
-        // e filtra itens vazios.
-        const turmasArray =
-            turmasConfig.split(',').map(t => t.trim()).filter(t => t !== '');
-        // Ordena as turmas em ordem alfabética.
-        turmasArray.sort();
-
-        Logger.log(`Encontradas ${turmasArray.length} turmas na configuração.`);
-        // Retorna JSON com sucesso e a lista de turmas.
-        return JSON.stringify({
-            success: true,
-            message: 'Lista de turmas (config) obtida.',
-            data: turmasArray
-        });
-
-    } catch (e) {
-        // Em caso de erro inesperado.
-        Logger.log('Erro em getTurmasList: ' + e.message + ' Stack: ' + e.stack);
-        // Retorna JSON indicando falha.
-        return JSON.stringify({
-            success: false,
-            message: 'Ocorreu um erro ao obter a lista de turmas: ' + e.message,
-            data: []
-        });
+  Logger.log('*** getTurmasList called ***');
+  try {
+    const turmasConfig = getConfigValue('Turmas Disponiveis');
+    if (turmasConfig === null) {
+      Logger.log('Configuração "Turmas Disponiveis" não encontrada.');
+      return createJsonResponse(true, 'Configuração de turmas não encontrada.', []);
     }
+    if (turmasConfig === '') {
+      Logger.log('Configuração "Turmas Disponiveis" está vazia.');
+      return createJsonResponse(true, 'Configuração de turmas vazia.', []);
+    }
+    const turmasArray = turmasConfig.split(',')
+      .map(t => t.trim())
+      .filter(t => t !== '')
+      .sort((a, b) => a.localeCompare(b));
+
+    Logger.log(`Found ${turmasArray.length} turmas from config.`);
+    return createJsonResponse(true, 'Lista de turmas (config) obtida.', turmasArray);
+  } catch (e) {
+    return createJsonResponse(false, `Erro ao obter lista de turmas: ${e.message}`, []);
+  }
 }
 
-
 /**
- * Função exposta para ser chamada pelo lado do cliente.
- * Retorna a lista de disciplinas disponíveis, lendo da planilha dedicada
- * 'Disciplinas'.
- * @returns {string} Uma string JSON contendo {success, message, data: [lista de
- *     disciplinas]}.
+ * [CLIENT CALLABLE] Gets the list of available disciplines from the 'Disciplinas' sheet.
+ * @returns {string} JSON {success, message, data: [discipline names]}
  */
 function getDisciplinesList() {
-    Logger.log(`*** getDisciplinesList chamada (lendo da planilha dedicada: ${SHEETS.DISCIPLINES}) ***`);
-    try {
-        const ss = SpreadsheetApp.getActiveSpreadsheet();
-        // Acessa a planilha de disciplinas.
-        const disciplinesSheet = ss.getSheetByName(SHEETS.DISCIPLINES);
+  Logger.log('*** getDisciplinesList called ***');
+  try {
+    const { data, header } = getSheetData_(SHEETS.DISCIPLINES, HEADERS.DISCIPLINES);
+    const disciplines = new Set();
+    const nameCol = HEADERS.DISCIPLINES.NOME;
 
-        // Verifica se a planilha foi encontrada.
-        if (!disciplinesSheet) {
-            Logger.log(`Erro: Planilha "${SHEETS.DISCIPLINES}" não encontrada.`);
-            // Retorna JSON indicando falha interna.
-            return JSON.stringify({
-                success: false,
-                message: `Erro interno: Planilha de Disciplinas "${SHEETS.DISCIPLINES}" não encontrada. Verifique o nome da aba.`,
-                data: []
-            });
+    if (header.length <= nameCol) {
+      Logger.log(`WARNING: Sheet "${SHEETS.DISCIPLINES}" does not have the required Name column (index ${nameCol}).`);
+    } else if (data.length > 0) {
+      data.forEach(row => {
+        if (row && row.length > nameCol) {
+          const name = String(row[nameCol] || '').trim();
+          if (name !== '') {
+            disciplines.add(name);
+          }
         }
-
-        // Obtém todos os dados da planilha de disciplinas.
-        const disciplinesData = disciplinesSheet.getDataRange().getValues();
-
-        // Verifica se há dados além do cabeçalho.
-        if (disciplinesData.length <= 1) {
-            Logger.log(`Planilha "${SHEETS.DISCIPLINES}" vazia ou apenas cabeçalho.`);
-            // Retorna JSON indicando sucesso, mas com lista vazia.
-            return JSON.stringify({
-                success: true,
-                message: `Nenhuma disciplina cadastrada na planilha "${SHEETS.DISCIPLINES}".`,
-                data: []
-            });
-        }
-
-        const disciplinesArray =
-            [];  // Array para armazenar os nomes das disciplinas.
-
-        // Itera pelas linhas de dados (a partir da segunda linha).
-        for (let i = 1; i < disciplinesData.length; i++) {
-            const row = disciplinesData[i];
-
-            // Verifica se a linha existe e tem a coluna de nome.
-            if (row && row.length > HEADERS.DISCIPLINES.NOME) {
-                // Obtém o nome da disciplina, converte para string e remove espaços.
-                const disciplineName =
-                    String(row[HEADERS.DISCIPLINES.NOME] || '').trim();
-
-                // Se o nome não for vazio, adiciona à lista.
-                if (disciplineName !== '') {
-                    disciplinesArray.push(disciplineName);
-                }
-            }
-        }
-
-        // Ordena a lista de disciplinas alfabeticamente.
-        disciplinesArray.sort();
-
-        Logger.log(
-            `Encontradas ${disciplinesArray.length} disciplinas na planilha "${SHEETS.DISCIPLINES}".`);
-        // Retorna JSON com sucesso e a lista de disciplinas.
-        return JSON.stringify({
-            success: true,
-            message: 'Lista de disciplinas obtida com sucesso.',
-            data: disciplinesArray
-        });
-
-    } catch (e) {
-        // Em caso de erro inesperado.
-        Logger.log(`Erro em getDisciplinesList (planilha dedicada "${SHEETS.DISCIPLINES}"): ${e.message} Stack: ${e.stack}`);
-        // Retorna JSON indicando falha.
-        return JSON.stringify({
-            success: false,
-            message: `Ocorreu um erro ao obter a lista de disciplinas da planilha "${SHEETS.DISCIPLINES}": ${e.message}`,
-            data: []
-        });
+      });
     }
+    const sortedDisciplines = Array.from(disciplines).sort((a, b) => a.localeCompare(b));
+    Logger.log(`Found ${sortedDisciplines.length} unique disciplines.`);
+    return createJsonResponse(true, 'Lista de disciplinas obtida com sucesso.', sortedDisciplines);
+  } catch (e) {
+    if (e.message.includes(`Planilha "${SHEETS.DISCIPLINES}" não encontrada`)) {
+      return createJsonResponse(false, e.message, []);
+    }
+    return createJsonResponse(false, `Erro ao obter lista de disciplinas: ${e.message}`, []);
+  }
 }
 
 /**
- * Função exposta para o lado do cliente da ScheduleView.
- * Retorna as listas de turmas e datas de início de semana disponíveis para filtros.
- * Calcula as próximas N semanas (começando na Segunda).
- * @returns {string} JSON string {success, message, data: {turmas: [], weekStartDates: []}}
+ * [CLIENT CALLABLE] Gets filter options (turmas, week start dates UTC Mondays) for the schedule view.
+ * @returns {string} JSON {success, message, data: {turmas: [], weekStartDates: []}}
  */
 function getScheduleViewFilters() {
-    Logger.log('*** getScheduleViewFilters chamada ***');
-    try {
-        // Verifica autorização mínima (qualquer papel é suficiente para visualizar)
-        const userEmail = Session.getActiveUser().getEmail();
-        const userRole = getUserRolePlain(userEmail);
-        if (!userRole) {
-            Logger.log('Erro: Usuário não autorizado a obter filtros de visualização.');
-            return JSON.stringify({ success: false, message: 'Usuário não autorizado.', data: null });
-        }
+  Logger.log('*** getScheduleViewFilters called ***');
+  try {
+    getActiveUserEmail_(); // Authorization check
 
-        // Obter lista de turmas (reutiliza a lógica existente ou chama a função)
-        const turmasResponse = JSON.parse(getTurmasList()); // Chama a função existente e parsea a resposta
-        const turmas = turmasResponse.success ? turmasResponse.data : [];
-        if (!turmasResponse.success) {
-            Logger.log("Falha ao obter lista de turmas para filtros: " + turmasResponse.message);
-            // Continua, mas com turmas vazias
-        }
-
-
-        // Calcular próximas semanas (ex: 12 semanas a partir da próxima segunda)
-        const timeZone = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
-        const weekStartDates = [];
-        const numWeeks = 12; // Quantidade de semanas futuras para mostrar
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        // Encontra a próxima segunda-feira
-        const nextMonday = new Date(today.getTime());
-        const currentDayOfWeek = nextMonday.getDay(); // 0=Domingo, 1=Segunda
-        const daysUntilNextMonday = (currentDayOfWeek === 0) ? 1 : (8 - currentDayOfWeek) % 7; // Se hoje for domingo, próxima segunda é daqui 1 dia. Se for segunda, é hoje. Senão, (8 - dia_da_semana)%7
-        nextMonday.setDate(nextMonday.getDate() + daysUntilNextMonday);
-        nextMonday.setHours(0, 0, 0, 0); // Garantir hora zerada
-
-        Logger.log("Gerando lista de semanas a partir de: " + Utilities.formatDate(nextMonday, timeZone, 'yyyy-MM-dd'));
-
-        // Adiciona as datas das próximas 'numWeeks' segundas-feiras
-        for (let i = 0; i < numWeeks; i++) {
-            const weekStartDate = new Date(nextMonday.getTime());
-            weekStartDate.setDate(nextMonday.getDate() + (i * 7));
-            // Formata para um valor legível E um valor técnico (YYYY-MM-DD)
-            const valueString = Utilities.formatDate(weekStartDate, timeZone, 'yyyy-MM-dd');
-            const textString = Utilities.formatDate(weekStartDate, timeZone, 'dd/MM/yyyy'); // Formato exibição
-            weekStartDates.push({ value: valueString, text: `Semana de ${textString}` });
-        }
-
-        // Adapta para o formato esperado pelo populateDropdown simples no JS (apenas value)
-        const weekValueStrings = weekStartDates.map(week => week.value);
-
-        Logger.log(`Filtros obtidos: ${turmas.length} turmas, ${weekValueStrings.length} semanas.`);
-
-        return JSON.stringify({
-            success: true,
-            message: 'Filtros carregados.',
-            data: {
-                turmas: turmas,
-                weekStartDates: weekValueStrings // Retorna apenas os valores YYYY-MM-DD
-            }
-        });
-
-    } catch (e) {
-        Logger.log('Erro em getScheduleViewFilters: ' + e.message + ' Stack: ' + e.stack);
-        return JSON.stringify({ success: false, message: 'Ocorreu um erro ao obter os filtros de horários: ' + e.message, data: null });
+    // Get Turmas
+    const turmasResponse = JSON.parse(getTurmasList());
+    const turmas = turmasResponse.success ? turmasResponse.data : [];
+    if (!turmasResponse.success) {
+      Logger.log("Warning: Failed to get turmas list for filters: " + turmasResponse.message);
     }
+
+    // Calculate Week Start Dates (UTC Mondays)
+    const numWeeks = parseInt(getConfigValue('Semanas Para Gerar Filtros')) || 12;
+    const { startGenerationDate: firstMondayUTC } = calculateGenerationRange_(numWeeks);
+    const weekStartDates = [];
+
+    Logger.log(`Generating ${numWeeks} week start dates (UTC Mondays) for filters starting from: ${firstMondayUTC.toISOString().slice(0, 10)}`);
+
+    for (let i = 0; i < numWeeks; i++) {
+      const weekStartDate = new Date(firstMondayUTC.getTime());
+      weekStartDate.setUTCDate(firstMondayUTC.getUTCDate() + (i * 7));
+      const valueString = Utilities.formatDate(weekStartDate, 'UTC', 'yyyy-MM-dd');
+      weekStartDates.push(valueString);
+    }
+
+    Logger.log(`Filters obtained: ${turmas.length} turmas, ${weekStartDates.length} weeks (UTC Mondays).`);
+    return createJsonResponse(true, 'Filtros carregados.', { turmas: turmas, weekStartDates: weekStartDates });
+
+  } catch (e) {
+    return createJsonResponse(false, `Erro ao obter filtros de horários: ${e.message}`, null);
+  }
 }
 
 /**
- * Função exposta para o lado do cliente da ScheduleView.
- * Busca instâncias de horários filtradas por turma e data de início da semana.
- * Inclui informações adicionais de disciplina e professor original
- * buscando em outras planilhas para horários relevantes.
- * @param {string} turma A turma para filtrar.
- * @param {string} weekStartDateString A data de início da semana (Segunda-feira) no formato 'YYYY-MM-DD'.
- * @returns {string} JSON string {success, message, data: [lista de slots filtrados com detalhes]}
+ * [CLIENT CALLABLE] Gets filtered schedule instances for a specific class and week.
+ * @param {string} turma - The class group (turma) to filter by.
+ * @param {string} weekStartDateString - The starting date of the week (Monday YYYY-MM-DD, representing UTC Monday).
+ * @returns {string} JSON {success, message, data: [enriched slot details]}
  */
 function getFilteredScheduleInstances(turma, weekStartDateString) {
-    Logger.log(`*** getFilteredScheduleInstances chamada para Turma: ${turma}, Semana: ${weekStartDateString} ***`);
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const instancesSheet = ss.getSheetByName(SHEETS.SCHEDULE_INSTANCES);
-    const baseSheet = ss.getSheetByName(SHEETS.BASE_SCHEDULES); // <-- Add this line
-    const bookingsSheet = ss.getSheetByName(SHEETS.BOOKING_DETAILS); // <-- Add this line
-    const timeZone = ss.getSpreadsheetTimeZone();
+  Logger.log(`*** getFilteredScheduleInstances called for Turma: ${turma}, Semana (expecting UTC Monday): ${weekStartDateString} ***`);
+  try {
+    // 1. Authorization & Validation
+    getActiveUserEmail_();
 
-    // 1. Verifica autorização mínima
-    const userEmail = Session.getActiveUser().getEmail();
-    const userRole = getUserRolePlain(userEmail);
-    if (!userRole) { // Qualquer usuário autorizado pode visualizar
-        Logger.log('Erro: Usuário não autorizado a visualizar horários filtrados.');
-        return JSON.stringify({ success: false, message: 'Usuário não autorizado a visualizar.', data: null });
-    }
-
-    // 2. Valida parâmetros de entrada
-    if (!turma || typeof turma !== 'string' || turma.trim() === '') {
-        Logger.log('Erro: Parâmetro turma inválido ou ausente.');
-        return JSON.stringify({ success: false, message: 'Turma não especificada.', data: null });
+    const trimmedTurma = String(turma || '').trim();
+    if (!trimmedTurma) {
+      return createJsonResponse(false, 'Turma não especificada.', null);
     }
     if (!weekStartDateString || typeof weekStartDateString !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(weekStartDateString)) {
-        Logger.log('Erro: Parâmetro weekStartDateString inválido ou ausente: ' + weekStartDateString);
-        return JSON.stringify({ success: false, message: 'Semana de início inválida.', data: null });
+      return createJsonResponse(false, 'Semana de início inválida ou formato incorreto (esperado YYYY-MM-DD).', null);
     }
 
-    // 3. Calcula o intervalo de datas da semana
+    // 2. Calculate Date Range (using UTC for consistency)
+    const timeZone = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
     const parts = weekStartDateString.split('-');
-    const weekStartDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)); // Month is 0-indexed
-    weekStartDate.setHours(0, 0, 0, 0); // Zera a hora para comparação
+    const weekStartDate = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)));
 
-    // Verifica se a data parseada é válida e se realmente é uma segunda-feira
-    if (isNaN(weekStartDate.getTime()) || weekStartDate.getDay() !== 1) { // 1 = Monday
-        Logger.log('Erro: A data de início da semana fornecida não é uma Segunda-feira válida: ' + weekStartDateString);
-        return JSON.stringify({ success: false, message: 'A data de início da semana deve ser uma Segunda-feira válida.', data: null });
+    if (isNaN(weekStartDate.getTime())) {
+      return createJsonResponse(false, `Data de início da semana inválida: ${weekStartDateString}`, null);
+    }
+    if (weekStartDate.getUTCDay() !== 1) { // 1 = Monday in UTC
+      Logger.log(`Validation Error: Provided week start date ${weekStartDateString} is not a Monday in UTC (UTC day: ${weekStartDate.getUTCDay()}).`);
+      return createJsonResponse(false, `A data de início (${weekStartDateString}) não é uma Segunda-feira válida para o sistema.`, null);
     }
 
     const weekEndDate = new Date(weekStartDate.getTime());
-    weekEndDate.setDate(weekEndDate.getDate() + 6); // Fim da semana (Domingo)
-    weekEndDate.setHours(23, 59, 59, 999); // Define para o final do dia
+    weekEndDate.setUTCDate(weekEndDate.getUTCDate() + 6);
 
-    Logger.log(`Buscando instâncias para Turma "${turma}" entre ${Utilities.formatDate(weekStartDate, timeZone, 'dd/MM/yyyy')} e ${Utilities.formatDate(weekEndDate, timeZone, 'dd/MM/yyyy')}`);
+    Logger.log(`Filtering instances for Turma "${trimmedTurma}" between UTC ${weekStartDate.toISOString().slice(0, 10)} and ${weekEndDate.toISOString().slice(0, 10)}`);
 
+    // 3. Read Data (with column checks)
+    const { data: instanceData, header: instanceHeader } = getSheetData_(SHEETS.SCHEDULE_INSTANCES, HEADERS.SCHEDULE_INSTANCES);
+    const { data: baseData } = getSheetData_(SHEETS.BASE_SCHEDULES);
+    const { data: bookingData } = getSheetData_(SHEETS.BOOKING_DETAILS);
 
-    try {
-        // 4. Lê os dados das planilhas necessárias
-        if (!instancesSheet) {
-            Logger.log(`Erro: Planilha "${SHEETS.SCHEDULE_INSTANCES}" não encontrada!`);
-            return JSON.stringify({ success: false, message: `Erro interno: Planilha "${SHEETS.SCHEDULE_INSTANCES}" não encontrada.`, data: null });
+    // 4. Pre-process Maps
+    const baseScheduleMap = baseData.reduce((map, row) => {
+      const idCol = HEADERS.BASE_SCHEDULES.ID;
+      const discCol = HEADERS.BASE_SCHEDULES.DISCIPLINA_PADRAO;
+      const profCol = HEADERS.BASE_SCHEDULES.PROFESSOR_PRINCIPAL;
+      const reqCols = Math.max(idCol, discCol, profCol) + 1;
+      if (row && row.length >= reqCols) {
+        const baseId = String(row[idCol] || '').trim();
+        if (baseId) {
+          map[baseId] = {
+            disciplina: String(row[discCol] || '').trim(),
+            professor: String(row[profCol] || '').trim()
+          };
         }
-        if (!baseSheet) { // Check base sheet
-            Logger.log(`Warning: Planilha "${SHEETS.BASE_SCHEDULES}" não encontrada. Disciplinas padrão podem não ser exibidas para horários disponíveis.`);
-            // Continue, but log a warning
+      }
+      return map;
+    }, {});
+    const bookingDetailsMap = bookingData.reduce((map, row) => {
+      const idInstCol = HEADERS.BOOKING_DETAILS.ID_INSTANCIA;
+      const discCol = HEADERS.BOOKING_DETAILS.DISCIPLINA_REAL;
+      const profRealCol = HEADERS.BOOKING_DETAILS.PROFESSOR_REAL;
+      const profOrigCol = HEADERS.BOOKING_DETAILS.PROFESSOR_ORIGINAL;
+      const statusCol = HEADERS.BOOKING_DETAILS.STATUS_RESERVA;
+      const reqCols = Math.max(idInstCol, discCol, profRealCol, profOrigCol, statusCol) + 1;
+
+      if (row && row.length >= reqCols) {
+        const instanceId = String(row[idInstCol] || '').trim();
+        const statusReserva = String(row[statusCol] || '').trim();
+        if (instanceId && statusReserva === 'Agendada') {
+          map[instanceId] = {
+            disciplinaReal: String(row[discCol] || '').trim(),
+            professorReal: String(row[profRealCol] || '').trim(),
+            professorOriginalBooking: String(row[profOrigCol] || '').trim()
+          };
         }
-        if (!bookingsSheet) { // Check bookings sheet
-            Logger.log(`Warning: Planilha "${SHEETS.BOOKING_DETAILS}" não encontrada. Detalhes de reservas (disciplina real, profs reais) podem não ser exibidos.`);
-            // Continue, but log a warning
-        }
+      }
+      return map;
+    }, {});
 
-
-        const rawInstanceData = instancesSheet.getDataRange().getValues();
-
-        if (rawInstanceData.length <= 1) {
-            Logger.log('Planilha Instancias de Horarios está vazia ou apenas cabeçalho.');
-            return JSON.stringify({ success: true, message: 'Nenhuma instância de horário futura encontrada.', data: [] });
-        }
-
-        const instanceHeader = rawInstanceData[0];
-        const instanceData = rawInstanceData.slice(1);
-
-        // Determine the number of columns based on the header
-        const numInstanceCols = instanceHeader.length;
-
-        // Check if essential instance columns exist
-        const requiredInstanceCols = Math.max(
-            HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA,
-            HEADERS.SCHEDULE_INSTANCES.ID_BASE_HORARIO,
-            HEADERS.SCHEDULE_INSTANCES.TURMA,
-            HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL, // Original Prof
-            HEADERS.SCHEDULE_INSTANCES.DATA,
-            HEADERS.SCHEDULE_INSTANCES.DIA_SEMANA,
-            HEADERS.SCHEDULE_INSTANCES.HORA_INICIO,
-            HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL,
-            HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO,
-            HEADERS.SCHEDULE_INSTANCES.ID_RESERVA // Needed to link to bookings
-        ) + 1;
-
-        if (numInstanceCols < requiredInstanceCols) {
-            Logger.log(`Erro: Planilha "${SHEETS.SCHEDULE_INSTANCES}" não tem colunas suficientes (${numInstanceCols} vs ${requiredInstanceCols} requeridas) para a visualização. Verifique a estrutura.`);
-            return JSON.stringify({ success: false, message: `Erro interno: Estrutura da planilha "${SHEETS.SCHEDULE_INSTANCES}" incorreta.`, data: null });
-        }
-
-
-        // --- Read and Map Base Schedules (for original discipline) ---
-        const baseScheduleDisciplineMap = {};
-        if (baseSheet) {
-            const rawBaseData = baseSheet.getDataRange().getValues();
-            const baseHeader = rawBaseData.length > 0 ? rawBaseData[0] : [];
-            const baseData = rawBaseData.slice(1);
-            const numBaseCols = baseHeader.length;
-            const requiredBaseCols = Math.max(HEADERS.BASE_SCHEDULES.ID, HEADERS.BASE_SCHEDULES.DISCIPLINA_PADRAO) + 1;
-
-            if (numBaseCols >= requiredBaseCols) {
-                baseData.forEach(row => {
-                    if (row && row.length >= requiredBaseCols) {
-                        const baseIdRaw = row[HEADERS.BASE_SCHEDULES.ID];
-                        const baseId = (typeof baseIdRaw === 'string' || typeof baseIdRaw === 'number') ? String(baseIdRaw).trim() : null;
-                        const disciplinaPadraoRaw = row[HEADERS.BASE_SCHEDULES.DISCIPLINA_PADRAO];
-                        const disciplinaPadrao = (typeof disciplinaPadraoRaw === 'string' || typeof disciplinaPadraoRaw === 'number') ? String(disciplinaPadraoRaw || '').trim() : '';
-                        if (baseId) {
-                            baseScheduleDisciplineMap[baseId] = disciplinaPadrao;
-                        }
-                    }
-                });
-                Logger.log(`Mapeadas ${Object.keys(baseScheduleDisciplineMap).length} disciplinas base.`);
-            } else if (rawBaseData.length > 1) {
-                Logger.log(`Warning: Planilha "${SHEETS.BASE_SCHEDULES}" não tem colunas suficientes (${numBaseCols} vs ${requiredBaseCols} requeridas). Disciplinas base podem não ser exibidas.`);
-            }
-        }
-
-
-        // --- Read and Map Booking Details (for real discipline and professors) ---
-        // Map instanceId -> bookingDetails (assuming one booking per instance for the relevant types)
-        const bookingDetailsMap = {};
-        if (bookingsSheet) {
-            const rawBookingData = bookingsSheet.getDataRange().getValues();
-            const bookingHeader = rawBookingData.length > 0 ? rawBookingData[0] : [];
-            const bookingData = rawBookingData.slice(1);
-            const numBookingCols = bookingHeader.length;
-            const requiredBookingCols = Math.max(
-                HEADERS.BOOKING_DETAILS.ID_INSTANCIA,
-                HEADERS.BOOKING_DETAILS.DISCIPLINA_REAL,
-                HEADERS.BOOKING_DETAILS.PROFESSOR_REAL,
-                HEADERS.BOOKING_DETAILS.PROFESSOR_ORIGINAL,
-                HEADERS.BOOKING_DETAILS.STATUS_RESERVA // To filter for 'Agendada'
-            ) + 1;
-
-            if (numBookingCols >= requiredBookingCols) {
-                bookingData.forEach(row => {
-                    if (row && row.length >= requiredBookingCols) {
-                        const instanceIdRaw = row[HEADERS.BOOKING_DETAILS.ID_INSTANCIA];
-                        const instanceId = (typeof instanceIdRaw === 'string' || typeof instanceIdRaw === 'number') ? String(instanceIdRaw).trim() : null;
-                        const statusReservaRaw = row[HEADERS.BOOKING_DETAILS.STATUS_RESERVA];
-                        const statusReserva = (typeof statusReservaRaw === 'string' || typeof statusReservaRaw === 'number') ? String(statusReservaRaw).trim() : '';
-
-                        // Only consider 'Agendada' bookings linked to an instance
-                        if (instanceId && statusReserva === 'Agendada') {
-                            const disciplinaRealRaw = row[HEADERS.BOOKING_DETAILS.DISCIPLINA_REAL];
-                            const disciplinaReal = (typeof disciplinaRealRaw === 'string' || typeof disciplinaRealRaw === 'number') ? String(disciplinaRealRaw || '').trim() : '';
-                            const professorRealRaw = row[HEADERS.BOOKING_DETAILS.PROFESSOR_REAL];
-                            const professorReal = (typeof professorRealRaw === 'string' || typeof professorRealRaw === 'number') ? String(professorRealRaw || '').trim() : '';
-                            const professorOriginalBookingRaw = row[HEADERS.BOOKING_DETAILS.PROFESSOR_ORIGINAL];
-                            const professorOriginalBooking = (typeof professorOriginalBookingRaw === 'string' || typeof professorOriginalBookingRaw === 'number') ? String(professorOriginalBookingRaw || '').trim() : '';
-
-                            // Store the details, prioritizing if multiple bookings exist for the same instance (unlikely with current system)
-                            bookingDetailsMap[instanceId] = {
-                                disciplinaReal: disciplinaReal,
-                                professorReal: professorReal,
-                                professorOriginalBooking: professorOriginalBooking // Original Prof from the booking detail row
-                            };
-                        }
-                    }
-                });
-                Logger.log(`Mapeadas ${Object.keys(bookingDetailsMap).length} detalhes de reservas agendadas.`);
-            } else if (rawBookingData.length > 1) {
-                Logger.log(`Warning: Planilha "${SHEETS.BOOKING_DETAILS}" não tem colunas suficientes (${numBookingCols} vs ${requiredBookingCols} requeridas). Detalhes de reservas podem não ser exibidos.`);
-            }
-        }
-
-
-        // 5. Filtra e enriquece os slots
-        const filteredSlots = [];
-
-        for (let i = 0; i < instanceData.length; i++) {
-            const row = instanceData[i];
-            const rowIndex = i + 2; // Índice real na planilha
-
-            // Basic check if row has enough columns based on header
-            if (!row || row.length < numInstanceCols) {
-                // Logger.log(`Skipping incomplete instance row ${rowIndex}.`); // Too noisy
-                continue;
-            }
-
-            // Extract & format essential data from instance row
-            const instanceIdRaw = row[HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA];
-            const baseIdRaw = row[HEADERS.SCHEDULE_INSTANCES.ID_BASE_HORARIO]; // Needed to lookup base discipline
-            const instanceTurmaRaw = row[HEADERS.SCHEDULE_INSTANCES.TURMA];
-            const professorPrincipalInstanceRaw = row[HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL]; // Original Prof from instance
-            const rawInstanceDate = row[HEADERS.SCHEDULE_INSTANCES.DATA];
-            const instanceDiaSemanaRaw = row[HEADERS.SCHEDULE_INSTANCES.DIA_SEMANA];
-            const rawHoraInicio = row[HEADERS.SCHEDULE_INSTANCES.HORA_INICIO];
-            const originalTypeRaw = row[HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL];
-            const instanceStatusRaw = row[HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO];
-            const instanceReservationIdRaw = row[HEADERS.SCHEDULE_INSTANCES.ID_RESERVA]; // Needed to link to bookings
-
-            const instanceId = (typeof instanceIdRaw === 'string' || typeof instanceIdRaw === 'number') ? String(instanceIdRaw).trim() : null;
-            const baseId = (typeof baseIdRaw === 'string' || typeof baseIdRaw === 'number') ? String(baseIdRaw).trim() : null;
-            const instanceTurma = (typeof instanceTurmaRaw === 'string' || typeof instanceTurmaRaw === 'number') ? String(instanceTurmaRaw).trim() : null;
-            const professorPrincipalInstance = (typeof professorPrincipalInstanceRaw === 'string' || typeof professorPrincipalInstanceRaw === 'number') ? String(professorPrincipalInstanceRaw || '').trim() : ''; // Original Prof from instance
-            const instanceDate = formatValueToDate(rawInstanceDate);
-            const instanceDiaSemana = (typeof instanceDiaSemanaRaw === 'string' || typeof instanceDiaSemanaRaw === 'number') ? String(instanceDiaSemanaRaw).trim() : null;
-            const formattedHoraInicio = formatValueToHHMM(rawHoraInicio, timeZone);
-            const originalType = (typeof originalTypeRaw === 'string' || typeof originalTypeRaw === 'number') ? String(originalTypeRaw).trim() : null;
-            const instanceStatus = (typeof instanceStatusRaw === 'string' || typeof instanceStatusRaw === 'number') ? String(instanceStatusRaw).trim() : null;
-            // We don't strictly need instanceReservationIdRaw here, as we map booking details by instance ID
-
-
-            // Validate essential data for filtering and display
-            if (!instanceId || !instanceTurma || !instanceDate || !instanceDiaSemana || formattedHoraInicio === null || !originalType || !instanceStatus || !baseId) { // baseId is now essential too
-                // Logger.log(`Skipping instance row ${rowIndex} due to invalid essential data.`); // Too noisy
-                continue;
-            }
-
-
-            // Filter by Turma
-            if (instanceTurma !== turma.trim()) {
-                continue; // Skip if turma does not match
-            }
-
-            // Filter by Date range
-            // Compare instanceDate (already zered hour by formatValueToDate if valid Date)
-            if (instanceDate < weekStartDate || instanceDate > weekEndDate) {
-                continue; // Skip if date is outside the week
-            }
-
-            // --- Enrich the slot with additional details ---
-            let disciplinaParaExibir = '';
-            let professorParaExibir = '';
-            let professorOriginalNaReserva = ''; // This is professor_original from booking details, relevant for Substituicao
-
-            const bookingDetails = bookingDetailsMap[instanceId]; // Try to find matching booking details
-
-            if (instanceStatus === STATUS_OCUPACAO.DISPONIVEL) {
-                // For available slots, use discipline and professor from the base schedule
-                disciplinaParaExibir = baseScheduleDisciplineMap[baseId] || ''; // Lookup discipline using baseId
-                professorParaExibir = professorPrincipalInstance; // Use original professor from instance
-            } else if (bookingDetails) { // If there are booking details linked AND the instance is booked
-                // For booked slots, use discipline and real/original professor from booking details
-                disciplinaParaExibir = bookingDetails.disciplinaReal;
-                professorParaExibir = bookingDetails.professorReal;
-                professorOriginalNaReserva = bookingDetails.professorOriginalBooking; // Store original prof from booking details
-            } else {
-                // Fallback for booked slots without matching booking details (inconsistent data)
-                Logger.log(`Warning: Instância ${instanceId} (Status: ${instanceStatus}) não encontrou detalhes de reserva correspondentes no mapa. Row ${rowIndex}.`);
-                // We could use base info as a fallback, or leave empty
-                disciplinaParaExibir = baseScheduleDisciplineMap[baseId] || ''; // Fallback to base discipline
-                professorParaExibir = professorPrincipalInstance; // Fallback to base professor
-            }
-
-
-            // If passed all filters and enriched, add to results
-            filteredSlots.push({
-                idInstancia: instanceId,
-                data: Utilities.formatDate(instanceDate, timeZone, 'dd/MM/yyyy'), // Formatted date for display
-                diaSemana: instanceDiaSemana,
-                horaInicio: formattedHoraInicio,
-                turma: instanceTurma, // Turma from instance (should match filter turma)
-                tipoOriginal: originalType,
-                statusOcupacao: instanceStatus,
-
-                // Add the enriched details
-                disciplinaParaExibir: disciplinaParaExibir,
-                professorParaExibir: professorParaExibir, // Real Professor for booked, Original for available (unless overridden by booking)
-                professorOriginalNaReserva: professorOriginalNaReserva // Professor ORIGINAL from booking details (only if Substitution booked)
-                // We could also include professorPrincipalInstance if needed for fallback logic in frontend
-            });
-        }
-
-        Logger.log(`Encontrados ${filteredSlots.length} slots filtrados e enriquecidos para Turma "${turma}" na semana de ${weekStartDateString}.`);
-
-        // Return JSON with success and the list of enriched slots.
-        return JSON.stringify({ success: true, message: `${filteredSlots.length} horários encontrados.`, data: filteredSlots });
-
-    } catch (e) {
-        Logger.log('Erro em getFilteredScheduleInstances: ' + e.message + ' Stack: ' + e.stack);
-        return JSON.stringify({ success: false, message: 'Ocorreu um erro interno ao buscar horários: ' + e.message, data: null });
+    // 5. Filter and Enrich Instance Data
+    const filteredSlots = [];
+    const instIdCol = HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA;
+    const baseIdCol = HEADERS.SCHEDULE_INSTANCES.ID_BASE_HORARIO;
+    const turmaCol = HEADERS.SCHEDULE_INSTANCES.TURMA;
+    const profPrincCol = HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL;
+    const dateCol = HEADERS.SCHEDULE_INSTANCES.DATA;
+    const dayCol = HEADERS.SCHEDULE_INSTANCES.DIA_SEMANA;
+    const hourCol = HEADERS.SCHEDULE_INSTANCES.HORA_INICIO;
+    const typeCol = HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL;
+    const statusCol = HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO;
+    const maxIndexNeeded = Math.max(instIdCol, baseIdCol, turmaCol, profPrincCol, dateCol, dayCol, hourCol, typeCol, statusCol);
+    if (instanceHeader.length <= maxIndexNeeded) {
+      throw new Error(`Planilha "${SHEETS.SCHEDULE_INSTANCES}" não contém todas as colunas necessárias (encontradas ${instanceHeader.length}, esperado pelo menos ${maxIndexNeeded + 1}).`);
     }
+
+
+    instanceData.forEach((row, index) => {
+      if (!row || row.length <= maxIndexNeeded) {
+        return;
+      }
+
+      const instanceId = String(row[instIdCol] || '').trim();
+      const baseId = String(row[baseIdCol] || '').trim();
+      const instanceTurma = String(row[turmaCol] || '').trim();
+      const instanceUTCDate = formatValueToDate(row[dateCol]);
+      const formattedHoraInicio = formatValueToHHMM(row[hourCol], timeZone);
+
+      if (!instanceId || !baseId || !instanceTurma || !instanceUTCDate || !formattedHoraInicio) return;
+      if (instanceTurma !== trimmedTurma) return;
+      if (instanceUTCDate < weekStartDate || instanceUTCDate > weekEndDate) return;
+
+      const professorPrincipalInstance = String(row[profPrincCol] || '').trim();
+      const instanceDiaSemana = String(row[dayCol] || '').trim();
+      const originalType = String(row[typeCol] || '').trim();
+      const instanceStatus = String(row[statusCol] || '').trim();
+
+      let disciplinaParaExibir = '';
+      let professorParaExibir = '';
+      let professorOriginalNaReserva = '';
+      const baseInfo = baseScheduleMap[baseId] || { disciplina: '', professor: '' };
+      const bookingDetails = bookingDetailsMap[instanceId];
+
+      if (instanceStatus === STATUS_OCUPACAO.DISPONIVEL) {
+        disciplinaParaExibir = baseInfo.disciplina;
+        professorParaExibir = (originalType === TIPOS_HORARIO.VAGO) ? '' : baseInfo.professor;
+      } else if (bookingDetails) {
+        disciplinaParaExibir = bookingDetails.disciplinaReal;
+        professorParaExibir = bookingDetails.professorReal;
+        professorOriginalNaReserva = bookingDetails.professorOriginalBooking;
+      } else {
+        Logger.log(`Warning: Instância ${instanceId} (Status: ${instanceStatus}) sem detalhes de reserva 'Agendada'. Usando dados base.`);
+        disciplinaParaExibir = baseInfo.disciplina;
+        professorParaExibir = professorPrincipalInstance;
+      }
+
+      filteredSlots.push({
+        idInstancia: instanceId,
+        data: Utilities.formatDate(instanceUTCDate, timeZone, 'dd/MM/yyyy'),
+        diaSemana: instanceDiaSemana,
+        horaInicio: formattedHoraInicio,
+        turma: instanceTurma,
+        tipoOriginal: originalType,
+        statusOcupacao: instanceStatus,
+        disciplinaParaExibir: disciplinaParaExibir,
+        professorParaExibir: professorParaExibir,
+        professorOriginalNaReserva: professorOriginalNaReserva,
+        professorPrincipal: professorPrincipalInstance
+      });
+    });
+
+    Logger.log(`Found ${filteredSlots.length} enriched slots for Turma "${trimmedTurma}" week starting ${weekStartDateString} (UTC).`);
+    return createJsonResponse(true, `${filteredSlots.length} horários encontrados.`, filteredSlots);
+
+  } catch (e) {
+    return createJsonResponse(false, `Erro ao buscar horários filtrados: ${e.message}`, null);
+  }
 }
 
 
 /**
- * Função exposta para ser chamada pelo lado do cliente.
- * Busca e retorna as instâncias de horários disponíveis para um determinado tipo de reserva (Reposição ou Substituição).
- * Os resultados são ordenados por Data, Hora e Turma.
- * @param {string} tipoReserva O tipo de reserva desejado ('Reposicao' ou 'Substituicao').
- * @returns {string} Uma string JSON contendo {success, message, data: [lista de horários disponíveis]}.
+ * [CLIENT CALLABLE] Gets available slots for a specific booking type.
+ * @param {string} tipoReserva - 'Reposicao' or 'Substituicao'.
+ * @returns {string} JSON {success, message, data: [available slots sorted]}
  */
 function getAvailableSlots(tipoReserva) {
-    Logger.log('*** getAvailableSlots chamada para tipo: ' + tipoReserva + ' ***');
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    // Obtém o fuso horário da planilha para formatação correta de datas/horas.
-    const timeZone = ss.getSpreadsheetTimeZone();
-
-    // Verifica a autorização do usuário que está fazendo a chamada.
-    const userEmail = Session.getActiveUser().getEmail();
-    const userRole = getUserRolePlain(userEmail);
-
-    // Se o usuário não for autorizado, retorna falha.
+  Logger.log(`*** getAvailableSlots called for tipo: ${tipoReserva} ***`);
+  try {
+    // 1. Authorization & Validation
+    const userEmail = getActiveUserEmail_();
+    const userRole = getUserRolePlain_(userEmail);
     if (!userRole) {
-        Logger.log('Erro: Usuário no autorizado.');
-        return JSON.stringify({ success: false, message: 'Usuário não autorizado a buscar horários.', data: null });
+      return createJsonResponse(false, 'Usuário não autorizado a buscar horários.', null);
+    }
+    if (tipoReserva !== TIPOS_RESERVA.REPOSICAO && tipoReserva !== TIPOS_RESERVA.SUBSTITUICAO) {
+      return createJsonResponse(false, `Tipo de reserva inválido: ${tipoReserva}`, null);
     }
 
-    try {
-        // Acessa a planilha de instâncias de horários.
-        const sheet = ss.getSheetByName(SHEETS.SCHEDULE_INSTANCES);
-        // Verifica se a planilha existe.
-        if (!sheet) {
-            Logger.log(`Erro: Planilha "${SHEETS.SCHEDULE_INSTANCES}" não encontrada!`);
-            return JSON.stringify({ success: false, message: `Erro interno: Planilha "${SHEETS.SCHEDULE_INSTANCES}" não encontrada.`, data: null });
+    // 2. Read Instance Data & Setup (Check header)
+    const { data: instanceData, header: instanceHeader } = getSheetData_(SHEETS.SCHEDULE_INSTANCES, HEADERS.SCHEDULE_INSTANCES);
+    const timeZone = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+    const availableSlots = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // 3. Define required columns and check header
+    const instIdCol = HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA;
+    const baseIdCol = HEADERS.SCHEDULE_INSTANCES.ID_BASE_HORARIO;
+    const turmaCol = HEADERS.SCHEDULE_INSTANCES.TURMA;
+    const profPrincCol = HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL;
+    const dateCol = HEADERS.SCHEDULE_INSTANCES.DATA;
+    const dayCol = HEADERS.SCHEDULE_INSTANCES.DIA_SEMANA;
+    const hourCol = HEADERS.SCHEDULE_INSTANCES.HORA_INICIO;
+    const typeCol = HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL;
+    const statusCol = HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO;
+    const maxIndexNeeded = Math.max(instIdCol, baseIdCol, turmaCol, profPrincCol, dateCol, dayCol, hourCol, typeCol, statusCol);
+    if (instanceHeader.length <= maxIndexNeeded) {
+      throw new Error(`Planilha "${SHEETS.SCHEDULE_INSTANCES}" não contém todas as colunas necessárias para getAvailableSlots.`);
+    }
+
+
+    // 4. Filter and Format Data
+    instanceData.forEach((row, index) => {
+      if (!row || row.length <= maxIndexNeeded) return;
+
+      // Extract and format essential data
+      const instanceId = String(row[instIdCol] || '').trim();
+      const baseId = String(row[baseIdCol] || '').trim();
+      const turma = String(row[turmaCol] || '').trim();
+      const professorPrincipal = String(row[profPrincCol] || '').trim();
+      const rawInstanceDate = row[dateCol];
+      const instanceDiaSemana = String(row[dayCol] || '').trim();
+      const formattedHoraInicio = formatValueToHHMM(row[hourCol], timeZone);
+      const originalType = String(row[typeCol] || '').trim();
+      const instanceStatus = String(row[statusCol] || '').trim();
+
+      if (!instanceId || !baseId || !turma || !rawInstanceDate || !instanceDiaSemana || !formattedHoraInicio || !originalType || !instanceStatus) {
+        return;
+      }
+
+      // Compare using local date part
+      let instanceDateForCompare = null;
+      if (rawInstanceDate instanceof Date && !isNaN(rawInstanceDate.getTime())) {
+        instanceDateForCompare = new Date(rawInstanceDate.getFullYear(), rawInstanceDate.getMonth(), rawInstanceDate.getDate());
+        if (instanceDateForCompare < today) return;
+      } else {
+        return; // Skip invalid dates
+      }
+
+      // Apply filtering based on requested booking type and user role
+      let isMatch = false;
+      if (tipoReserva === TIPOS_RESERVA.REPOSICAO) {
+        if (originalType === TIPOS_HORARIO.VAGO && instanceStatus === STATUS_OCUPACAO.DISPONIVEL) {
+          if ([USER_ROLES.ADMIN, USER_ROLES.PROFESSOR, USER_ROLES.ALUNO].includes(userRole)) {
+            isMatch = true;
+          }
         }
-
-        // Determina o número mínimo de colunas necessárias para ler os dados essenciais.
-        const minCols = Math.max(
-            HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA,
-            HEADERS.SCHEDULE_INSTANCES.ID_BASE_HORARIO,
-            HEADERS.SCHEDULE_INSTANCES.TURMA,
-            HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL,
-            HEADERS.SCHEDULE_INSTANCES.DATA,
-            HEADERS.SCHEDULE_INSTANCES.DIA_SEMANA,
-            HEADERS.SCHEDULE_INSTANCES.HORA_INICIO,
-            HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL,
-            HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO,
-            HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR
-        ) + 1; // +1 porque os índices são base 0.
-
-        // Obtém todos os dados da planilha.
-        const rawData = sheet.getDataRange().getValues();
-        // Verifica se há dados além do cabeçalho.
-        if (rawData.length <= 1) {
-            Logger.log('Planilha Instancias de Horarios está vazia ou apenas cabeçalho.');
-            return JSON.stringify({ success: true, message: 'Nenhuma instância de horário futura encontrada. Gere instâncias primeiro.', data: [] });
+      } else if (tipoReserva === TIPOS_RESERVA.SUBSTITUICAO) {
+        if (originalType === TIPOS_HORARIO.FIXO && instanceStatus !== STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
+          if ([USER_ROLES.ADMIN, USER_ROLES.PROFESSOR].includes(userRole)) {
+            if (instanceStatus === STATUS_OCUPACAO.DISPONIVEL || instanceStatus === STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) {
+              isMatch = true;
+            }
+          }
         }
+      }
 
-        // Verifica se a planilha tem o número mínimo de colunas esperado.
-        if (rawData[0].length < minCols) {
-            Logger.log(`Warning: Planilha "${SHEETS.SCHEDULE_INSTANCES}" tem menos colunas (${rawData[0].length}) do que o esperado (${minCols}). A leitura de dados pode falhar.`);
-            // O script continua, mas pode falhar se tentar acessar uma coluna inexistente.
-        }
-
-        // Remove o cabeçalho dos dados.
-        const data = rawData.slice(1);
-
-        const availableSlots = []; // Array para armazenar os horários disponíveis encontrados.
-        const today = new Date(); // Obtém a data atual.
-        today.setHours(0, 0, 0, 0); // Zera a hora para comparar apenas a data.
-
-        // Itera por todas as linhas de instâncias de horário.
-        for (let i = 0; i < data.length; i++) {
-            const row = data[i];
-            const rowIndex = i + 2; // Índice da linha na planilha (considerando cabeçalho e base 1).
-
-            // Pula a linha se for inválida ou não tiver colunas suficientes.
-            if (!row || row.length < minCols) {
-                // Logger.log(`Skipping incomplete row ${rowIndex} in Instancias de Horarios.`); // Too noisy
-                continue; // Pula para a próxima iteração.
-            }
-
-            // Extrai os valores brutos das colunas relevantes.
-            const instanceIdRaw = row[HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA];
-            const baseIdRaw = row[HEADERS.SCHEDULE_INSTANCES.ID_BASE_HORARIO];
-            const turmaRaw = row[HEADERS.SCHEDULE_INSTANCES.TURMA];
-            const professorPrincipalRaw = row[HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL];
-            const rawDate = row[HEADERS.SCHEDULE_INSTANCES.DATA];
-            const instanceDiaSemanaRaw = row[HEADERS.SCHEDULE_INSTANCES.DIA_SEMANA];
-            const rawHoraInicio = row[HEADERS.SCHEDULE_INSTANCES.HORA_INICIO];
-            const originalTypeRaw = row[HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL];
-            const instanceStatusRaw = row[HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO];
-
-            // Formata e valida os dados essenciais.
-            const instanceId = (typeof instanceIdRaw === 'string' || typeof instanceIdRaw === 'number') ? String(instanceIdRaw).trim() : null;
-            const baseId = (typeof baseIdRaw === 'string' || typeof baseIdRaw === 'number') ? String(baseIdRaw).trim() : null;
-            const turma = (typeof turmaRaw === 'string' || typeof turmaRaw === 'number') ? String(turmaRaw).trim() : null;
-            const professorPrincipal = (typeof professorPrincipalRaw === 'string' || typeof professorPrincipalRaw === 'number') ? String(professorPrincipalRaw || '').trim() : '';
-            const instanceDate = formatValueToDate(rawDate); // <-- THIS IS THE Date OBJECT
-            const instanceDiaSemana = (typeof instanceDiaSemanaRaw === 'string' || typeof instanceDiaSemanaRaw === 'number') ? String(instanceDiaSemanaRaw).trim() : null;
-            const formattedHoraInicio = formatValueToHHMM(rawHoraInicio, timeZone); // <-- HH:mm STRING
-            const originalType = (typeof originalTypeRaw === 'string' || typeof originalTypeRaw === 'number') ? String(originalTypeRaw).trim() : null;
-            const instanceStatus = (typeof instanceStatusRaw === 'string' || typeof instanceStatusRaw === 'number') ? String(instanceStatusRaw).trim() : null;
-
-            // Verifica se algum dado essencial formatado é inválido ou ausente.
-            if (!instanceId || instanceId === '' || !baseId || baseId === '' || !turma || turma === '' ||
-                !instanceDate || // Checks if instanceDate is a valid Date object
-                !instanceDiaSemana || instanceDiaSemana === '' ||
-                formattedHoraInicio === null || // Checks if time is valid string
-                !originalType || originalType === '' ||
-                !instanceStatus || instanceStatus === '') {
-                // Log detail for debugging skipped rows
-                // Logger.log(`Skipping row ${rowIndex} due to invalid/missing essential data: ID=${instanceIdRaw}, BaseID=${baseIdRaw}, Turma=${turmaRaw}, ProfPrinc=${professorPrincipalRaw}, Data=${rawDate}, Dia=${instanceDiaSemanaRaw}, Hora=${rawHoraInicio}, Tipo=${originalTypeRaw}, Status=${instanceStatusRaw}`);
-                continue; // Pula para a próxima linha.
-            }
-
-            // Validações adicionais de consistência dos dados (Dias da semana, Tipos, Status)
-            const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-            if (!daysOfWeek.includes(instanceDiaSemana)) {
-                Logger.log(`Skipping row ${rowIndex} due to invalid Dia da Semana: "${instanceDiaSemana}". Raw: ${instanceDiaSemanaRaw}`);
-                continue;
-            }
-            if (originalType !== TIPOS_HORARIO.FIXO && originalType !== TIPOS_HORARIO.VAGO) {
-                Logger.log(`Skipping row ${rowIndex} due to invalid Tipo Original: "${originalType}". Raw: ${originalTypeRaw}`);
-                continue;
-            }
-            if (instanceStatus !== STATUS_OCUPACAO.DISPONIVEL && instanceStatus !== STATUS_OCUPACAO.REPOSICAO_AGENDADA && instanceStatus !== STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) {
-                Logger.log(`Skipping row ${rowIndex} due to invalid Status Ocupação: "${instanceStatus}". Raw: ${instanceStatusRaw}`);
-                continue;
-            }
-
-            // Compara a data da instância (sem a hora) com a data atual (sem a hora).
-            // instanceDate already has hours/minutes/seconds set to 0 by formatValueToDate if it was parsed correctly
-            if (instanceDate < today) {
-                // Pula instâncias que já ocorreram.
-                continue;
-            }
-
-            // Lógica de filtragem baseada no tipo de reserva solicitado e status.
-            if (tipoReserva === TIPOS_RESERVA.REPOSICAO) {
-                // Para Reposição, o horário deve ser do tipo VAGO e estar com status DISPONIVEL.
-                if (originalType === TIPOS_HORARIO.VAGO && instanceStatus === STATUS_OCUPACAO.DISPONIVEL) {
-                    // Adiciona o horário à lista de disponíveis.
-                    availableSlots.push({
-                        idInstancia: instanceId,
-                        baseId: baseId,
-                        turma: turma,
-                        professorPrincipal: professorPrincipal, // Geralmente vazio para tipo VAGO.
-                        data: Utilities.formatDate(instanceDate, timeZone, 'dd/MM/yyyy'), // Formata data para exibição.
-                        instanceDateObj: instanceDate, // <-- INCLUDE THE ACTUAL DATE OBJECT FOR SORTING
-                        diaSemana: instanceDiaSemana,
-                        horaInicio: formattedHoraInicio, // HH:mm string for sorting
-                        tipoOriginal: originalType,
-                        statusOcupacao: instanceStatus, // Será 'Disponivel'.
-                    });
-                }
-            } else if (tipoReserva === TIPOS_RESERVA.SUBSTITUICAO) {
-                // Para Substituição, o horário deve ser do tipo FIXO.
-                // E NÃO pode estar com status REPOSICAO_AGENDADA.
-                // Pode estar DISPONIVEL ou já ter uma SUBSTITUICAO_AGENDADA.
-                if (originalType === TIPOS_HORARIO.FIXO && instanceStatus !== STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
-                    // Adiciona o horário à lista de disponíveis para substituição.
-                    availableSlots.push({
-                        idInstancia: instanceId,
-                        baseId: baseId,
-                        turma: turma,
-                        professorPrincipal: professorPrincipal, // Professor original do horário fixo.
-                        data: Utilities.formatDate(instanceDate, timeZone, 'dd/MM/yyyy'), // Formata data para exibição.
-                        instanceDateObj: instanceDate, // <-- INCLUDE THE ACTUAL DATE OBJECT FOR SORTING
-                        diaSemana: instanceDiaSemana,
-                        horaInicio: formattedHoraInicio, // HH:mm string for sorting
-                        tipoOriginal: originalType,
-                        statusOcupacao: instanceStatus, // Puede ser 'Disponivel' o 'Substituicao Agendada'.
-                    });
-                }
-            }
-        }
-
-        // --- ADD SORTING LOGIC HERE ---
-        availableSlots.sort((a, b) => {
-            // 1. Sort by Date (ascending)
-            // Use getTime() for reliable comparison of Date objects
-            const dateComparison = a.instanceDateObj.getTime() - b.instanceDateObj.getTime();
-            if (dateComparison !== 0) {
-                return dateComparison;
-            }
-
-            // 2. If Dates are the same, sort by Time (ascending string comparison)
-            // String comparison for HH:mm format works correctly (e.g., "09:00" < "10:00")
-            const timeComparison = a.horaInicio.localeCompare(b.horaInicio);
-            if (timeComparison !== 0) {
-                return timeComparison;
-            }
-
-            // 3. If Date and Time are the same, sort by Turma (ascending string comparison)
-            const turmaComparison = a.turma.localeCompare(b.turma);
-            return turmaComparison;
+      if (isMatch) {
+        availableSlots.push({
+          idInstancia: instanceId,
+          baseId: baseId,
+          turma: turma,
+          professorPrincipal: professorPrincipal,
+          data: Utilities.formatDate(instanceDateForCompare, timeZone, 'dd/MM/yyyy'),
+          instanceDateObj: instanceDateForCompare,
+          diaSemana: instanceDiaSemana,
+          horaInicio: formattedHoraInicio,
+          tipoOriginal: originalType,
+          statusOcupacao: instanceStatus,
         });
-        // --- END SORTING LOGIC ---
+      }
+    });
 
+    // 5. Sort Results
+    availableSlots.sort((a, b) => {
+      const dateComparison = a.instanceDateObj.getTime() - b.instanceDateObj.getTime();
+      if (dateComparison !== 0) return dateComparison;
+      const timeComparison = a.horaInicio.localeCompare(b.horaInicio);
+      if (timeComparison !== 0) return timeComparison;
+      return a.turma.localeCompare(b.turma);
+    });
 
-        Logger.log('Número de slots disponíveis encontrados e ordenados: ' + availableSlots.length);
+    Logger.log(`Found ${availableSlots.length} available slots for type ${tipoReserva}.`);
+    return createJsonResponse(true, 'Slots carregados com sucesso.', availableSlots);
 
-        // Return JSON with success and the sorted list of available slots.
-        // Note: We are sending the instanceDateObj back in the data payload, which is fine.
-        return JSON.stringify({ success: true, message: 'Slots carregados com sucesso.', data: availableSlots });
-
-    } catch (e) {
-        // Em caso de erro inesperado.
-        Logger.log('Erro no getAvailableSlots: ' + e.message + ' Stack: ' + e.stack);
-        // Retorna JSON indicando falha.
-        return JSON.stringify({ success: false, message: 'Ocorreu um erro interno ao buscar horários: ' + e.message, data: null });
-    }
-}
-/**
- * Cria o conteúdo (assunto, texto, HTML) para o email de notificação da reserva.
- * Inclui detalhes como tipo, data, hora, turma, disciplina, professores e status do Calendar.
- *
- * @param {object} dadosReserva Um objeto contendo os detalhes da reserva.
- * @param {string} dadosReserva.bookingId O ID da reserva.
- * @param {string} dadosReserva.bookingType O tipo de reserva (Reposição/Substituição).
- * @param {string} dadosReserva.disciplina A disciplina agendada.
- * @param {string} dadosReserva.turma A turma associada.
- * @param {string} dadosReserva.profReal O professor que realizará a aula.
- * @param {string} [dadosReserva.profOrig] O professor original (para substituições).
- * @param {Date} dadosReserva.startTime O objeto Date/Time de início da aula.
- * @param {string} dadosReserva.timeZone O fuso horário da planilha.
- * @param {string} dadosReserva.userEmail O email de quem fez a reserva.
- * @param {Date} dadosReserva.timestampCriacao O momento em que a reserva foi criada.
- * @param {string|null} [dadosReserva.calendarEventId] O ID do evento do Calendar, if criado/atualizado.
- * @param {Error|null} [dadosReserva.calendarError] O objeto de erro do Calendar, if ocorreu um erro.
- * @return {{subject: string, bodyText: string, bodyHtml: string}} Objeto com o conteúdo do email.
- */
-function criarConteudoEmailReserva(dadosReserva) {
-    const {
-        bookingId, bookingType, disciplina, turma, profReal, profOrig,
-        startTime, timeZone, userEmail, timestampCriacao,
-        calendarEventId, calendarError
-    } = dadosReserva;
-
-    // Assumindo que TIPOS_RESERVA.SUBSTITUICAO está definido globalmente
-    const isSubstituicao = bookingType === TIPOS_RESERVA.SUBSTITUICAO;
-
-    // Formatação de Data e Hora
-    const dataFormatada = Utilities.formatDate(startTime, timeZone, 'dd/MM/yyyy');
-    const horaFormatada = Utilities.formatDate(startTime, timeZone, 'HH:mm');
-    const criacaoFormatada = Utilities.formatDate(timestampCriacao, timeZone, 'dd/MM/yyyy HH:mm:ss');
-
-    // --- Assunto ---
-    let subject = '';
-    if (calendarError) {
-        subject = `⚠️ Reserva ${bookingType} Confirmada (Erro Calendar) - ${disciplina || 'N/D'} - ${dataFormatada}`;
-    } else if (!calendarEventId && !calendarError) {
-        // Condição onde o Calendar não foi configurado ou encontrado, mas não deu erro
-        subject = `✅ Reserva ${bookingType} Confirmada (Sem Evento Calendar) - ${disciplina || 'N/D'} - ${dataFormatada}`;
-    }
-    else {
-        // Sucesso total
-        subject = `✅ Reserva ${bookingType} Confirmada - ${disciplina || 'N/D'} - ${dataFormatada}`;
-    }
-
-    // --- Corpo Texto ---
-    let bodyText = `Olá,\n\n`;
-    bodyText += `Uma reserva de "${bookingType}" foi registrada no sistema:\n\n`;
-    bodyText += `==============================\n`;
-    bodyText += `DETALHES DA RESERVA\n`;
-    bodyText += `==============================\n`;
-    bodyText += `Tipo: ${bookingType}\n`;
-    bodyText += `Data: ${dataFormatada}\n`;
-    bodyText += `Horário: ${horaFormatada}\n`;
-    bodyText += `Turma: ${turma || 'N/A'}\n`;
-    bodyText += `Disciplina: ${disciplina || 'N/A'}\n`;
-    bodyText += `Professor: ${profReal || 'N/A'}\n`;
-    if (isSubstituicao && profOrig) {
-        bodyText += `Professor Original: ${profOrig}\n`;
-    }
-    bodyText += `------------------------------\n`;
-    bodyText += `ID da Reserva: ${bookingId}\n`;
-    bodyText += `Agendado por: ${userEmail}\n`;
-    bodyText += `Data/Hora Agendamento: ${criacaoFormatada}\n`;
-    bodyText += `==============================\n\n`;
-
-    // Adiciona status do Calendário
-    if (calendarError) {
-        bodyText += `*** ATENÇÃO ***\n`;
-        bodyText += `Houve um erro ao tentar criar ou atualizar o evento no Google Calendar.\n`;
-        bodyText += `A reserva está confirmada nas planilhas, mas por favor, verifique o calendário manualmente.\n`;
-        bodyText += `Erro: ${calendarError.message}\n\n`;
-    } else if (!calendarEventId) {
-        // Inclui o caso de calendarId não configurado/encontrado
-        bodyText += `*** AVISO ***\n`;
-        bodyText += `O evento correspondente não foi criado/atualizado no Google Calendar (ID do calendário pode não estar configurado, o calendário pode não ter sido encontrado ou houve um erro não capturado na obtenção do ID).\n\n`;
-    }
-    else {
-        // Sucesso no Calendar
-        bodyText += `Evento no Google Calendar criado/atualizado com sucesso.\n`;
-        bodyText += `ID do Evento: ${calendarEventId}\n\n`;
-    }
-
-    bodyText += `Atenciosamente,\nSistema de Agendamento`;
-
-    // --- Corpo HTML ---
-    let bodyHtml = `<p>Olá,</p>`;
-    bodyHtml += `<p>Uma reserva de "<b>${bookingType}</b>" foi registrada no sistema:</p>`;
-    bodyHtml += `<hr>`;
-    bodyHtml += `<h3>Detalhes da Reserva</h3>`;
-    bodyHtml += `<table border="0" cellpadding="5" style="border-collapse: collapse; font-family: sans-serif; font-size: 11pt;">`; // Estilo básico
-    bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><strong>Tipo:</strong></td><td>${bookingType}</td></tr>`;
-    bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><strong>Data:</strong></td><td>${dataFormatada}</td></tr>`;
-    bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><strong>Horário:</strong></td><td>${horaFormatada}</td></tr>`;
-    bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><strong>Turma:</strong></td><td>${turma || 'N/A'}</td></tr>`;
-    bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><strong>Disciplina:</strong></td><td>${disciplina || 'N/A'}</td></tr>`;
-    bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><strong>Professor:</strong></td><td>${profReal || 'N/A'}</td></tr>`;
-    if (isSubstituicao && profOrig) {
-        bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><strong>Professor Original:</strong></td><td>${profOrig}</td></tr>`;
-    }
-    bodyHtml += `</table>`;
-    bodyHtml += `<br>`;
-    bodyHtml += `<table border="0" cellpadding="5" style="border-collapse: collapse; font-family: sans-serif; font-size: 9pt; color: #555;">`; // Estilo menor para meta-info
-    bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><i>ID Reserva:</i></td><td><i>${bookingId}</i></td></tr>`;
-    bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><i>Agendado por:</i></td><td><i>${userEmail}</i></td></tr>`;
-    bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><i>Data/Hora Agend.:</i></td><td><i>${criacaoFormatada}</i></td></tr>`;
-    bodyHtml += `</table>`;
-    bodyHtml += `<hr>`;
-
-    // Adiciona status do Calendário
-    if (calendarError) {
-        bodyHtml += `<div style="border: 1px solid #DC3545; background-color: #F8D7DA; color: #721C24; padding: 15px; margin-top: 15px; border-radius: 4px; font-family: sans-serif; font-size: 11pt;">`; // Estilo de alerta vermelho
-        bodyHtml += `<strong>*** ATENÇÃO ***</strong><br>`;
-        bodyHtml += `Houve um erro ao tentar criar ou atualizar o evento no Google Calendar.<br>`;
-        bodyHtml += `A reserva está confirmada nas planilhas, mas por favor, <strong>verifique o calendário manualmente</strong>.<br>`;
-        bodyHtml += `<span style="font-size: 9pt; color: #721C24;">Erro: ${calendarError.message}</span>`;
-        bodyHtml += `</div>`;
-    } else if (!calendarEventId) {
-        // Inclui o caso de calendarId não configurado/encontrado
-        bodyHtml += `<div style="border: 1px solid #FFC107; background-color: #FFF3CD; color: #856404; padding: 15px; margin-top: 15px; border-radius: 4px; font-family: sans-serif; font-size: 11pt;">`; // Estilo de alerta amarelo
-        bodyHtml += `<strong>*** AVISO ***</strong><br>`;
-        bodyHtml += `O evento correspondente não foi criado/atualizado no Google Calendar.<br>`;
-        bodyHtml += `Isso pode ocorrer se o ID do calendário não estiver configurado, o calendário não for encontrado ou ocorrer um erro não capturado na obtenção do ID do evento.`;
-        bodyHtml += `</div>`;
-    }
-    else {
-        // Sucesso no Calendar
-        bodyHtml += `<div style="border: 1px solid #28A745; background-color: #D4EDDA; color: #155724; padding: 15px; margin-top: 15px; border-radius: 4px; font-family: sans-serif; font-size: 11pt;">`; // Estilo de sucesso verde
-        bodyHtml += `Evento no Google Calendar criado/atualizado com sucesso.<br>`;
-        bodyHtml += `ID do Evento: ${calendarEventId}`;
-        bodyHtml += `</div>`;
-    }
-
-    bodyHtml += `<p style="font-family: sans-serif; font-size: 11pt; margin-top: 20px;">Atenciosamente,<br>Sistema de Agendamento</p>`;
-
-    return { subject, bodyText, bodyHtml };
+  } catch (e) {
+    return createJsonResponse(false, `Erro ao buscar horários disponíveis: ${e.message}`, null);
+  }
 }
 
 
 /**
- * Tenta agendar um horário vago (Reposição) ou substituir um horário fixo
- * (Substituição).
- * Responsabilidades:
- * 1. Valida a autorização do usuário.
- * 2. Analisa os detalhes da reserva recebidos como JSON.
- * 3. Encontra e valida a instância de horário solicitada na planilha 'Instancias de Horarios'.
- * 4. Realiza verificações de concorrência e regras de negócio (ex: tipo de horário vs tipo de reserva).
- * 5. Atualiza o status e o ID da reserva na planilha 'Instancias de Horarios'.
- * 6. Cria um novo registro detalhado na planilha 'Reservas Detalhadas'.
- * 7. Tenta criar ou atualizar um evento correspondente no Google Calendar.
- * 8. Salva o ID do evento do Calendar na planilha 'Instancias de Horarios'.
- * 9. Envia notificações por email aos envolvidos usando o conteúdo gerado por `criarConteudoEmailReserva`.
- * 10. Utiliza LockService para prevenir condições de corrida.
- *
- * @param {string} jsonBookingDetailsString Uma string JSON contendo os detalhes
- *   necessários para a reserva (idInstancia, tipoReserva, professorReal,
- *   disciplinaReal, alunos?). Ex: '{"idInstancia":"unique-id-123", "tipoReserva":"Reposição", ...}'
- * @return {string} Uma string JSON indicando o sucesso ou falha da operação.
- *   Em caso de sucesso: {success: true, message: "...", data: {bookingId: "...", eventId: "..."}}
- *   Em caso de falha: {success: false, message: "...", data: null}
+ * [CLIENT CALLABLE] Books a slot based on provided details. Orchestrates internal helpers.
+ * @param {string} jsonBookingDetailsString - JSON string containing booking details.
+ * @returns {string} JSON {success, message, data: {bookingId, eventId}}
  */
 function bookSlot(jsonBookingDetailsString) {
-    // --- Fase 1: Bloqueio e Validação Inicial ---
-    const lock = LockService.getScriptLock();
+  Logger.log(`*** bookSlot called ***`);
+  let lock = null;
+  let bookingId = null;
+  let userEmail = '[Unavailable]';
+
+  try {
+    // 1. Initial Checks (before lock)
+    userEmail = getActiveUserEmail_();
+    Logger.log(`Booking attempt by: ${userEmail}. Details: ${jsonBookingDetailsString}`);
+    const userRole = getUserRolePlain_(userEmail);
+    if (!userRole) {
+      throw new Error('Usuário não autorizado ou perfil não definido.');
+    }
+
+    let bookingDetails;
     try {
-        // Tenta obter o bloqueio exclusivo, esperando no máximo 10 segundos.
-        lock.waitLock(10000); // Lança erro se o tempo expirar
+      if (!jsonBookingDetailsString) throw new Error("Dados da reserva não recebidos (null).");
+      bookingDetails = JSON.parse(jsonBookingDetailsString);
     } catch (e) {
-        // Falha ao obter o bloqueio, provavelmente devido a alta concorrência.
-        Logger.log('Não foi possível obter o bloqueio do script em 10 segundos: ' + e.message);
-        // Retorna falha indicando que o sistema está ocupado.
-        return JSON.stringify({
-            success: false,
-            message: 'O sistema está ocupado processando outra solicitação. Tente novamente em alguns instantes.',
-            data: null
-        });
+      throw new Error(`Erro interno ao processar os dados da reserva (JSON inválido): ${e.message}`);
     }
 
-    // Variáveis que serão usadas em múltiplos escopos, incluindo a criação do email.
-    let userEmail;
-    let bookingId = null;
-    let bookingType = null;
-    let disciplina = null;
-    let turmaInstancia = null;
-    let profReal = null;
-    let profOrig = null;
-    let effectiveStartDateTime = null;
-    let now = null;
-    let timeZone = null;
-    let calendarEventId = null; // Será atualizado pela lógica do Calendar
-    let guests = []; // Lista de emails dos convidados para o evento/email
-    let calendarError = null; // Armazena erro do Calendar, se houver
-
-    try {
-        // Obtém o email do usuário que está executando o script.
-        try {
-            userEmail = Session.getActiveUser().getEmail();
-        } catch (e) {
-            // Falha rara, mas possível em certos contextos de execução.
-            lock.releaseLock(); // Libera o bloqueio antes de sair
-            Logger.log('Erro ao obter email do usuário ativo: ' + e.message);
-            return JSON.stringify({
-                success: false,
-                message: 'Não foi possível identificar o usuário logado.',
-                data: null
-            });
-        }
-
-        // Verifica a autorização do usuário (assume que getUserRolePlain existe).
-        const userRole = getUserRolePlain(userEmail); // Assume que esta função existe e retorna o papel ou null
-        if (!userRole) {
-            lock.releaseLock();
-            Logger.log(`Usuário ${userEmail} não autorizado a agendar.`);
-            return JSON.stringify({
-                success: false,
-                message: 'Você não tem permissão para realizar agendamentos.',
-                data: null
-            });
-        }
-
-        // Analisa (parse) a string JSON com os detalhes da reserva.
-        let bookingDetails;
-        try {
-            bookingDetails = JSON.parse(jsonBookingDetailsString);
-            Logger.log('Detalhes da reserva recebidos e analisados: ' + JSON.stringify(bookingDetails));
-        } catch (e) {
-            lock.releaseLock();
-            Logger.log('Erro ao analisar JSON de detalhes da reserva: ' + e.message + ' | JSON recebido: ' + jsonBookingDetailsString);
-            return JSON.stringify({
-                success: false,
-                message: 'Erro interno ao processar os dados da reserva (JSON inválido).',
-                data: null
-            });
-        }
-
-        // --- Fase 2: Processamento Principal da Reserva ---
-        const ss = SpreadsheetApp.getActiveSpreadsheet();
-        const instancesSheet = ss.getSheetByName(SHEETS.SCHEDULE_INSTANCES);
-        const bookingsSheet = ss.getSheetByName(SHEETS.BOOKING_DETAILS);
-
-        // Valida se as planilhas foram encontradas
-        if (!instancesSheet) throw new Error(`Planilha "${SHEETS.SCHEDULE_INSTANCES}" não encontrada.`);
-        if (!bookingsSheet) throw new Error(`Planilha "${SHEETS.BOOKING_DETAILS}" não encontrada.`);
-        // A planilha de usuários é verificada depois, pois é usada apenas para o Calendar/Email.
-
-        // Obtém o fuso horário da planilha
-        timeZone = ss.getSpreadsheetTimeZone(); // Atribui à variável de escopo superior
-
-        // Valida dados básicos da reserva recebidos no JSON
-        if (!bookingDetails || typeof bookingDetails.idInstancia !== 'string' || bookingDetails.idInstancia.trim() === '') {
-            throw new Error('Dados de ID da instância de horário incompletos ou inválidos.');
-        }
-        const instanceIdToBook = bookingDetails.idInstancia.trim();
-
-        bookingType = bookingDetails.tipoReserva ? String(bookingDetails.tipoReserva).trim() : null; // Atribui
-        if (!bookingType || (bookingType !== TIPOS_RESERVA.REPOSICAO && bookingType !== TIPOS_RESERVA.SUBSTITUICAO)) {
-            throw new Error(`Tipo de reserva inválido ou ausente. Recebido: "${bookingDetails.tipoReserva}". Esperado: "${TIPOS_RESERVA.REPOSICAO}" ou "${TIPOS_RESERVA.SUBSTITUICAO}".`);
-        }
-
-        // --- Busca e Validação da Instância na Planilha 'Instancias de Horarios' ---
-        const instanceDataRaw = instancesSheet.getDataRange().getValues();
-        let instanceRowIndex = -1;
-        let instanceDetails = null;
-
-        if (instanceDataRaw.length <= 1) {
-            // A planilha está vazia ou só tem cabeçalho
-            throw new Error('Erro interno: Planilha de instâncias está vazia ou contém apenas o cabeçalho.');
-        }
-
-        const instanceData = instanceDataRaw.slice(1); // Remove cabeçalho
-        // Procura a instância pelo ID
-        for (let i = 0; i < instanceData.length; i++) {
-            const row = instanceData[i];
-            const rowIndexInSheet = i + 2; // Índice 1-based na planilha
-            const minColsForId = HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA + 1;
-            if (row && row.length >= minColsForId) {
-                const currentInstanceIdRaw = row[HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA];
-                const currentInstanceId = (typeof currentInstanceIdRaw === 'string' || typeof currentInstanceIdRaw === 'number')
-                    ? String(currentInstanceIdRaw).trim() : null;
-                if (currentInstanceId && currentInstanceId === instanceIdToBook) {
-                    instanceRowIndex = rowIndexInSheet;
-                    instanceDetails = row;
-                    break; // Encontrou
-                }
-            }
-        }
-
-        // Se não encontrou a instância
-        if (instanceRowIndex === -1 || !instanceDetails) {
-            lock.releaseLock(); // Libera antes de retornar
-            // Mensagem para o usuário indicando que o horário não está mais lá
-            return JSON.stringify({
-                success: false,
-                message: 'Este horário não está mais disponível ou não foi encontrado. Por favor, atualize a lista de horários e tente novamente.',
-                data: null
-            });
-        }
-
-        // Verifica o número de colunas na linha encontrada
-        const expectedInstanceCols = Math.max(
-            HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO, HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL,
-            HEADERS.SCHEDULE_INSTANCES.DATA, HEADERS.SCHEDULE_INSTANCES.HORA_INICIO,
-            HEADERS.SCHEDULE_INSTANCES.TURMA, HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL,
-            HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR, HEADERS.SCHEDULE_INSTANCES.ID_RESERVA
-        ) + 1; // +1 para índice base 0
-
-        if (instanceDetails.length < expectedInstanceCols) {
-            // Dados incompletos na linha encontrada
-            throw new Error(`Erro interno: Dados da instância ${instanceIdToBook} (linha ${instanceRowIndex}) estão incompletos na planilha "${SHEETS.SCHEDULE_INSTANCES}". Colunas encontradas: ${instanceDetails.length}, esperado pelo menos: ${expectedInstanceCols}.`);
-        }
-
-        // Extrai e formata dados da instância
-        const currentStatusRaw = instanceDetails[HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO];
-        const originalTypeRaw = instanceDetails[HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL];
-        const rawBookingDate = instanceDetails[HEADERS.SCHEDULE_INSTANCES.DATA];
-        const rawBookingTime = instanceDetails[HEADERS.SCHEDULE_INSTANCES.HORA_INICIO];
-        const turmaInstanciaRaw = instanceDetails[HEADERS.SCHEDULE_INSTANCES.TURMA];
-        const professorPrincipalInstanciaRaw = instanceDetails[HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL];
-        const calendarEventIdExistingRaw = instanceDetails[HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR];
-
-        const currentStatus = (typeof currentStatusRaw === 'string' || typeof currentStatusRaw === 'number') ? String(currentStatusRaw).trim() : null;
-        const originalType = (typeof originalTypeRaw === 'string' || typeof originalTypeRaw === 'number') ? String(originalTypeRaw).trim() : null;
-        turmaInstancia = (typeof turmaInstanciaRaw === 'string' || typeof turmaInstanciaRaw === 'number') ? String(turmaInstanciaRaw).trim() : null; // Atribui
-        const professorPrincipalInstancia = (typeof professorPrincipalInstanciaRaw === 'string' || typeof professorPrincipalInstanciaRaw === 'number') ? String(professorPrincipalInstanciaRaw || '').trim() : '';
-        const calendarEventIdExisting = (typeof calendarEventIdExistingRaw === 'string' || typeof calendarEventIdExistingRaw === 'number') ? String(calendarEventIdExistingRaw || '').trim() : null;
-
-        // Converte data e hora usando funções auxiliares
-        const bookingDateObj = formatValueToDate(rawBookingDate); // Assume que retorna Date ou null
-        const bookingHourString = formatValueToHHMM(rawBookingTime, timeZone); // Assume que retorna "HH:MM" ou null
-
-        // Valida dados formatados essenciais
-        if (!currentStatus || currentStatus === '' || !originalType || originalType === '' || !turmaInstancia || turmaInstancia === '' || !bookingDateObj || bookingHourString === null) {
-            Logger.log(`Erro: Dados críticos formatados da instância ${instanceIdToBook} na linha ${instanceRowIndex} são inválidos. Status Raw: ${currentStatusRaw}, Tipo Raw: ${originalTypeRaw}, Turma Raw: ${turmaInstanciaRaw}, Data Raw: ${rawBookingDate}, Hora Raw: ${rawBookingTime}`);
-            throw new Error(`Erro interno: Dados do horário selecionado (Status, Tipo, Turma, Data ou Hora) são inválidos ou estão mal formatados na planilha "${SHEETS.SCHEDULE_INSTANCES}".`);
-        }
-
-        // --- Lógica de Validação Específica por Tipo de Reserva (CONCORRÊNCIA) ---
-        // Esta parte é crucial e ocorre dentro do bloqueio.
-        if (bookingType === TIPOS_RESERVA.REPOSICAO) {
-            // Regras para Reposição
-            if (originalType !== TIPOS_HORARIO.VAGO || currentStatus !== STATUS_OCUPACAO.DISPONIVEL) {
-                lock.releaseLock();
-                return JSON.stringify({
-                    success: false,
-                    message: `Este horário vago (${instanceIdToBook}) não está mais disponível para reposição (Status atual: ${currentStatus}). Alguém pode ter agendado antes. Atualize a lista.`,
-                    data: null
-                });
-            }
-            // Valida campos obrigatórios para Reposição
-            if (!bookingDetails.professorReal || String(bookingDetails.professorReal).trim() === '' ||
-                !bookingDetails.disciplinaReal || String(bookingDetails.disciplinaReal).trim() === '') {
-                // Libera o bloqueio se dados essenciais faltam
-                lock.releaseLock();
-                throw new Error('Para agendar uma Reposição, os campos "Professor" e "Disciplina" são obrigatórios.');
-            }
-        } else if (bookingType === TIPOS_RESERVA.SUBSTITUICAO) {
-            // Regras para Substituição
-            if (originalType !== TIPOS_HORARIO.FIXO) {
-                lock.releaseLock();
-                throw new Error(`Não é possível agendar uma Substituição no horário ${instanceIdToBook}, pois ele não é um horário FIXO (Tipo original: ${originalType}).`);
-            }
-            if (currentStatus === STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
-                lock.releaseLock();
-                return JSON.stringify({
-                    success: false,
-                    message: `Este horário fixo (${instanceIdToBook}) já está sendo usado para uma Reposição e não pode ser substituído no momento.`,
-                    data: null
-                });
-            }
-            if (currentStatus !== STATUS_OCUPACAO.DISPONIVEL && currentStatus !== STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) {
-                lock.releaseLock();
-                return JSON.stringify({
-                    success: false,
-                    message: `Este horário fixo (${instanceIdToBook}) não está disponível para substituição neste momento (Status atual: ${currentStatus}). Alguém pode ter agendado antes ou o status é inesperado. Atualize a lista.`,
-                    data: null
-                });
-            }
-            // Valida campos obrigatórios para Substituição
-            if (!bookingDetails.professorReal || String(bookingDetails.professorReal).trim() === '' ||
-                !bookingDetails.disciplinaReal || String(bookingDetails.disciplinaReal).trim() === '') {
-                lock.releaseLock();
-                throw new Error('Para agendar uma Substituição, os campos "Professor Substituto" (Professor) e "Disciplina" são obrigatórios.');
-            }
-            // Valida se professor original está definido na instância
-            if (professorPrincipalInstancia === '') {
-                lock.releaseLock();
-                throw new Error(`Erro interno: O horário fixo ${instanceIdToBook} (linha ${instanceRowIndex}) não tem um "Professor Principal" definido na planilha de instâncias. Impossível realizar substituição.`);
-            }
-        }
-
-        // --- Se todas as validações passaram, ATUALIZA as planilhas ---
-        Logger.log(`Validações para ${bookingType} no horário ${instanceIdToBook} passaram. Prosseguindo com a reserva.`);
-
-        // Gera ID e timestamp
-        bookingId = Utilities.getUuid(); // Atribui
-        now = new Date(); // Atribui
-
-        // Define o novo status da instância
-        const newStatus = (bookingType === TIPOS_RESERVA.REPOSICAO)
-            ? STATUS_OCUPACAO.REPOSICAO_AGENDADA
-            : STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA;
-
-        // Atualiza a linha da instância na memória
-        const updatedInstanceRow = [...instanceDetails]; // Cria cópia mutável
-        updatedInstanceRow[HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO] = newStatus;
-        updatedInstanceRow[HEADERS.SCHEDULE_INSTANCES.ID_RESERVA] = bookingId;
-        // ID do evento será atualizado depois, se necessário
-
-        // --- Atualiza Planilha 'Instancias de Horarios' ---
-        try {
-            const numColsInstance = Math.max(...Object.values(HEADERS.SCHEDULE_INSTANCES)) + 1;
-            // Garante o número correto de colunas
-            while (updatedInstanceRow.length < numColsInstance) updatedInstanceRow.push('');
-            if (updatedInstanceRow.length > numColsInstance) updatedInstanceRow.length = numColsInstance;
-            // Escreve a linha inteira atualizada
-            instancesSheet.getRange(instanceRowIndex, 1, 1, numColsInstance)
-                .setValues([updatedInstanceRow]); // setValues espera array 2D
-            Logger.log(`Instância de horário ${instanceIdToBook} na linha ${instanceRowIndex} da planilha "${SHEETS.SCHEDULE_INSTANCES}" atualizada com sucesso para Status: ${newStatus}, ID Reserva: ${bookingId}.`);
-        } catch (e) {
-            // Erro crítico ao atualizar a instância. Não pode prosseguir.
-            Logger.log(`ERRO CRÍTICO ao atualizar linha ${instanceRowIndex} na planilha "${SHEETS.SCHEDULE_INSTANCES}": ${e.message}`);
-            // Lança erro para ser pego pelo catch geral, garantindo liberação do lock.
-            throw new Error(`Erro interno ao tentar atualizar o status do horário ${instanceIdToBook} na planilha. Operação cancelada. Detalhes: ${e.message}`);
-        }
-
-        // --- Cria a Nova Linha na Planilha 'Reservas Detalhadas' ---
-        const newBookingRow = [];
-        const numColsBooking = Math.max(...Object.values(HEADERS.BOOKING_DETAILS)) + 1;
-        // Inicializa a linha com strings vazias
-        for (let colIdx = 0; colIdx < numColsBooking; colIdx++) { newBookingRow[colIdx] = ''; }
-
-        // Atribui valores às variáveis de escopo superior
-        profReal = String(bookingDetails.professorReal).trim();
-        profOrig = (bookingType === TIPOS_RESERVA.SUBSTITUICAO) ? professorPrincipalInstancia.trim() : '';
-        disciplina = String(bookingDetails.disciplinaReal).trim();
-
-        // Preenche os dados da nova linha
-        newBookingRow[HEADERS.BOOKING_DETAILS.ID_RESERVA] = bookingId;
-        newBookingRow[HEADERS.BOOKING_DETAILS.TIPO_RESERVA] = bookingType;
-        newBookingRow[HEADERS.BOOKING_DETAILS.ID_INSTANCIA] = instanceIdToBook;
-        newBookingRow[HEADERS.BOOKING_DETAILS.PROFESSOR_REAL] = profReal;
-        newBookingRow[HEADERS.BOOKING_DETAILS.PROFESSOR_ORIGINAL] = profOrig;
-        newBookingRow[HEADERS.BOOKING_DETAILS.ALUNOS] = bookingDetails.alunos ? String(bookingDetails.alunos).trim() : '';
-        newBookingRow[HEADERS.BOOKING_DETAILS.TURMAS_AGENDADA] = turmaInstancia;
-        newBookingRow[HEADERS.BOOKING_DETAILS.DISCIPLINA_REAL] = disciplina;
-
-        // Calcula e atribui a data/hora de início efetiva
-        const [hour, minute] = bookingHourString.split(':').map(Number);
-        effectiveStartDateTime = new Date(bookingDateObj); // Atribui
-        effectiveStartDateTime.setHours(hour, minute, 0, 0); // Define hora/minuto
-        newBookingRow[HEADERS.BOOKING_DETAILS.DATA_HORA_INICIO_EFETIVA] = effectiveStartDateTime; // Salva objeto Date
-
-        newBookingRow[HEADERS.BOOKING_DETAILS.STATUS_RESERVA] = 'Agendada';
-        newBookingRow[HEADERS.BOOKING_DETAILS.DATA_CRIACAO] = now;
-        newBookingRow[HEADERS.BOOKING_DETAILS.CRIADO_POR] = userEmail;
-
-        // --- Adiciona Linha à Planilha 'Reservas Detalhadas' ---
-        try {
-            // Verificação de segurança do número de colunas
-            if (newBookingRow.length !== numColsBooking) {
-                Logger.log(`Aviso: Ajustando o número de colunas da nova linha de reserva. Esperado: ${numColsBooking}, Atual: ${newBookingRow.length}.`);
-                while (newBookingRow.length < numColsBooking) newBookingRow.push('');
-                if (newBookingRow.length > numColsBooking) newBookingRow.length = numColsBooking;
-            }
-            // Adiciona a linha no final da planilha
-            bookingsSheet.appendRow(newBookingRow);
-            Logger.log(`Reserva ${bookingId} adicionada com sucesso à planilha "${SHEETS.BOOKING_DETAILS}".`);
-        } catch (e) {
-            // Falha ao adicionar detalhes, estado inconsistente.
-            Logger.log(`ERRO ao adicionar reserva ${bookingId} à planilha "${SHEETS.BOOKING_DETAILS}": ${e.message}`);
-            lock.releaseLock(); // Libera o bloqueio
-            // Retorna erro específico informando a inconsistência
-            return JSON.stringify({
-                success: false, // Operação falhou em ser consistente
-                message: `O horário foi marcado como reservado, mas ocorreu um erro ao salvar os detalhes da reserva (${bookingId}) na planilha "${SHEETS.BOOKING_DETAILS}". Por favor, contate o suporte. Detalhes: ${e.message}`,
-                data: { bookingId: bookingId } // Retorna ID para referência
-            });
-        }
-
-        // --- Fase 3: Integração com Google Calendar ---
-        // Reset calendarError for this attempt
-        calendarError = null;
-        // calendarEventId foi resetado no início do try principal
-
-        try {
-            // Obtém ID do calendário da configuração
-            const calendarIdConfig = getConfigValue('ID do Calendario'); // Assume que existe
-
-            if (!calendarIdConfig || String(calendarIdConfig).trim() === '') {
-                // Se não configurado, loga e define eventId como null
-                Logger.log('ID do Calendário não configurado. Pulando criação/atualização de evento no Calendar.');
-                calendarEventId = null;
-            } else {
-                // Tenta acessar o calendário
-                const calendar = CalendarApp.getCalendarById(calendarIdConfig.trim());
-                if (!calendar) {
-                    // Se não encontrado/acessível, loga e define eventId como null
-                    Logger.log(`Calendário com ID "${calendarIdConfig}" não encontrado ou inacessível. Pulando criação/atualização de evento.`);
-                    calendarEventId = null;
-                } else {
-                    // Calendário acessado com sucesso
-                    Logger.log(`Acessando calendário "${calendar.getName()}" (ID: ${calendarIdConfig})`);
-
-                    // Calcula duração
-                    let durationMinutes = 45; // Default
-                    const durationConfig = getConfigValue('Duracao Padrao Aula (minutos)'); // Assume que existe
-                    if (durationConfig && !isNaN(parseInt(durationConfig))) {
-                        durationMinutes = parseInt(durationConfig);
-                    } else {
-                        Logger.log(`Configuração "Duracao Padrao Aula (minutos)" não encontrada ou inválida ("${durationConfig}"). Usando padrão de ${durationMinutes} minutos.`);
-                    }
-
-                    // Define tempos de início e fim
-                    const startTime = effectiveStartDateTime;
-                    const endTime = new Date(startTime.getTime() + durationMinutes * 60 * 1000);
-
-                    // Define título e descrição para o EVENTO DO CALENDAR
-                    const eventTitleCalendar = `${bookingType} - ${disciplina} - ${turmaInstancia}`;
-                    let eventDescriptionCalendar = `Reserva ID: ${bookingId}\nProfessor: ${profReal}`;
-                    if (profOrig) eventDescriptionCalendar += ` (Original: ${profOrig})`;
-                    eventDescriptionCalendar += `\nTurma: ${turmaInstancia}\nAgendado por: ${userEmail}`;
-
-                    // --- Prepara lista de convidados (guests) ---
-                    guests = []; // Reseta/Inicializa
-                    const authUsersSheet = ss.getSheetByName(SHEETS.AUTHORIZED_USERS); // Tenta obter a planilha
-                    const nameEmailMap = {}; // Mapa Nome -> Email
-
-                    if (authUsersSheet) {
-                        // Se a planilha existe, lê os dados
-                        const authUserData = authUsersSheet.getDataRange().getValues();
-                        const emailColIdx = HEADERS.AUTHORIZED_USERS.EMAIL;
-                        const nameColIdx = HEADERS.AUTHORIZED_USERS.NOME;
-                        // Verifica se tem cabeçalho + dados e colunas necessárias
-                        if (authUserData.length > 1 && authUserData[0].length > Math.max(emailColIdx, nameColIdx)) {
-                            Logger.log(`Lendo planilha "${SHEETS.AUTHORIZED_USERS}" para mapear nomes a emails.`);
-                            // Itera pelos dados (a partir da linha 1)
-                            for (let i = 1; i < authUserData.length; i++) {
-                                const row = authUserData[i];
-                                const email = (row.length > emailColIdx && typeof row[emailColIdx] === 'string') ? row[emailColIdx].trim().toLowerCase() : '';
-                                const name = (row.length > nameColIdx && typeof row[nameColIdx] === 'string') ? row[nameColIdx].trim() : '';
-                                // Validação básica e preenchimento do mapa
-                                if (email && name && email.includes('@')) {
-                                    nameEmailMap[name] = email;
-                                }
-                            }
-                            Logger.log(`Mapa Nome->Email criado com ${Object.keys(nameEmailMap).length} entradas.`);
-                        } else {
-                            // Planilha vazia ou com estrutura incorreta
-                            Logger.log(`Aviso: Planilha "${SHEETS.AUTHORIZED_USERS}" está vazia ou estrutura de colunas (Nome/Email) incorreta.`);
-                        }
-
-                        // Adiciona professores à lista de convidados usando o mapa
-                        if (profReal && nameEmailMap[profReal]) {
-                            guests.push(nameEmailMap[profReal]);
-                            Logger.log(`Adicionado convidado (Professor): ${profReal} -> ${nameEmailMap[profReal]}`);
-                        } else if (profReal) {
-                            // Loga se o nome foi fornecido mas não encontrado no mapa
-                            Logger.log(`Aviso: Email do Professor "${profReal}" não encontrado no mapa.`);
-                        }
-
-                        if (bookingType === TIPOS_RESERVA.SUBSTITUICAO && profOrig && nameEmailMap[profOrig]) {
-                            guests.push(nameEmailMap[profOrig]);
-                            Logger.log(`Adicionado convidado (Professor Original): ${profOrig} -> ${nameEmailMap[profOrig]}`);
-                        } else if (bookingType === TIPOS_RESERVA.SUBSTITUICAO && profOrig) {
-                            // Loga se o nome foi fornecido mas não encontrado
-                            Logger.log(`Aviso: Email do Professor Original "${profOrig}" não encontrado no mapa.`);
-                        }
-
-                        // Garante emails únicos na lista final
-                        guests = [...new Set(guests)];
-                        Logger.log(`Convidados para o evento: ${guests.join(', ')}`);
-
-                    } else {
-                        // Planilha de usuários não encontrada
-                        Logger.log(`Aviso: Planilha "${SHEETS.AUTHORIZED_USERS}" não encontrada. Não será possível adicionar convidados automaticamente ao evento.`);
-                    } // Fim if(authUsersSheet)
-
-                    // --- Lógica para Atualizar Evento Existente ou Criar Novo ---
-                    let event = null;
-                    // Verifica se há um ID de evento antigo na planilha
-                    if (calendarEventIdExisting && calendarEventIdExisting !== '') {
-                        Logger.log(`Tentando encontrar evento existente no Calendar com ID: ${calendarEventIdExisting}`);
-                        try {
-                            // Tenta buscar o evento pelo ID
-                            event = calendar.getEventById(calendarEventIdExisting);
-                            // Se encontrou, atualiza
-                            Logger.log(`Evento ${calendarEventIdExisting} encontrado. Atualizando detalhes.`);
-                            event.setTitle(eventTitleCalendar);
-                            event.setDescription(eventDescriptionCalendar);
-                            event.setTime(startTime, endTime);
-
-                            // Atualiza lista de convidados (remove antigos, adiciona novos)
-                            const existingGuestsEmails = event.getGuestList().map(g => g.getEmail().toLowerCase());
-                            const newGuestsEmails = guests.map(g => g.toLowerCase()); // Usa 'guests' populada acima
-
-                            existingGuestsEmails.forEach(guestEmail => {
-                                if (!newGuestsEmails.includes(guestEmail)) {
-                                    try { event.removeGuest(guestEmail); Logger.log(`Convidado removido: ${guestEmail}`); }
-                                    catch (removeErr) { Logger.log(`Falha ao remover ${guestEmail}: ${removeErr}`); }
-                                }
-                            });
-                            newGuestsEmails.forEach(guestEmail => {
-                                if (!existingGuestsEmails.includes(guestEmail)) {
-                                    try { event.addGuest(guestEmail); Logger.log(`Convidado adicionado: ${guestEmail}`); }
-                                    catch (addErr) { Logger.log(`Falha ao adicionar ${guestEmail}: ${addErr}`); }
-                                }
-                            });
-
-                        } catch (e) {
-                            // Falha ao buscar evento antigo (não encontrado, deletado, etc.)
-                            Logger.log(`AVISO: Evento do Calendar com ID ${calendarEventIdExisting} (da planilha) não foi encontrado para atualização. Provavelmente foi excluído ou o ID é inválido. Erro: ${e.message}. Um novo evento será criado.`);
-                            event = null; // Força criação de novo evento
-                            // Limpa o ID inválido da planilha (na memória e no disco)
-                            updatedInstanceRow[HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR] = '';
-                            try {
-                                const numColsInstance = Math.max(...Object.values(HEADERS.SCHEDULE_INSTANCES)) + 1;
-                                while (updatedInstanceRow.length < numColsInstance) updatedInstanceRow.push('');
-                                if (updatedInstanceRow.length > numColsInstance) updatedInstanceRow.length = numColsInstance;
-                                instancesSheet.getRange(instanceRowIndex, 1, 1, numColsInstance).setValues([updatedInstanceRow]);
-                                Logger.log(`ID de evento inválido (${calendarEventIdExisting}) removido da instância ${instanceIdToBook} na planilha.`);
-                            } catch (writeError) {
-                                Logger.log(`ERRO ao tentar limpar ID de evento inválido da instância ${instanceIdToBook}: ${writeError.message}`);
-                            }
-                        }
-                    } // Fim if(calendarEventIdExisting)
-
-                    // Se não havia evento antigo ou a busca falhou
-                    if (!event) {
-                        Logger.log('Criando um novo evento no Calendar.');
-                        const eventOptions = { description: eventDescriptionCalendar };
-                        if (guests.length > 0) {
-                            eventOptions.guests = guests.join(','); // String separada por vírgulas
-                            eventOptions.sendInvites = true; // Envia convites
-                            Logger.log(`Adicionando ${guests.length} convidados ao novo evento: ${eventOptions.guests}`);
-                        } else {
-                            Logger.log('Nenhum convidado encontrado para adicionar ao novo evento.');
-                            eventOptions.sendInvites = false;
-                        }
-                        // Cria o evento
-                        event = calendar.createEvent(eventTitleCalendar, startTime, endTime, eventOptions);
-                        Logger.log(`Novo evento do Calendar criado com sucesso. ID: ${event.getId()}`);
-                    }
-
-                    // --- Salva/Atualiza o ID do Evento na Planilha ---
-                    if (event && event.getId()) {
-                        // Se o evento foi criado/atualizado com sucesso, pega o ID
-                        calendarEventId = event.getId(); // Atribui à variável de escopo superior
-                        // Verifica se precisa atualizar na planilha
-                        const currentEventIdInSheet = String(updatedInstanceRow[HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR] || '').trim();
-                        if (currentEventIdInSheet !== calendarEventId) {
-                            Logger.log(`Atualizando ID do evento na planilha (linha ${instanceRowIndex}) para: ${calendarEventId}`);
-                            // Atualiza APENAS a célula do ID do evento
-                            instancesSheet
-                                .getRange(instanceRowIndex, HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR + 1) // Coluna 1-based
-                                .setValue(calendarEventId);
-                        } else {
-                            Logger.log(`ID do evento (${calendarEventId}) já está correto na planilha (linha ${instanceRowIndex}).`);
-                        }
-                    } else {
-                        // Caso raro onde 'event' é nulo ou sem ID após a lógica
-                        Logger.log("AVISO: Não foi possível obter o ID do evento do Calendar após criação/atualização.");
-                        calendarEventId = null; // Garante que seja null
-                    }
-
-                } // Fim else (calendar encontrado)
-            } // Fim else (calendarIdConfig existe)
-
-        } catch (errorCalendarCatch) {
-            // Captura erro DURANTE a interação com Calendar
-            calendarError = errorCalendarCatch; // Armazena o erro
-            calendarEventId = null;      // Reseta o ID do evento
-            Logger.log(`ERRO durante a integração com o Google Calendar: ${calendarError.message}\nStack: ${calendarError.stack}`);
-            // IMPORTANTE: Não relança o erro aqui. A reserva nas planilhas foi feita.
-            // O fluxo continua para liberar o lock, enviar email de erro e retornar sucesso parcial.
-        } // Fim do catch (errorCalendarCatch)
-
-        // --- Fase 4: Envio de Email e Resposta Final ---
-
-        // Libera o bloqueio ANTES de enviar o email (operação final)
-        lock.releaseLock();
-        Logger.log('Bloqueio liberado.');
-
-        // Prepara os dados consolidados para a função de criação de email
-        const dadosParaEmail = {
-            bookingId: bookingId,
-            bookingType: bookingType,
-            disciplina: disciplina,
-            turma: turmaInstancia,
-            profReal: profReal,
-            profOrig: profOrig,
-            startTime: effectiveStartDateTime,
-            timeZone: timeZone,
-            userEmail: userEmail,
-            timestampCriacao: now,
-            calendarEventId: calendarEventId, // Será null se erro no Calendar ou não configurado
-            calendarError: calendarError      // Será null se Calendar OK
-        };
-
-        // Cria o conteúdo do email (assunto, texto, html)
-        const emailContent = criarConteudoEmailReserva(dadosParaEmail);
-
-        // Envia o email se houver destinatários ('guests' foi populado na seção do Calendar)
-        if (guests && guests.length > 0) {
-            Logger.log(`Enviando notificação para: ${guests.join(', ')} com assunto: ${emailContent.subject}`);
-            // Chama a função de envio, usando o conteúdo gerado
-            enviarEmailListaFixa(
-                guests, // Lista já é única
-                emailContent.subject,
-                emailContent.bodyText,
-                emailContent.bodyHtml,
-                'bcc' // Usa Cópia Oculta para privacidade
-            );
-        } else {
-            // Caso não haja professores mapeados para convidar/notificar
-            Logger.log("Nenhum convidado/destinatário encontrado para enviar notificação por email.");
-        }
-
-        // Monta a resposta JSON final baseada no sucesso ou falha do Calendar
-        if (calendarError) {
-            // Retorna sucesso PARCIAL (reserva OK, Calendar falhou)
-            return JSON.stringify({
-                success: true, // Indica que a reserva foi feita
-                message: `Reserva ${bookingType} (${bookingId}) agendada com sucesso nas planilhas, mas ocorreu um erro ao interagir com o Google Calendar: ${calendarError.message}. Notificação enviada.`,
-                data: { bookingId: bookingId, eventId: null } // eventId é null
-            });
-        } else {
-            // Retorna sucesso TOTAL
-            return JSON.stringify({
-                success: true,
-                message: `Reserva ${bookingType} (${bookingId}) agendada com sucesso! ${calendarEventId ? 'Evento no calendário criado/atualizado.' : 'Não foi possível gerar evento no calendário.'} Notificação enviada.`,
-                data: { bookingId: bookingId, eventId: calendarEventId } // Retorna o eventId
-            });
-        }
-
-    } catch (e) {
-        // --- Captura de Erro Geral (qualquer erro não tratado nos catches específicos) ---
-        Logger.log(`ERRO FATAL durante o processamento da reserva: ${e.message}\nLinha: ${e.lineNumber || 'N/A'}\nStack: ${e.stack}`);
-
-        // Garante que o bloqueio seja liberado em caso de erro inesperado
-        if (lock && lock.hasLock()) {
-            try {
-                lock.releaseLock();
-                Logger.log('Bloqueio liberado devido a erro fatal.');
-            } catch (releaseError) {
-                Logger.log(`Erro ao tentar liberar o bloqueio após erro fatal: ${releaseError.message}`);
-            }
-        }
-
-        // Retorna JSON indicando falha geral
-        return JSON.stringify({
-            success: false,
-            // Para o usuário final, talvez uma mensagem mais genérica seja melhor.
-            // Para depuração, a mensagem de erro é útil.
-            message: `Ocorreu um erro inesperado ao processar o agendamento: ${e.message}`,
-            data: null
-        });
-    } // Fim do catch (e) geral
-} // Fim da função bookSlot
-
-// --- FUNÇÃO DE ENVIO DE EMAIL FINAL (Base MailApp com Bcc Fixo) ---
-/**
- * Envia um email para uma lista de destinatários principais usando MailApp.
- * Trata o envio via To, Cc ou Bcc para os destinatários principais e
- * SEMPRE adiciona cópias ocultas (Bcc) para emails administrativos fixos definidos.
- * Usa a API MailApp básica.
- *
- * @param {string[]} recipientsArray Um array de strings com os emails dos destinatários principais. Pode ser vazio se o objetivo for enviar apenas as cópias fixas.
- * @param {string} subject O assunto do email.
- * @param {string} bodyText O corpo do email em formato texto simples (obrigatório como fallback).
- * @param {string} [bodyHtml] (Opcional) O corpo do email em formato HTML. Usado preferencialmente se fornecido.
- * @param {string} [sendAs='bcc'] (Opcional) Como enviar PARA OS DESTINATÁRIOS PRINCIPAIS: 'to', 'cc' ou 'bcc'. Padrão é 'bcc'.
- */
-function enviarEmailListaFixa(recipientsArray, subject, bodyText, bodyHtml, sendAs) {
-    // <<< ---------------------------------------------------------- >>>
-    const ADMIN_COPY_EMAILS = ["cae.itq@ifsp.edu.br", "mtm.itq@ifsp.edu.br"];
-    // <<< ---------------------------------------------------------- >>>
-
-    // Define o método padrão de envio para os destinatários principais, default 'bcc'.
-    const sendType = ['to', 'cc', 'bcc'].includes(String(sendAs).toLowerCase())
-        ? String(sendAs).toLowerCase()
-        : 'bcc';
-
-    try {
-        // Validação e tratamento do array de entrada para destinatários principais.
-        if (!recipientsArray || !Array.isArray(recipientsArray)) {
-            Logger.log("enviarEmailListaFixa: recipientsArray fornecido é inválido. Tratando como lista vazia.");
-            recipientsArray = []; // Garante que seja um array, mesmo que vazio.
-        }
-        Logger.log(`enviarEmailListaFixa: Destinatários principais recebidos (antes da filtragem): [${recipientsArray.join(', ')}]`);
-
-        // --- Validação e Limpeza dos Destinatários ---
-
-        // 1. Valida destinatários principais (formato e unicidade).
-        const validMainRecipients = [...new Set(recipientsArray)] // Garante unicidade
-            .map(email => String(email || '').trim()) // Converte para string e remove espaços
-            .filter(email => { // Filtro de validação de formato básico
-                if (!email || !email.includes('@') || email.startsWith('@')) return false; // Rejeita nulos, vazios, sem @, começando com @
-                const atIndex = email.indexOf('@');
-                // Verifica se existe um ponto '.' *após* o '@'
-                return email.indexOf('.', atIndex + 1) > atIndex; // Deve encontrar '.' depois do índice do '@'
-            });
-        Logger.log(`enviarEmailListaFixa: Destinatários principais VÁLIDOS: [${validMainRecipients.join(', ')}]`);
-
-        // 2. Valida emails de cópia administrativa (formato e unicidade).
-        const validAdminEmails = [...new Set(ADMIN_COPY_EMAILS)] // Garante unicidade
-            .map(email => String(email || '').trim()) // Converte para string e remove espaços
-            .filter(email => { // Mesmo filtro de validação
-                if (!email || !email.includes('@') || email.startsWith('@')) return false;
-                const atIndex = email.indexOf('@');
-                return email.indexOf('.', atIndex + 1) > atIndex;
-            });
-        Logger.log(`enviarEmailListaFixa: Emails de cópia administrativa VÁLIDOS: [${validAdminEmails.join(', ')}]`);
-
-        // --- Verificação de Destinatários Válidos ---
-        // Se não houver NENHUM destinatário válido (nem principal, nem admin), não envia.
-        if (validMainRecipients.length === 0 && validAdminEmails.length === 0) {
-            Logger.log("enviarEmailListaFixa: Nenhum destinatário principal válido e nenhum email de cópia administrativa válido. Nenhum email será enviado.");
-            return; // Sai da função.
-        }
-
-        // --- Construção das Opções do Email para MailApp ---
-        // Nota: MailApp tem menos opções que GmailApp (ex: 'from' alias, 'replyTo' não são diretos aqui)
-        const mailOptions = {
-            subject: subject || '(Sem Assunto)', // Assunto padrão se não fornecido
-            body: bodyText || '(Corpo do email vazio)', // Corpo texto simples é obrigatório
-            // Opção 'name' define o nome exibido do remetente (associado à conta que executa)
-            name: 'Sistema de Reservas IFSP', // Nome personalizado do remetente
-            // A opção 'noReply' não é suportada diretamente por MailApp.
-            // O remetente será sempre o email da conta que executa o script.
-        };
-
-        // Adiciona corpo HTML se fornecido e válido.
-        if (bodyHtml && String(bodyHtml).trim() !== '') {
-            mailOptions.htmlBody = bodyHtml;
-        }
-
-        // --- Configuração dos Destinatários Principais (To, Cc, Bcc inicial) ---
-        const mainRecipientString = validMainRecipients.join(','); // String dos principais válidos
-
-        // Configura os campos 'to', 'cc' e 'bcc' *inicialmente* com base no 'sendType'
-        // O campo 'bcc' será modificado/combinado depois para incluir os admins.
-        if (sendType === 'bcc') {
-            // Se o modo for 'bcc', os destinatários principais irão para a lista final de Bcc.
-            // Define 'to' por boa prática (evita parecer spam).
-            /*try {
-                // Tenta usar o usuário ativo, mas pode falhar em alguns contextos.
-                // O código original tinha um email incompleto e fallback, vamos usar o fallback.
-                mailOptions.to = Session.getActiveUser().getEmail(); // Tenta obter o usuário atual
-                //mailOptions.to = "cae.itq@ifsp.edu.br"; // Define um 'to' fixo como fallback ou padrão
-            } catch (e) {
-                Logger.log("enviarEmailListaFixa: Não foi possível obter o email do usuário ativo para o campo 'to' ao usar Bcc. Usando fallback.");
-                mailOptions.to = "cae.itq@ifsp.edu.br"; // Garante um fallback
-            }*/
-            mailOptions.to = "cae@ifsp.edu.br";
-            Logger.log(`Configurando ${validMainRecipients.length} destinatários principais para envio via Bcc combinado. To definido como: ${mailOptions.to}`);
-            // Não definimos mailOptions.bcc aqui ainda, será feito na combinação final.
-
-        } else if (sendType === 'cc') {
-            // Se o modo for 'cc', define o campo 'cc' com os destinatários principais.
-            if (validMainRecipients.length > 0) {
-                mailOptions.cc = mainRecipientString;
-            }
-            // MailApp requer um 'to' quando 'cc' é usado.
-            try {
-                mailOptions.to = Session.getActiveUser().getEmail();
-            } catch (e) {
-                Logger.log("enviarEmailListaFixa: Não foi possível obter o email do usuário ativo para o campo 'to' ao usar Cc. Usando fallback.");
-                mailOptions.to = "cae@ifsp.edu.br"; // Necessário definir um fallback
-            }
-            Logger.log(`Configurando ${validMainRecipients.length} destinatários principais via Cc (To: ${mailOptions.to || 'N/D'})`);
-
-        } else { // sendType === 'to'
-            // Se o modo for 'to', define o campo 'to' com os destinatários principais.
-            if (validMainRecipients.length > 0) {
-                mailOptions.to = mainRecipientString;
-            } else if (!mailOptions.to) {
-                // Garante que 'to' exista se não houver destinatários principais (caso de enviar só cópias).
-                // Define um 'to' padrão ou o email do remetente.
-                /*try {
-                    mailOptions.to = Session.getActiveUser().getEmail();
-                } catch (e) {
-                    Logger.log("Não foi possível obter email do usuário ativo para 'to' padrão. Usando fallback.");
-                    mailOptions.to = "cae@ifsp.edu.br"; // Fallback essencial
-                }*/
-                mailOptions.to = "cae@ifsp.edu.br";
-            }
-            Logger.log(`Configurando ${validMainRecipients.length} destinatários principais via To.`);
-        }
-
-        // --- Combinação e Adição Final do Bcc (incluindo cópias fixas) ---
-        // Prepara a lista final de Bcc
-        let finalBccList = [];
-
-        // 1. Adiciona os destinatários principais se o modo de envio for 'bcc'
-        if (sendType === 'bcc' && validMainRecipients.length > 0) {
-            finalBccList.push(...validMainRecipients);
-        }
-
-        // 2. Adiciona os emails administrativos válidos à lista
-        if (validAdminEmails.length > 0) {
-            finalBccList.push(...validAdminEmails);
-        }
-
-        // 3. Garante unicidade e formata a string final para mailOptions.bcc
-        const uniqueBccRecipients = [...new Set(finalBccList)];
-        if (uniqueBccRecipients.length > 0) {
-            mailOptions.bcc = uniqueBccRecipients.join(','); // Define/Sobrescreve o campo bcc
-            Logger.log(`Campo Bcc final configurado com ${uniqueBccRecipients.length} endereços (incluindo ${validAdminEmails.length} cópias admin).`);
-        } else {
-            // Se a lista final de Bcc estiver vazia, remove a propriedade para evitar erros.
-            delete mailOptions.bcc;
-            Logger.log("Nenhum endereço final para o campo Bcc.");
-        }
-        // --- Fim da configuração do Bcc ---
-
-        // --- Log e Envio ---
-        // Log das opções de envio (exceto Bcc por privacidade, que é sensível)
-        const logOptions = { ...mailOptions }; // Cria cópia para modificar o log
-        if (logOptions.bcc) {
-            // Opcional: Logar apenas a contagem de Bcc em vez de remover
-            logOptions.bcc_count = (logOptions.bcc.match(/,/g) || []).length + 1;
-            delete logOptions.bcc; // Remove a string completa do log
-        }
-        Logger.log(`Opções FINAIS de envio para MailApp: ${JSON.stringify(logOptions)}`);
-
-        // Envia o email usando MailApp com as opções configuradas
-        MailApp.sendEmail(mailOptions);
-
-        // Log de sucesso após a chamada (não garante entrega, apenas que a API foi chamada sem erro)
-        Logger.log(`enviarEmailListaFixa: Chamada MailApp.sendEmail executada com sucesso para o assunto: "${subject}".`);
-
-    } catch (error) {
-        // Captura e loga qualquer erro ocorrido DENTRO da função de envio.
-        // Isso evita que um erro no envio de email pare a execução principal de onde foi chamada.
-        Logger.log(`ERRO DENTRO de enviarEmailListaFixa ao tentar enviar email com assunto "${subject}": ${error.message}\nStack: ${error.stack}`);
-        // Poderia adicionar tratamento específico para erros comuns de MailApp se necessário.
-    }
-} // Fim da função enviarEmailListaFixa
-
-/**
- * Função para gerar instâncias futuras de horários com base nos 'Horarios
- * Base'. Normalmente executada periodicamente por um gatilho (trigger) de
- * tempo. Cria registros na planilha 'Instancias de Horarios' para um período
- * futuro definido. Evita criar duplicatas se uma instância para o mesmo horário
- * base, data e hora já existir.
- */
-function createScheduleInstances() {
-    Logger.log('*** createScheduleInstances chamada ***');
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    // Acessa as planilhas de horários base e instâncias.
-    const baseSheet = ss.getSheetByName(SHEETS.BASE_SCHEDULES);
-    const instancesSheet = ss.getSheetByName(SHEETS.SCHEDULE_INSTANCES);
-    // Obtém o fuso horário para consistência de datas/horas.
-    const timeZone = ss.getSpreadsheetTimeZone();
-
-    // Verifica se as planilhas necessárias existem.
-    if (!baseSheet) {
-        Logger.log(`Erro: Planilha "${SHEETS.BASE_SCHEDULES}" não encontrada.`);
-        return;  // Aborta a execução.
-    }
-    if (!instancesSheet) {
-        Logger.log(`Erro: Planilha "${SHEETS.SCHEDULE_INSTANCES}" não encontrada.`);
-        return;  // Aborta a execução.
+    // Validate essential structure and required fields
+    const { idInstancia, tipoReserva, professorReal, disciplinaReal } = bookingDetails;
+    const instanceIdToBook = String(idInstancia || '').trim();
+    const bookingType = String(tipoReserva || '').trim();
+    const profRealTrimmed = String(professorReal || '').trim();
+    const discRealTrimmed = String(disciplinaReal || '').trim();
+
+    if (!instanceIdToBook) throw new Error('ID da instância de horário ausente ou inválido.');
+    if (bookingType !== TIPOS_RESERVA.REPOSICAO && bookingType !== TIPOS_RESERVA.SUBSTITUICAO) throw new Error('Tipo de reserva inválido ou ausente.');
+    if (!profRealTrimmed) throw new Error('Professor é obrigatório.');
+    if (!discRealTrimmed) throw new Error('Disciplina é obrigatória.');
+    // Pass trimmed values for further processing
+    bookingDetails.professorReal = profRealTrimmed;
+    bookingDetails.disciplinaReal = discRealTrimmed;
+
+    // 2. Acquire Lock
+    lock = acquireScriptLock_();
+
+    // 3. Process Booking Logic (updates sheets, performs detailed validation)
+    const processResult = processBooking_(bookingDetails, userEmail, userRole);
+    bookingId = processResult.bookingId;
+
+    // 4. Handle Calendar Integration
+    const calendarResult = handleCalendarIntegration_(
+      getConfigValue('ID do Calendario'),
+      bookingDetails,
+      processResult.instanceDetails, // Use the updated instance details from processResult
+      processResult.effectiveStartDateTime,
+      processResult.guestEmails
+    );
+
+    // 5. Update Instance Sheet with Calendar Event ID (if successful)
+    if (calendarResult.eventId && processResult.instanceRowIndex > 0) {
+      try {
+        const instancesSheet = getSheetByName_(SHEETS.SCHEDULE_INSTANCES);
+        const eventIdCol = HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR + 1;
+        instancesSheet.getRange(processResult.instanceRowIndex, eventIdCol).setValue(calendarResult.eventId);
+        Logger.log(`Calendar Event ID ${calendarResult.eventId} saved to instance sheet row ${processResult.instanceRowIndex}.`);
+      } catch (e) {
+        Logger.log(`WARNING: Failed to save Calendar Event ID ${calendarResult.eventId} to instance sheet row ${processResult.instanceRowIndex}: ${e.message}`);
+      }
     }
 
-    // --- Leitura e Validação dos Horários Base ---
-    const baseDataRaw = baseSheet.getDataRange().getValues();
-    // Verifica se há dados na planilha base.
-    if (baseDataRaw.length <= 1) {
-        Logger.log(
-            `Planilha "${SHEETS.BASE_SCHEDULES}" está vazia ou apenas cabeçalho.`);
-        return;  // Aborta se não houver horários base.
-    }
+    // 6. Send Notification Email
+    sendBookingNotificationEmail_(
+      bookingId,
+      bookingType,
+      discRealTrimmed, // Use trimmed value
+      processResult.instanceDetails[HEADERS.SCHEDULE_INSTANCES.TURMA],
+      profRealTrimmed, // Use trimmed value
+      processResult.professorOriginal,
+      processResult.effectiveStartDateTime,
+      processResult.creationTimestamp,
+      userEmail,
+      calendarResult.eventId,
+      calendarResult.error,
+      processResult.guestEmails
+    );
 
-    const baseSchedules = [];  // Array para armazenar os horários base válidos.
-    // Define o número mínimo de colunas necessárias nos horários base.
-    const expectedBaseCols =
-        Math.max(
-            HEADERS.BASE_SCHEDULES.ID, HEADERS.BASE_SCHEDULES.DIA_SEMANA,
-            HEADERS.BASE_SCHEDULES.HORA_INICIO, HEADERS.BASE_SCHEDULES.TIPO,
-            HEADERS.BASE_SCHEDULES.TURMA_PADRAO,
-            HEADERS.BASE_SCHEDULES.PROFESSOR_PRINCIPAL) +
-        1;
+    cleanupExcessVagoSlots();
 
-    // Itera pelas linhas da planilha base (pulando cabeçalho).
-    for (let i = 1; i < baseDataRaw.length; i++) {
-        const row = baseDataRaw[i];
-        const rowIndex = i + 1;
-
-        // Pula linhas incompletas.
-        if (!row || row.length < expectedBaseCols) {
-            Logger.log(`Skipping incomplete base schedule row ${rowIndex}. Expected at least ${expectedBaseCols} columns, found ${row ? row.length : 0}.`);
-            continue;
-        }
-
-        // Extrai os dados brutos das colunas relevantes.
-        const baseIdRaw = row[HEADERS.BASE_SCHEDULES.ID];
-        const baseDayOfWeekRaw = row[HEADERS.BASE_SCHEDULES.DIA_SEMANA];
-        const baseHourRaw = row[HEADERS.BASE_SCHEDULES.HORA_INICIO];
-        const baseTypeRaw = row[HEADERS.BASE_SCHEDULES.TIPO];
-        const baseTurmaRaw = row[HEADERS.BASE_SCHEDULES.TURMA_PADRAO];
-        const baseProfessorPrincipalRaw =
-            row[HEADERS.BASE_SCHEDULES.PROFESSOR_PRINCIPAL];
-
-        // Formata e valida os dados essenciais.
-        const baseId =
-            (typeof baseIdRaw === 'string' || typeof baseIdRaw === 'number') ?
-                String(baseIdRaw).trim() :
-                null;
-        const baseDayOfWeek = (typeof baseDayOfWeekRaw === 'string' ||
-            typeof baseDayOfWeekRaw === 'number') ?
-            String(baseDayOfWeekRaw).trim() :
-            null;
-        const baseHourString =
-            formatValueToHHMM(baseHourRaw, timeZone);  // Formata a hora.
-        const baseType =
-            (typeof baseTypeRaw === 'string' || typeof baseTypeRaw === 'number') ?
-                String(baseTypeRaw).trim() :
-                null;
-        const baseTurma =
-            (typeof baseTurmaRaw === 'string' || typeof baseTurmaRaw === 'number') ?
-                String(baseTurmaRaw).trim() :
-                null;
-        const baseProfessorPrincipal =
-            (typeof baseProfessorPrincipalRaw === 'string' ||
-                typeof baseProfessorPrincipalRaw === 'number') ?
-                String(baseProfessorPrincipalRaw || '').trim() :
-                '';  // Permite professor vazio.
-
-        // Pula a linha se dados essenciais forem inválidos após formatação.
-        if (!baseId || baseId === '' || !baseDayOfWeek || baseDayOfWeek === '' ||
-            baseHourString === null || !baseType || baseType === '' || !baseTurma ||
-            baseTurma === '') {
-            Logger.log(`Skipping base schedule row ${rowIndex} due to invalid/missing essential data: ID=${baseIdRaw}, Dia=${baseDayOfWeekRaw}, Hora=${baseHourRaw}, Tipo=${baseTypeRaw}, Turma=${baseTurmaRaw}`);
-            continue;
-        }
-
-        // Validações adicionais de consistência.
-        const daysOfWeek =
-            ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-        if (!daysOfWeek.includes(baseDayOfWeek)) {
-            Logger.log(`Skipping base schedule row ${rowIndex} with invalid Dia da Semana: "${baseDayOfWeek}"`);
-            continue;
-        }
-        if (baseType !== TIPOS_HORARIO.FIXO && baseType !== TIPOS_HORARIO.VAGO) {
-            Logger.log(`Skipping base schedule row ${rowIndex} with invalid Tipo: "${baseType}"`);
-            continue;
-        }
-        // Horários fixos DEVEM ter um professor principal definido.
-        if (baseType === TIPOS_HORARIO.FIXO && baseProfessorPrincipal === '') {
-            Logger.log(`Skipping base schedule row ${rowIndex}: Horário Fixo (ID ${baseId}) não tem Professor Principal definido.`);
-            continue;
-        }
-
-        // Adiciona o horário base validado à lista.
-        baseSchedules.push({
-            id: baseId,
-            dayOfWeek: baseDayOfWeek,
-            hour: baseHourString,
-            type: baseType,
-            turma: baseTurma,
-            professorPrincipal: baseProfessorPrincipal
-        });
-    }
-
-    // Se nenhum horário base válido foi encontrado, não há o que gerar.
-    if (baseSchedules.length === 0) {
-        Logger.log('Nenhum horário base válido encontrado para gerar instâncias.');
-        return;
-    }
-    Logger.log(`Processados ${baseSchedules.length} horários base válidos.`);
-
-    // --- Leitura das Instâncias Existentes para Evitar Duplicatas ---
-    const existingInstancesRaw = instancesSheet.getDataRange().getValues();
-    const existingInstancesMap =
-        {};  // Mapa para armazenar chaves de instâncias existentes.
-    // Colunas necessárias para criar a chave única de identificação de uma
-    // instância.
-    const mapKeyCols = Math.max(
-        HEADERS.SCHEDULE_INSTANCES.ID_BASE_HORARIO,
-        HEADERS.SCHEDULE_INSTANCES.DATA,
-        HEADERS.SCHEDULE_INSTANCES.HORA_INICIO) +
-        1;
-    const instanceIdCol =
-        HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA;  // Coluna do ID da instância.
-
-    // Processa as instâncias existentes apenas se houver dados além do cabeçalho.
-    if (existingInstancesRaw.length > 1) {
-        // Verifica se a planilha de instâncias tem colunas suficientes para a
-        // chave.
-        if (existingInstancesRaw[0].length < mapKeyCols) {
-            Logger.log(`Warning: Planilha "${SHEETS.SCHEDULE_INSTANCES}" tem menos colunas (${existingInstancesRaw[0].length}) que o esperado (${mapKeyCols}) para verificação de duplicidade.`);
-        }
-
-        // Itera pelas linhas de instâncias existentes (pulando cabeçalho).
-        for (let j = 1; j < existingInstancesRaw.length; j++) {
-            const row = existingInstancesRaw[j];
-            const rowIndex = j + 1;  // Índice real na planilha.
-
-            // Pula linhas incompletas que não permitem criar a chave.
-            if (!row || row.length < mapKeyCols) {
-                // Logger.log(`Skipping existing instance row ${rowIndex} for map
-                // creation due to insufficient columns.`);
-                continue;  // Pula silenciosamente para não poluir muito o log.
-            }
-
-            // Extrai os dados brutos para a chave e o ID da instância.
-            const existingBaseIdRaw = row[HEADERS.SCHEDULE_INSTANCES.ID_BASE_HORARIO];
-            const existingDateRaw = row[HEADERS.SCHEDULE_INSTANCES.DATA];
-            const existingHourRaw = row[HEADERS.SCHEDULE_INSTANCES.HORA_INICIO];
-            // Pega o ID da instância (se a coluna existir).
-            const existingInstanceIdRaw =
-                (row.length > instanceIdCol) ? row[instanceIdCol] : null;
-
-            // Formata e valida os dados para a chave.
-            const existingBaseId = (typeof existingBaseIdRaw === 'string' ||
-                typeof existingBaseIdRaw === 'number') ?
-                String(existingBaseIdRaw).trim() :
-                null;
-            const existingDate = formatValueToDate(existingDateRaw);
-            const existingHourString = formatValueToHHMM(existingHourRaw, timeZone);
-            // Formata o ID da instância.
-            const existingInstanceId = (typeof existingInstanceIdRaw === 'string' ||
-                typeof existingInstanceIdRaw === 'number') ?
-                String(existingInstanceIdRaw).trim() :
-                null;
-
-            // Se todos os componentes da chave e o ID da instância forem válidos.
-            if (existingBaseId && existingDate && existingHourString &&
-                existingInstanceId) {
-                // Formata a data como string 'yyyy-MM-dd' para a chave do mapa.
-                const existingDateStr =
-                    Utilities.formatDate(existingDate, timeZone, 'yyyy-MM-dd');
-                // Cria a chave única: IDBase_Data_Hora.
-                const mapKey =
-                    `${existingBaseId}_${existingDateStr}_${existingHourString}`;
-                // Adiciona a chave ao mapa, associada ao ID da instância (valor pode
-                // ser útil para debug).
-                existingInstancesMap[mapKey] = existingInstanceId;
-            }
-        }
-    }
-    Logger.log(`Map de instâncias existentes populado com ${Object.keys(existingInstancesMap).length} chaves.`);
-
-    // --- Geração das Novas Instâncias ---
-    const numWeeksToGenerate = 4;  // Define quantas semanas no futuro gerar.
-    const today = new Date();      // Data atual.
-    today.setHours(0, 0, 0, 0);    // Zera a hora.
-
-    const newInstances = [
-    ];  // Array para armazenar as novas linhas de instância a serem inseridas.
-    const daysOfWeek = [
-        'Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'
-    ];  // Mapeamento dia -> nome.
-    // Número total de colunas na planilha de instâncias.
-    const numColsInstance = HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR + 1;
-
-    // Define a data de início da geração: a próxima segunda-feira a partir de
-    // hoje.
-    let startGenerationDate = new Date(today.getTime());
-    const currentDayOfWeek =
-        startGenerationDate.getDay();  // 0=Domingo, 1=Segunda, ...
-    // Calcula quantos dias faltam para a próxima segunda-feira.
-    const daysUntilMonday =
-        (currentDayOfWeek === 0) ? 1 : (8 - currentDayOfWeek) % 7;
-    // Se hoje não for segunda, avança para a próxima segunda.
-    if (daysUntilMonday !== 0) {
-        startGenerationDate.setDate(
-            startGenerationDate.getDate() + daysUntilMonday);
-    }
-    startGenerationDate.setHours(0, 0, 0, 0);  // Garante que a hora está zerada.
-
-    // Define a data final da geração (inclusive).
-    const endGenerationDate = new Date(startGenerationDate.getTime());
-    // Avança (número de semanas * 7 - 1) dias para cobrir o período desejado.
-    endGenerationDate.setDate(
-        endGenerationDate.getDate() + (numWeeksToGenerate * 7) - 1);
-    Logger.log(`Gerando instâncias de ${Utilities.formatDate(startGenerationDate, timeZone, 'yyyy-MM-dd')} até ${Utilities.formatDate(endGenerationDate, timeZone, 'yyyy-MM-dd')}`);
-
-    // Itera por cada dia dentro do período de geração.
-    let currentDate = new Date(startGenerationDate.getTime());
-    while (currentDate <= endGenerationDate) {
-        const targetDate =
-            new Date(currentDate.getTime());  // Cria cópia da data atual do loop.
-        // Obtém o nome do dia da semana para a data atual.
-        const targetDayOfWeekName = daysOfWeek[targetDate.getDay()];
-
-        // Filtra os horários base que ocorrem neste dia da semana.
-        const schedulesForThisDay = baseSchedules.filter(
-            schedule => schedule.dayOfWeek === targetDayOfWeekName);
-
-        // Para cada horário base que deve ocorrer neste dia:
-        for (const baseSchedule of schedulesForThisDay) {
-            const baseId = baseSchedule.id;
-            const baseHourString = baseSchedule.hour;
-            const baseTurma = baseSchedule.turma;
-            const baseProfessorPrincipal = baseSchedule.professorPrincipal;
-
-            // Cria a chave única para esta possível instância (IDBase_Data_Hora).
-            const instanceDateStr =
-                Utilities.formatDate(targetDate, timeZone, 'yyyy-MM-dd');
-            const predictableInstanceKey =
-                `${baseId}_${instanceDateStr}_${baseHourString}`;
-
-            // Verifica se uma instância com essa chave JÁ EXISTE no mapa.
-            if (!existingInstancesMap[predictableInstanceKey]) {
-                // Se NÃO EXISTE, cria uma nova linha (array) para a instância.
-                const newRow = [];
-                // Inicializa a linha com strings vazias para todas as colunas.
-                for (let colIdx = 0; colIdx < numColsInstance; colIdx++) {
-                    newRow[colIdx] = '';
-                }
-
-                // Preenche os dados da nova instância.
-                newRow[HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA] =
-                    Utilities.getUuid();  // Gera um novo ID único.
-                newRow[HEADERS.SCHEDULE_INSTANCES.ID_BASE_HORARIO] = baseId;
-                newRow[HEADERS.SCHEDULE_INSTANCES.TURMA] = baseTurma;
-                newRow[HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL] =
-                    baseProfessorPrincipal;
-                newRow[HEADERS.SCHEDULE_INSTANCES.DATA] = targetDate;  // Objeto Date.
-                newRow[HEADERS.SCHEDULE_INSTANCES.DIA_SEMANA] = targetDayOfWeekName;
-                newRow[HEADERS.SCHEDULE_INSTANCES.HORA_INICIO] =
-                    baseHourString;  // String HH:mm.
-                newRow[HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL] = baseSchedule.type;
-                newRow[HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO] =
-                    STATUS_OCUPACAO.DISPONIVEL;  // Status inicial.
-                // ID_RESERVA e ID_EVENTO_CALENDAR ficam vazios inicialmente.
-
-                // Adiciona a nova linha ao array de instâncias a serem inseridas.
-                newInstances.push(newRow);
-                // Adiciona a chave desta nova instância ao mapa para evitar duplicatas
-                // dentro do mesmo ciclo de geração.
-                existingInstancesMap[predictableInstanceKey] =
-                    newRow[HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA];
-            }
-        }
-        // Avança para o próximo dia.
-        currentDate.setDate(currentDate.getDate() + 1);
-    }
-
-    Logger.log(`Pronto para inserir ${newInstances.length} novas instâncias.`);
-
-    // --- Inserção das Novas Instâncias na Planilha ---
-    // Verifica se há novas instâncias para inserir.
-    if (newInstances.length > 0) {
-        // Verificação de segurança: garante que as linhas a serem inseridas têm o
-        // número correto de colunas.
-        if (newInstances[0].length !== numColsInstance) {
-            Logger.log(`Erro interno: O array newInstances tem ${newInstances[0].length} colunas, mas esperava ${numColsInstance}. Abortando inserção.`);
-            // Lança um erro para interromper, pois isso indica um problema na lógica
-            // de criação da linha.
-            throw new Error('Erro na estrutura interna dos dados a serem salvos.');
-        }
-
-        try {
-            // Insere TODAS as novas linhas de uma vez na planilha para melhor
-            // performance. Começa a inserir na primeira linha vazia (getLastRow() +
-            // 1).
-            instancesSheet
-                .getRange(
-                    instancesSheet.getLastRow() + 1, 1, newInstances.length,
-                    numColsInstance)
-                .setValues(newInstances);
-            Logger.log(`Geradas ${newInstances.length} novas instâncias de horários salvas.`);
-        } catch (e) {
-            // Se ocorrer um erro durante a inserção em lote.
-            Logger.log(`Erro ao salvar novas instâncias na planilha "${SHEETS.SCHEDULE_INSTANCES}": ${e.message} Stack: ${e.stack}`);
-            // Lança um erro para que o gatilho (se houver) registre a falha.
-            throw new Error(`Erro ao salvar novas instâncias: ${e.message}`);
-        }
+    // 7. Prepare Success Response Message
+    let successMessage = `Reserva ${bookingType} (${bookingId}) agendada com sucesso!`;
+    if (calendarResult.error) {
+      successMessage += ` (Aviso: ${calendarResult.error.message || 'Erro ao integrar com Google Calendar.'})`;
+    } else if (calendarResult.eventId) {
+      successMessage += ` Evento no calendário criado/atualizado.`;
     } else {
-        // Se nenhuma nova instância foi gerada (talvez já existissem todas para o
-        // período).
-        Logger.log('Nenhuma nova instância de horário gerada para o período.');
+      successMessage += ` Não foi possível gerar evento no calendário.`;
     }
-    Logger.log('*** createScheduleInstances finalizada ***');
+    successMessage += ` Notificação enviada.`;
+
+    // 8. Return Success (Lock released in finally)
+    return createJsonResponse(true, successMessage, { bookingId: bookingId, eventId: calendarResult.eventId });
+
+  } catch (e) {
+    Logger.log(`ERROR during bookSlot for user ${userEmail}: ${e.message}\nStack: ${e.stack}`);
+    return createJsonResponse(false, `Falha no agendamento: ${e.message}`, { bookingId: bookingId });
+  } finally {
+    releaseScriptLock_(lock);
+  }
+}
+
+
+// ==========================================================================
+//                  Internal Logic Functions (Refactored Parts)
+// ==========================================================================
+
+/**
+ * Processes the core booking logic: validates instance/permissions, updates sheets. (Internal use)
+ * Assumes lock is already acquired.
+ * @param {object} bookingDetails - Parsed details from client (already trimmed).
+ * @param {string} userEmail - Email of the user performing the booking.
+ * @param {string} userRole - Role of the user performing the booking.
+ * @returns {{bookingId: string, instanceRowIndex: number, instanceDetails: any[], professorOriginal: string, effectiveStartDateTime: Date, creationTimestamp: Date, guestEmails: string[]}} Details needed for subsequent steps.
+ * @throws {Error} If validation fails or sheet updates fail.
+ */
+function processBooking_(bookingDetails, userEmail, userRole) {
+  Logger.log(`processBooking_ started for user ${userEmail} (Role: ${userRole}).`);
+  const { idInstancia, tipoReserva, professorReal, disciplinaReal } = bookingDetails; // Use already validated/trimmed values
+  const instanceIdToBook = idInstancia;
+  const bookingType = tipoReserva;
+
+  const { header: instanceHeader, sheet: instancesSheet } = getSheetData_(SHEETS.SCHEDULE_INSTANCES, HEADERS.SCHEDULE_INSTANCES);
+  const { sheet: bookingsSheet } = getSheetData_(SHEETS.BOOKING_DETAILS); // Get sheet object only
+  const timeZone = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+
+  // Find the instance row index first (more efficient than reading all data if sheet is huge)
+  const instanceIdCol = HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA + 1; // 1-based
+  const instanceIdFinder = instancesSheet.createTextFinder(instanceIdToBook).matchEntireCell(true);
+  const foundCells = instanceIdFinder.findAll();
+
+  if (foundCells.length === 0) {
+    throw new Error(`Horário com ID ${instanceIdToBook} não encontrado.`);
+  }
+  if (foundCells.length > 1) {
+    // This shouldn't happen if IDs are unique UUIDs
+    Logger.log(`WARNING: Multiple rows found for instance ID ${instanceIdToBook}. Using the first one found.`);
+  }
+  const instanceRowIndex = foundCells[0].getRow(); // 1-based row index
+  Logger.log(`Instance ${instanceIdToBook} found at row ${instanceRowIndex}. Reading row data.`);
+
+  // Read the specific row data now that we know the index
+  const instanceDetails = instancesSheet.getRange(instanceRowIndex, 1, 1, instanceHeader.length).getValues()[0];
+  const maxIndexNeeded = Math.max(...Object.values(HEADERS.SCHEDULE_INSTANCES));
+  if (instanceDetails.length <= maxIndexNeeded) {
+    throw new Error(`Dados da linha ${instanceRowIndex} na planilha "${SHEETS.SCHEDULE_INSTANCES}" estão incompletos.`);
+  }
+
+
+  // Validate instance data structure and content
+  const currentStatus = String(instanceDetails[HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO] || '').trim();
+  const originalType = String(instanceDetails[HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL] || '').trim();
+  const rawBookingDate = instanceDetails[HEADERS.SCHEDULE_INSTANCES.DATA];
+  const rawBookingTime = instanceDetails[HEADERS.SCHEDULE_INSTANCES.HORA_INICIO];
+  const professorPrincipalInstancia = String(instanceDetails[HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL] || '').trim();
+  const turmaInstancia = String(instanceDetails[HEADERS.SCHEDULE_INSTANCES.TURMA] || '').trim();
+
+  const bookingDateObj = formatValueToDate(rawBookingDate); // UTC Date
+  const bookingHourString = formatValueToHHMM(rawBookingTime, timeZone); // HH:mm String
+
+  if (!currentStatus || !originalType || !turmaInstancia || !bookingDateObj || !bookingHourString) {
+    throw new Error(`Erro interno: Dados essenciais do horário ${instanceIdToBook} (linha ${instanceRowIndex}) são inválidos na planilha.`);
+  }
+
+  // --- Concurrency, Rule, AND PERMISSION Validation ---
+  let professorOriginal = '';
+  if (bookingType === TIPOS_RESERVA.REPOSICAO) {
+    if (![USER_ROLES.ADMIN, USER_ROLES.PROFESSOR, USER_ROLES.ALUNO].includes(userRole)) throw new Error(`Seu perfil (${userRole}) não permite agendar Reposições.`);
+    if (originalType !== TIPOS_HORARIO.VAGO) throw new Error(`Reposição só pode ser feita em horários Vagos (este é ${originalType}).`);
+    if (currentStatus !== STATUS_OCUPACAO.DISPONIVEL) throw new Error(`Este horário vago (${instanceIdToBook}) não está mais disponível (Status atual: ${currentStatus}). Atualize a lista.`);
+    Logger.log(`Validation OK for Reposicao by ${userRole}`);
+  } else if (bookingType === TIPOS_RESERVA.SUBSTITUICAO) {
+    if (![USER_ROLES.ADMIN, USER_ROLES.PROFESSOR].includes(userRole)) throw new Error(`Seu perfil (${userRole}) não permite agendar Substituições.`);
+    if (originalType !== TIPOS_HORARIO.FIXO) throw new Error(`Substituição só pode ser feita em horários Fixos (este é ${originalType}).`);
+    if (!professorPrincipalInstancia) throw new Error(`Erro interno: O horário fixo ${instanceIdToBook} não tem um Professor Principal definido.`);
+    professorOriginal = professorPrincipalInstancia;
+    if (currentStatus === STATUS_OCUPACAO.REPOSICAO_AGENDADA) throw new Error(`Este horário fixo (${instanceIdToBook}) já está ocupado por uma Reposição.`);
+    if (currentStatus !== STATUS_OCUPACAO.DISPONIVEL && currentStatus !== STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) throw new Error(`Este horário fixo (${instanceIdToBook}) não está disponível para substituição (Status atual: ${currentStatus}). Atualize a lista.`);
+    Logger.log(`Validation OK for Substituicao by ${userRole}`);
+  }
+
+  // --- Prepare Updates ---
+  const bookingId = Utilities.getUuid();
+  const creationTimestamp = new Date();
+  const newStatus = (bookingType === TIPOS_RESERVA.REPOSICAO) ? STATUS_OCUPACAO.REPOSICAO_AGENDADA : STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA;
+
+  const [hour, minute] = bookingHourString.split(':').map(Number);
+  // Construct date/time in sheet's timezone context
+  const effectiveStartDateTime = new Date(bookingDateObj.getUTCFullYear(), bookingDateObj.getUTCMonth(), bookingDateObj.getUTCDate(), hour, minute);
+
+  // --- Update Instance Sheet ---
+  const updatedInstanceRow = [...instanceDetails];
+  updatedInstanceRow[HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO] = newStatus;
+  updatedInstanceRow[HEADERS.SCHEDULE_INSTANCES.ID_RESERVA] = bookingId;
+  updatedInstanceRow[HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR] = ''; // Clear old event ID
+  updateSheetRow_(instancesSheet, instanceRowIndex, instanceHeader.length, updatedInstanceRow);
+
+  // --- Add Booking Details Row ---
+  const bookingHeader = bookingsSheet.getRange(1, 1, 1, bookingsSheet.getLastColumn()).getValues()[0];
+  const numBookingCols = bookingHeader.length;
+  const newBookingRow = new Array(numBookingCols).fill('');
+
+  newBookingRow[HEADERS.BOOKING_DETAILS.ID_RESERVA] = bookingId;
+  newBookingRow[HEADERS.BOOKING_DETAILS.TIPO_RESERVA] = bookingType;
+  newBookingRow[HEADERS.BOOKING_DETAILS.ID_INSTANCIA] = instanceIdToBook;
+  newBookingRow[HEADERS.BOOKING_DETAILS.PROFESSOR_REAL] = professorReal;
+  newBookingRow[HEADERS.BOOKING_DETAILS.PROFESSOR_ORIGINAL] = professorOriginal;
+  newBookingRow[HEADERS.BOOKING_DETAILS.ALUNOS] = String(bookingDetails.alunos || '').trim();
+  newBookingRow[HEADERS.BOOKING_DETAILS.TURMAS_AGENDADA] = turmaInstancia;
+  newBookingRow[HEADERS.BOOKING_DETAILS.DISCIPLINA_REAL] = disciplinaReal;
+  newBookingRow[HEADERS.BOOKING_DETAILS.DATA_HORA_INICIO_EFETIVA] = effectiveStartDateTime;
+  newBookingRow[HEADERS.BOOKING_DETAILS.STATUS_RESERVA] = 'Agendada';
+  newBookingRow[HEADERS.BOOKING_DETAILS.DATA_CRIACAO] = creationTimestamp;
+  newBookingRow[HEADERS.BOOKING_DETAILS.CRIADO_POR] = userEmail;
+
+  appendSheetRow_(bookingsSheet, numBookingCols, newBookingRow);
+
+  // --- Determine Guest Emails ---
+  const guestEmails = getGuestEmailsForBooking_(professorReal, professorOriginal);
+
+  Logger.log("processBooking_ completed successfully.");
+  return {
+    bookingId: bookingId,
+    instanceRowIndex: instanceRowIndex,
+    instanceDetails: updatedInstanceRow,
+    professorOriginal: professorOriginal,
+    effectiveStartDateTime: effectiveStartDateTime,
+    creationTimestamp: creationTimestamp,
+    guestEmails: guestEmails
+  };
+}
+
+
+/**
+ * Gets the email addresses for the relevant professors involved in a booking. (Internal use)
+ * @param {string} profReal - The name of the professor performing the class.
+ * @param {string} [profOrig] - The name of the original professor (for substitutions). Optional.
+ * @returns {string[]} An array of unique email addresses.
+ */
+function getGuestEmailsForBooking_(profReal, profOrig) {
+  const guests = new Set();
+  const nameEmailMap = {};
+  try {
+    const userSheet = getSheetByName_(SHEETS.AUTHORIZED_USERS);
+    const nameCol = HEADERS.AUTHORIZED_USERS.NOME + 1;
+    const emailCol = HEADERS.AUTHORIZED_USERS.EMAIL + 1;
+    const lastRow = userSheet.getLastRow();
+    if (lastRow > 1 && userSheet.getLastColumn() >= Math.max(nameCol, emailCol)) {
+      const nameRange = userSheet.getRange(2, nameCol, lastRow - 1, 1).getValues();
+      const emailRange = userSheet.getRange(2, emailCol, lastRow - 1, 1).getValues();
+      for (let i = 0; i < nameRange.length; i++) {
+        const name = String(nameRange[i][0] || '').trim();
+        const email = String(emailRange[i][0] || '').trim().toLowerCase();
+        if (name && email && email.includes('@')) nameEmailMap[name] = email;
+      }
+      Logger.log(`Built name->email map with ${Object.keys(nameEmailMap).length} entries.`);
+    } else {
+      Logger.log(`Sheet "${SHEETS.AUTHORIZED_USERS}" empty or insufficient columns for guest email lookup.`);
+    }
+  } catch (e) {
+    Logger.log(`Warning: Could not read ${SHEETS.AUTHORIZED_USERS} to get guest emails: ${e.message}`);
+  }
+  if (profReal && nameEmailMap[profReal]) {
+    guests.add(nameEmailMap[profReal]);
+    Logger.log(`Adding guest (Real): ${profReal} -> ${nameEmailMap[profReal]}`);
+  } else if (profReal) {
+    Logger.log(`Warning: Email for Professor Real "${profReal}" not found.`);
+  }
+  if (profOrig && profOrig !== profReal && nameEmailMap[profOrig]) {
+    guests.add(nameEmailMap[profOrig]);
+    Logger.log(`Adding guest (Original): ${profOrig} -> ${nameEmailMap[profOrig]}`);
+  } else if (profOrig && profOrig !== profReal) {
+    Logger.log(`Warning: Email for Professor Original "${profOrig}" not found.`);
+  }
+  const guestArray = Array.from(guests);
+  Logger.log(`Final guest list for booking: [${guestArray.join(', ')}]`);
+  return guestArray;
 }
 
 /**
- * Apaga instâncias de horários (SCHEDULE_INSTANCES) que ocorreram
- * antes da data especificada na configuração 'Data Limite Limpeza Instancias'.
- * Projetada para ser executada por um gatilho (trigger) de tempo.
+ * Handles Google Calendar integration for a booking. (Internal use)
+ * @param {string|null} calendarIdConfig - The Calendar ID from config (or null).
+ * @param {object} bookingDetails - Original booking details from client.
+ * @param {any[]} instanceDetails - The full row data of the booked instance (updated row).
+ * @param {Date} effectiveStartDateTime - The calculated start time.
+ * @param {string[]} guests - Array of guest email addresses.
+ * @returns {{eventId: string|null, error: Error|null}} Result object.
+ */
+function handleCalendarIntegration_(calendarIdConfig, bookingDetails, instanceDetails, effectiveStartDateTime, guests) {
+  Logger.log("handleCalendarIntegration_ started.");
+  let calendarEventId = null;
+  let calendarError = null;
+  try {
+    if (!calendarIdConfig) {
+      Logger.log('Calendar ID not configured. Skipping Calendar integration.');
+      return { eventId: null, error: null };
+    }
+    const calendar = CalendarApp.getCalendarById(calendarIdConfig.trim());
+    if (!calendar) {
+      Logger.log(`Calendar with ID "${calendarIdConfig}" not found or inaccessible. Skipping Calendar integration.`);
+      return { eventId: null, error: new Error(`Calendário com ID "${calendarIdConfig}" não encontrado ou inacessível.`) };
+    }
+    Logger.log(`Accessing calendar "${calendar.getName()}" (ID: ${calendarIdConfig})`);
+
+    let durationMinutes = parseInt(getConfigValue('Duracao Padrao Aula (minutos)')) || 45;
+    const endTime = new Date(effectiveStartDateTime.getTime() + durationMinutes * 60 * 1000);
+    const bookingType = String(bookingDetails.tipoReserva || '').trim();
+    const disciplina = String(bookingDetails.disciplinaReal || '').trim();
+    const turma = String(instanceDetails[HEADERS.SCHEDULE_INSTANCES.TURMA] || '').trim();
+    const profReal = String(bookingDetails.professorReal || '').trim();
+    // Get original professor reliably from the *processed* booking details row if substitution, else from instance row's base prof
+    const profOrig = (bookingType === TIPOS_RESERVA.SUBSTITUICAO)
+      ? String(instanceDetails[HEADERS.BOOKING_DETAILS.PROFESSOR_ORIGINAL] || instanceDetails[HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL] || '').trim()
+      : String(instanceDetails[HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL] || '').trim(); // Use base prof for context if fixed
+    const bookingId = String(instanceDetails[HEADERS.SCHEDULE_INSTANCES.ID_RESERVA] || '').trim();
+    const userEmail = String(instanceDetails[HEADERS.BOOKING_DETAILS.CRIADO_POR] || getActiveUserEmail_());
+
+    const eventTitle = `${bookingType} - ${disciplina} (${turma})`;
+    let eventDescription = `Reserva ID: ${bookingId}\nProfessor: ${profReal}`;
+    if (bookingType === TIPOS_RESERVA.SUBSTITUICAO && profOrig && profOrig !== profReal) {
+      eventDescription += ` (Original: ${profOrig})`;
+    }
+    eventDescription += `\nTurma: ${turma}\nAgendado por: ${userEmail}`;
+
+    // Read event ID from the *already updated* instance row before trying to find/create
+    const existingEventId = String(instanceDetails[HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR] || '').trim();
+    let event = null;
+
+    if (existingEventId) {
+      try {
+        event = calendar.getEventById(existingEventId);
+        if (event) {
+          Logger.log(`Existing Calendar event ${existingEventId} found. Updating...`);
+          event.setTitle(eventTitle);
+          event.setTime(effectiveStartDateTime, endTime);
+          event.setDescription(eventDescription);
+          updateCalendarGuests_(event, guests);
+          calendarEventId = event.getId();
+        } else {
+          Logger.log(`Event with ID ${existingEventId} returned null. Will create a new one.`);
+        }
+      } catch (e) {
+        Logger.log(`Failed to get/update event ${existingEventId}: ${e.message}. Creating new event.`);
+        event = null;
+      }
+    }
+
+    if (!event) {
+      Logger.log('Creating new Calendar event.');
+      const eventOptions = { description: eventDescription, conferenceDataVersion: 0 };
+      if (guests && guests.length > 0) { eventOptions.guests = guests.join(','); eventOptions.sendInvites = true; }
+      else { eventOptions.sendInvites = false; }
+      event = calendar.createEvent(eventTitle, effectiveStartDateTime, endTime, eventOptions);
+      calendarEventId = event.getId();
+      Logger.log(`New event created (ID: ${calendarEventId}) without Meet link.`);
+    }
+
+  } catch (e) {
+    Logger.log(`ERROR during Calendar integration: ${e.message}\nStack: ${e.stack}`);
+    calendarError = e;
+    calendarEventId = null;
+  }
+  Logger.log(`handleCalendarIntegration_ finished. Event ID: ${calendarEventId}, Error: ${calendarError ? calendarError.message : 'None'}`);
+  return { eventId: calendarEventId, error: calendarError };
+}
+
+
+/**
+ * Helper to update guests on a Calendar event. (Internal use)
+ * @param {GoogleAppsScript.Calendar.CalendarEvent} event - The event object.
+ * @param {string[]} newGuestEmails - Array of email addresses that *should* be guests.
+ */
+function updateCalendarGuests_(event, newGuestEmails) {
+  if (!event || typeof event.getGuestList !== 'function') return;
+
+  const newGuestsLower = newGuestEmails.map(g => String(g || '').toLowerCase()).filter(g => g && g.includes('@')); // Ensure valid emails
+  const existingGuests = event.getGuestList();
+  const existingGuestsLower = existingGuests.map(g => g.getEmail().toLowerCase());
+
+  // Remove guests no longer in the list
+  existingGuests.forEach(guest => {
+    const emailLower = guest.getEmail().toLowerCase();
+    if (!newGuestsLower.includes(emailLower)) {
+      try {
+        event.removeGuest(guest.getEmail());
+        Logger.log(`Removed guest ${guest.getEmail()} from event ${event.getId()}`);
+      } catch (removeErr) {
+        Logger.log(`Failed to remove guest ${guest.getEmail()}: ${removeErr.message}`);
+      }
+    }
+  });
+
+  // Add new guests not already present
+  newGuestsLower.forEach(guestEmail => {
+    if (!existingGuestsLower.includes(guestEmail)) {
+      try {
+        event.addGuest(guestEmail);
+        Logger.log(`Added guest ${guestEmail} to event ${event.getId()}`);
+      } catch (addErr) {
+        Logger.log(`Failed to add guest ${guestEmail}: ${addErr.message}`);
+      }
+    }
+  });
+}
+
+/**
+ * Creates the content for the booking notification email. (Internal use)
+ * @returns {{subject: string, bodyText: string, bodyHtml: string}} Email content.
+ */
+function createBookingEmailContent_(bookingId, bookingType, disciplina, turma, profReal, profOrig, startTime, timestampCriacao, userEmail, calendarEventId, calendarError) {
+  const timeZone = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+  const dataFormatada = Utilities.formatDate(startTime, timeZone, 'dd/MM/yyyy');
+  const horaFormatada = Utilities.formatDate(startTime, timeZone, 'HH:mm');
+  const criacaoFormatada = Utilities.formatDate(timestampCriacao, timeZone, 'dd/MM/yyyy HH:mm:ss');
+  const isSubstituicao = bookingType === TIPOS_RESERVA.SUBSTITUICAO;
+
+  let subjectStatus = calendarError ? '⚠️ Erro no Google Calendar' : (calendarEventId ? '✅ Confirmada' : '✅ Sem Evento Calendar');
+  let subject = `${subjectStatus} - Reserva ${bookingType} - ${disciplina || 'N/D'} - ${dataFormatada}`;
+
+  let bodyText = `Olá,\n\nUma reserva de "${bookingType}" foi registrada no sistema:\n\n`;
+  bodyText += `==============================\nDETALHES DA RESERVA\n==============================\n`;
+  bodyText += `Tipo: ${bookingType}\nData: ${dataFormatada}\nHorário: ${horaFormatada}\nTurma: ${turma || 'N/A'}\n`;
+  bodyText += `Disciplina: ${disciplina || 'N/A'}\nProfessor: ${profReal || 'N/A'}\n`;
+  if (isSubstituicao && profOrig && profOrig !== profReal) bodyText += `Professor Original: ${profOrig}\n`;
+  bodyText += `------------------------------\nID Reserva: ${bookingId}\nAgendado por: ${userEmail}\nData/Hora Agend.: ${criacaoFormatada}\n`;
+  bodyText += `==============================\n\n`;
+  if (calendarError) {
+    bodyText += `*** ATENÇÃO: Google Calendar ***\nHouve um erro ao criar/atualizar o evento no calendário.\nA reserva está confirmada nas planilhas, mas verifique o calendário manualmente.\nErro: ${calendarError.message}\n\n`;
+  } else if (calendarEventId) {
+    bodyText += `Evento no Google Calendar criado/atualizado com sucesso (ID: ${calendarEventId}).\n\n`;
+  } else {
+    bodyText += `*** AVISO: Google Calendar ***\nO evento não foi criado/atualizado no calendário (ID do calendário pode não estar configurado ou calendário inacessível).\n\n`;
+  }
+  bodyText += `Atenciosamente,\n${EMAIL_SENDER_NAME}`;
+
+  let bodyHtml = `<p>Olá,</p><p>Uma reserva de "<b>${bookingType}</b>" foi registrada no sistema:</p><hr><h3>Detalhes da Reserva</h3>`;
+  bodyHtml += `<table border="0" cellpadding="5" style="border-collapse: collapse; font-family: sans-serif; font-size: 11pt;">`;
+  bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><strong>Tipo:</strong></td><td>${bookingType}</td></tr>`;
+  bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><strong>Data:</strong></td><td>${dataFormatada}</td></tr>`;
+  bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><strong>Horário:</strong></td><td>${horaFormatada}</td></tr>`;
+  bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><strong>Turma:</strong></td><td>${turma || 'N/A'}</td></tr>`;
+  bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><strong>Disciplina:</strong></td><td>${disciplina || 'N/A'}</td></tr>`;
+  bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><strong>Professor:</strong></td><td>${profReal || 'N/A'}</td></tr>`;
+  if (isSubstituicao && profOrig && profOrig !== profReal) {
+    bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><strong>Prof. Original:</strong></td><td>${profOrig}</td></tr>`;
+  }
+  bodyHtml += `</table><br>`;
+  bodyHtml += `<table border="0" cellpadding="5" style="border-collapse: collapse; font-family: sans-serif; font-size: 9pt; color: #555;">`;
+  bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><i>ID Reserva:</i></td><td><i>${bookingId}</i></td></tr>`;
+  bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><i>Agendado por:</i></td><td><i>${userEmail}</i></td></tr>`;
+  bodyHtml += `<tr><td style="text-align: right; vertical-align: top; padding-right: 10px;"><i>Data/Hora Agend.:</i></td><td><i>${criacaoFormatada}</i></td></tr>`;
+  bodyHtml += `</table><hr>`;
+  if (calendarError) {
+    bodyHtml += `<div style="border: 1px solid #DC3545; background-color: #F8D7DA; color: #721C24; padding: 15px; margin-top: 15px; border-radius: 4px; font-family: sans-serif; font-size: 11pt;">`;
+    bodyHtml += `<strong>*** ATENÇÃO: Google Calendar ***</strong><br>Houve um erro ao criar/atualizar o evento no calendário.<br>A reserva está confirmada nas planilhas, mas verifique o calendário manualmente.<br><span style="font-size: 9pt; color: #721C24;">Erro: ${calendarError.message}</span></div>`;
+  } else if (calendarEventId) {
+    bodyHtml += `<div style="border: 1px solid #28A745; background-color: #D4EDDA; color: #155724; padding: 15px; margin-top: 15px; border-radius: 4px; font-family: sans-serif; font-size: 11pt;">`;
+    bodyHtml += `Evento no Google Calendar criado/atualizado com sucesso.<br>ID do Evento: ${calendarEventId}</div>`;
+  } else {
+    bodyHtml += `<div style="border: 1px solid #FFC107; background-color: #FFF3CD; color: #856404; padding: 15px; margin-top: 15px; border-radius: 4px; font-family: sans-serif; font-size: 11pt;">`;
+    bodyHtml += `<strong>*** AVISO: Google Calendar ***</strong><br>O evento não foi criado/atualizado no calendário (ID do calendário pode não estar configurado ou calendário inacessível).</div>`;
+  }
+  bodyHtml += `<p style="font-family: sans-serif; font-size: 11pt; margin-top: 20px;">Atenciosamente,<br>${EMAIL_SENDER_NAME}</p>`;
+
+  return { subject, bodyText, bodyHtml };
+}
+
+
+/**
+ * Sends the booking notification email using MailApp. (Internal use)
+ */
+function sendBookingNotificationEmail_(bookingId, bookingType, disciplina, turma, profReal, profOrig, startTime, timestampCriacao, userEmail, calendarEventId, calendarError, guests) {
+  Logger.log("sendBookingNotificationEmail_ called.");
+  try {
+    const emailContent = createBookingEmailContent_(bookingId, bookingType, disciplina, turma, profReal, profOrig, startTime, timestampCriacao, userEmail, calendarEventId, calendarError);
+    const validGuests = Array.isArray(guests) ? guests.filter(email => email && typeof email === 'string' && email.includes('@')) : [];
+    const validAdminEmails = ADMIN_COPY_EMAILS.filter(email => email && typeof email === 'string' && email.includes('@'));
+    const finalRecipientsBcc = [...new Set([...validGuests, ...validAdminEmails])];
+
+    if (finalRecipientsBcc.length === 0) {
+      Logger.log("No valid recipients found. Skipping email send.");
+      return;
+    }
+
+    const toAddress = validAdminEmails[0] || userEmail; // Prefer admin, fallback to user
+
+    Logger.log(`Sending notification for Booking ID ${bookingId}. To: ${toAddress}, BCC: ${finalRecipientsBcc.length} addresses.`);
+    MailApp.sendEmail({
+      to: toAddress,
+      bcc: finalRecipientsBcc.join(','),
+      subject: emailContent.subject,
+      body: emailContent.bodyText,
+      htmlBody: emailContent.bodyHtml,
+      name: EMAIL_SENDER_NAME
+    });
+    Logger.log(`Email notification for Booking ID ${bookingId} sent successfully via MailApp.`);
+
+  } catch (e) {
+    Logger.log(`ERROR sending booking notification email for ID ${bookingId}: ${e.message}\nStack: ${e.stack}`);
+  }
+}
+
+
+// ==========================================================================
+//                         Instance Generation & Cleanup
+// ==========================================================================
+
+/**
+ * [TRIGGERED/MANUAL] Creates future schedule instances based on 'Horarios Base'.
+ */
+function createScheduleInstances() {
+  Logger.log('*** createScheduleInstances START ***');
+  let lock = null;
+  try {
+    lock = acquireScriptLock_();
+    const timeZone = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+    const { header: baseHeader, data: baseData } = getSheetData_(SHEETS.BASE_SCHEDULES, HEADERS.BASE_SCHEDULES);
+    const { header: instanceHeader, data: instanceData, sheet: instancesSheet } = getSheetData_(SHEETS.SCHEDULE_INSTANCES, HEADERS.SCHEDULE_INSTANCES);
+
+    if (baseData.length === 0) throw new Error('Planilha "Horarios Base" está vazia.');
+
+    const validBaseSchedules = validateBaseSchedules_(baseData, timeZone);
+    if (validBaseSchedules.length === 0) throw new Error('Nenhum horário base válido encontrado após validação.');
+    Logger.log(`Found ${validBaseSchedules.length} valid base schedules.`);
+
+    const existingInstanceKeys = createExistingInstanceMap_(instanceData, timeZone);
+    Logger.log(`Created map with ${Object.keys(existingInstanceKeys).length} existing instance keys.`);
+
+    const numWeeksToGenerate = parseInt(getConfigValue('Semanas Para Gerar Instancias')) || 4;
+    const { startGenerationDate, endGenerationDate } = calculateGenerationRange_(numWeeksToGenerate);
+    Logger.log(`Generating instances from UTC ${startGenerationDate.toISOString().slice(0, 10)} to ${endGenerationDate.toISOString().slice(0, 10)}`);
+
+    const newInstanceRows = generateNewInstances_(
+      startGenerationDate,
+      endGenerationDate,
+      validBaseSchedules,
+      existingInstanceKeys,
+      timeZone
+    );
+
+    if (newInstanceRows.length > 0) {
+      Logger.log(`Generated ${newInstanceRows.length} new instances. Appending to sheet...`);
+      const numInstanceCols = instanceHeader.length || (Math.max(...Object.values(HEADERS.SCHEDULE_INSTANCES)) + 1);
+      appendSheetRows_(instancesSheet, numInstanceCols, newInstanceRows);
+    } else {
+      Logger.log('No new instances needed for the specified period.');
+    }
+
+    Logger.log('*** createScheduleInstances FINISHED ***');
+  } catch (e) {
+    Logger.log(`ERROR in createScheduleInstances: ${e.message}\nStack: ${e.stack}`);
+    // Optionally re-throw or handle error notification
+  } finally {
+    releaseScriptLock_(lock);
+  }
+}
+
+/**
+ * Validates rows from the Base Schedules sheet. (Internal use for createScheduleInstances)
+ * @param {any[][]} baseData - Raw data rows from the sheet.
+ * @param {string} timeZone - Spreadsheet timezone.
+ * @returns {object[]} Array of validated base schedule objects.
+ */
+function validateBaseSchedules_(baseData, timeZone) {
+  const validSchedules = [];
+  const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+  const idCol = HEADERS.BASE_SCHEDULES.ID;
+  const dayCol = HEADERS.BASE_SCHEDULES.DIA_SEMANA;
+  const hourCol = HEADERS.BASE_SCHEDULES.HORA_INICIO;
+  const typeCol = HEADERS.BASE_SCHEDULES.TIPO;
+  const turmaCol = HEADERS.BASE_SCHEDULES.TURMA_PADRAO;
+  const profCol = HEADERS.BASE_SCHEDULES.PROFESSOR_PRINCIPAL;
+  const reqCols = Math.max(idCol, dayCol, hourCol, typeCol, turmaCol, profCol) + 1;
+
+  baseData.forEach((row, index) => {
+    const rowIndex = index + 2; // Sheet row index
+    if (!row || row.length < reqCols) {
+      // Logger.log(`Skipping base schedule row ${rowIndex} due to insufficient columns.`); // Verbose
+      return;
+    }
+
+    const baseId = String(row[idCol] || '').trim();
+    const baseDayOfWeek = String(row[dayCol] || '').trim();
+    const baseHourString = formatValueToHHMM(row[hourCol], timeZone);
+    const baseType = String(row[typeCol] || '').trim();
+    const baseTurma = String(row[turmaCol] || '').trim();
+    const baseProfessorPrincipal = String(row[profCol] || '').trim();
+
+    let isValid = true;
+    const errorMessages = [];
+    if (!baseId) { errorMessages.push("ID Base inválido"); isValid = false; }
+    if (!baseDayOfWeek || !daysOfWeek.includes(baseDayOfWeek)) { errorMessages.push(`Dia da Semana inválido: ${baseDayOfWeek}`); isValid = false; }
+    if (!baseHourString) { errorMessages.push(`Hora inválida: ${row[hourCol]}`); isValid = false; }
+    if (baseType !== TIPOS_HORARIO.FIXO && baseType !== TIPOS_HORARIO.VAGO) { errorMessages.push(`Tipo inválido: ${baseType}`); isValid = false; }
+    if (!baseTurma) { errorMessages.push("Turma Padrão inválida"); isValid = false; }
+    if (baseType === TIPOS_HORARIO.FIXO && !baseProfessorPrincipal) { errorMessages.push("Professor Principal ausente para horário Fixo"); isValid = false; }
+
+    if (isValid) {
+      validSchedules.push({
+        id: baseId,
+        dayOfWeek: baseDayOfWeek,
+        hour: baseHourString,
+        type: baseType,
+        turma: baseTurma,
+        professorPrincipal: baseProfessorPrincipal
+      });
+    } else {
+      Logger.log(`Skipping Base Schedule row ${rowIndex}: ${errorMessages.join(', ')}.`);
+    }
+  });
+  return validSchedules;
+}
+
+/**
+ * Creates a map of existing instance keys for duplicate checking. (Internal use for createScheduleInstances)
+ * Key format: "baseId_YYYY-MM-DD_HH:mm" (Date is UTC)
+ * @param {any[][]} instanceData - Raw instance data rows.
+ * @param {string} timeZone - Spreadsheet timezone.
+ * @returns {object} Map where keys are unique instance identifiers and values can be true or the instance ID.
+ */
+function createExistingInstanceMap_(instanceData, timeZone) {
+  const existingKeys = {};
+  const baseIdCol = HEADERS.SCHEDULE_INSTANCES.ID_BASE_HORARIO;
+  const dateCol = HEADERS.SCHEDULE_INSTANCES.DATA;
+  const hourCol = HEADERS.SCHEDULE_INSTANCES.HORA_INICIO;
+  const reqCols = Math.max(baseIdCol, dateCol, hourCol) + 1;
+
+  instanceData.forEach((row, index) => {
+    if (!row || row.length < reqCols) return; // Skip incomplete
+
+    const baseId = String(row[baseIdCol] || '').trim();
+    // Use UTC date for the key to be consistent regardless of DST/TZ
+    const instanceUTCDate = formatValueToDate(row[dateCol]); // Gets UTC Date obj
+    const hourString = formatValueToHHMM(row[hourCol], timeZone); // HH:mm based on sheet TZ
+
+    if (baseId && instanceUTCDate && hourString) {
+      // Format UTC date for the key
+      const dateString = Utilities.formatDate(instanceUTCDate, 'UTC', 'yyyy-MM-dd');
+      const key = `${baseId}_${dateString}_${hourString}`;
+      existingKeys[key] = true; // Value doesn't strictly matter, just existence
+    } else {
+      // Logger.log(`Could not create key for existing instance row ${index + 2}. Missing data?`); // Too verbose
+    }
+  });
+  return existingKeys;
+}
+
+/**
+ * Calculates the start (next Mon UTC) and end dates (Sun UTC) for generation. (Internal use)
+ * @param {number} numWeeksToGenerate - How many weeks ahead to generate.
+ * @returns {{startGenerationDate: Date, endGenerationDate: Date}} UTC Dates.
+ */
+function calculateGenerationRange_(numWeeksToGenerate) {
+  const now = new Date();
+  const todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const dayUTC = todayUTC.getUTCDay();
+  const daysToAdd = (dayUTC === 0) ? 1 : (8 - dayUTC) % 7;
+  const start = new Date(todayUTC.getTime());
+  start.setUTCDate(todayUTC.getUTCDate() + daysToAdd);
+  const end = new Date(start.getTime());
+  end.setUTCDate(start.getUTCDate() + (numWeeksToGenerate * 7) - 1);
+  return { startGenerationDate: start, endGenerationDate: end };
+}
+
+/**
+ * Generates the data arrays for new instances, avoiding duplicates. (Internal use for createScheduleInstances)
+ * @param {Date} startDateUTC - First date (UTC midnight) to generate for.
+ * @param {Date} endDateUTC - Last date (UTC midnight) to generate for.
+ * @param {object[]} validBaseSchedules - Array of validated base schedule objects.
+ * @param {object} existingInstanceKeys - Map of existing instance keys ("baseId_YYYY-MM-DD_HH:mm").
+ * @param {string} timeZone - Spreadsheet timezone (for HH:mm key matching).
+ * @returns {any[][]} Array of rows to be appended.
+ */
+function generateNewInstances_(startDateUTC, endDateUTC, validBaseSchedules, existingInstanceKeys, timeZone) {
+  const newInstanceRows = [];
+  const daysOfWeekMap = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+  const numInstanceCols = Math.max(...Object.values(HEADERS.SCHEDULE_INSTANCES)) + 1;
+
+  let currentDate = new Date(startDateUTC.getTime());
+  while (currentDate <= endDateUTC) {
+    const targetUTCDate = new Date(currentDate.getTime());
+    const targetDayName = daysOfWeekMap[targetUTCDate.getUTCDay()];
+    const targetDateStr = Utilities.formatDate(targetUTCDate, 'UTC', 'yyyy-MM-dd');
+
+    const applicableSchedules = validBaseSchedules.filter(s => s.dayOfWeek === targetDayName);
+
+    for (const baseSchedule of applicableSchedules) {
+      // Key uses UTC date string + HH:mm string (which implicitly uses sheet TZ from formatValueToHHMM)
+      const predictableKey = `${baseSchedule.id}_${targetDateStr}_${baseSchedule.hour}`;
+
+      if (!existingInstanceKeys[predictableKey]) {
+        const newRow = new Array(numInstanceCols).fill('');
+        newRow[HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA] = Utilities.getUuid();
+        newRow[HEADERS.SCHEDULE_INSTANCES.ID_BASE_HORARIO] = baseSchedule.id;
+        newRow[HEADERS.SCHEDULE_INSTANCES.TURMA] = baseSchedule.turma;
+        newRow[HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL] = baseSchedule.professorPrincipal;
+        // Store the Date object representing the specific day (in sheet's TZ context for display later)
+        newRow[HEADERS.SCHEDULE_INSTANCES.DATA] = new Date(targetUTCDate.getUTCFullYear(), targetUTCDate.getUTCMonth(), targetUTCDate.getUTCDate());
+        newRow[HEADERS.SCHEDULE_INSTANCES.DIA_SEMANA] = targetDayName;
+        newRow[HEADERS.SCHEDULE_INSTANCES.HORA_INICIO] = baseSchedule.hour; // Store HH:mm string
+        newRow[HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL] = baseSchedule.type;
+        newRow[HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO] = STATUS_OCUPACAO.DISPONIVEL;
+        // ID_RESERVA and ID_EVENTO_CALENDAR start empty
+
+        newInstanceRows.push(newRow);
+        existingInstanceKeys[predictableKey] = true; // Mark as generated
+      }
+    }
+    currentDate.setUTCDate(currentDate.getUTCDate() + 1);
+  }
+  return newInstanceRows;
+}
+
+/**
+ * Appends multiple rows to a sheet efficiently. (Internal use)
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The sheet object.
+ * @param {number} numCols - The number of columns expected/to write.
+ * @param {any[][]} rowsToAppend - 2D array of row data.
+ */
+function appendSheetRows_(sheet, numCols, rowsToAppend) {
+  if (!rowsToAppend || rowsToAppend.length === 0) {
+    // Logger.log("No rows to append."); // Can be verbose
+    return;
+  }
+  try {
+    const finalRows = rowsToAppend.map(row => {
+      const finalRow = [...row];
+      while (finalRow.length < numCols) finalRow.push('');
+      if (finalRow.length > numCols) finalRow.length = numCols;
+      return finalRow;
+    });
+    const startRow = sheet.getLastRow() + 1;
+    sheet.getRange(startRow, 1, finalRows.length, numCols).setValues(finalRows);
+    Logger.log(`${finalRows.length} rows appended successfully to sheet "${sheet.getName()}".`);
+  } catch (e) {
+    Logger.log(`ERROR appending rows to sheet "${sheet.getName()}": ${e.message}`);
+    throw new Error(`Erro interno ao adicionar novas linhas na planilha "${sheet.getName()}": ${e.message}`);
+  }
+}
+
+
+/**
+ * [TRIGGERED/MANUAL] Cleans old schedule instances based on 'Data Limite' config.
  */
 function cleanOldScheduleInstances() {
-    // Adquire um bloqueio para garantir que apenas uma instância deste script
-    // esteja acessando e modificando os dados de limpeza por vez.
-    // Espera até 30 segundos se o bloqueio já estiver ativo.
-    const lock = LockService.getScriptLock();
-    const lockAcquired =
-        lock.tryLock(30000);  // Espera até 30 segundos (30000 ms)
+  Logger.log('*** cleanOldScheduleInstances START ***');
+  let lock = null;
+  try {
+    lock = acquireScriptLock_();
+    const timeZone = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
 
-    if (!lockAcquired) {
-        Logger.log(
-            'Não foi possível adquirir o bloqueio para cleanOldScheduleInstances. Outro processo pode estar em execução.');
-        return;  // Aborta a execução se não puder obter o bloqueio
+    const cleanupDateString = getConfigValue('Data Limite');
+    if (!cleanupDateString) throw new Error(`Configuração "Data Limite" não encontrada ou vazia.`);
+
+    const cleanupDateUTC = parseDDMMYYYY(cleanupDateString);
+    if (!cleanupDateUTC) throw new Error(`Valor da configuração "Data Limite" inválido: "${cleanupDateString}". Use dd/MM/yyyy.`);
+
+    Logger.log(`Cleaning instances strictly BEFORE UTC date: ${cleanupDateUTC.toISOString().slice(0, 10)}`);
+
+    const { header: instanceHeader, data: instanceData, sheet: instancesSheet } = getSheetData_(SHEETS.SCHEDULE_INSTANCES, HEADERS.SCHEDULE_INSTANCES);
+    const originalRowCount = instanceData.length;
+    if (originalRowCount === 0) {
+      Logger.log('No instances found to clean.');
+      releaseScriptLock_(lock); return;
+    }
+    const dateCol = HEADERS.SCHEDULE_INSTANCES.DATA;
+    const numCols = instanceHeader.length;
+    if (dateCol >= numCols) throw new Error(`Coluna de Data (índice ${dateCol}) não encontrada na planilha "${SHEETS.SCHEDULE_INSTANCES}".`);
+
+    const rowsToKeep = [];
+    instanceData.forEach((row) => {
+      if (row && row.length > dateCol) {
+        const instanceUTCDate = formatValueToDate(row[dateCol]); // Gets UTC Date obj
+        // Keep if date is valid AND on or after the cleanup date (UTC comparison)
+        if (instanceUTCDate && instanceUTCDate >= cleanupDateUTC) {
+          rowsToKeep.push(row);
+        }
+      }
+      // Rows that are incomplete, have invalid dates, or are before cleanupDateUTC are implicitly skipped
+    });
+
+    const deletedCount = originalRowCount - rowsToKeep.length;
+    Logger.log(`Filtering complete: ${rowsToKeep.length} rows to keep, ${deletedCount} rows to delete.`);
+
+    if (deletedCount > 0) {
+      Logger.log(`Rewriting sheet "${SHEETS.SCHEDULE_INSTANCES}"...`);
+      const dataToWrite = [instanceHeader, ...rowsToKeep].map(row => {
+        const paddedRow = [...row];
+        while (paddedRow.length < numCols) paddedRow.push('');
+        if (paddedRow.length > numCols) return paddedRow.slice(0, numCols);
+        return paddedRow;
+      });
+
+      instancesSheet.clearContents();
+      if (dataToWrite.length > 0) {
+        instancesSheet.getRange(1, 1, dataToWrite.length, numCols).setValues(dataToWrite);
+      }
+      Logger.log(`Sheet rewritten with ${rowsToKeep.length} data rows.`);
+    } else {
+      Logger.log('No instances found before the cleanup date. No changes made to the sheet.');
     }
 
-    Logger.log('*** cleanOldScheduleInstances chamada ***');
+    Logger.log('*** cleanOldScheduleInstances FINISHED ***');
+  } catch (e) {
+    Logger.log(`ERROR in cleanOldScheduleInstances: ${e.message}\nStack: ${e.stack}`);
+  } finally {
+    releaseScriptLock_(lock);
+  }
+}
 
+
+// ==========================================================================
+//                     Web App Entry Point & Include Helper
+// ==========================================================================
+
+/**
+ * Main function for serving the web app via GET request. Handles routing and authorization.
+ * @param {object} e - Apps Script event object.
+ * @returns {HtmlService.HtmlOutput} Rendered HTML output.
+ */
+function doGet(e) {
+  let userEmail = '[Public/Unknown]'; // Default for public/unknown or error
+  const page = e && e.parameter ? e.parameter.page : null;
+  let userRole = null; // Initialize userRole
+
+  // --- Try to get user info regardless of page initially for logging/potential use ---
+  try {
+    userEmail = getActiveUserEmail_();
+    userRole = getUserRolePlain_(userEmail); // Get role early if possible
+  } catch (err) {
+    // Ignore error here, might be public access attempt
+    Logger.log(`Attempted access, couldn't get user info initially (may be public): ${err.message}`);
+  }
+  Logger.log(`Web App GET request by: ${userEmail}. Page Parameter: ${page}. Detected Role: ${userRole}`);
+
+
+  // --- Route: Public View ---
+  if (page === 'public') {
+    Logger.log(`Serving public view page.`);
     try {
-        const ss = SpreadsheetApp.getActiveSpreadsheet();
-        const instancesSheet = ss.getSheetByName(SHEETS.SCHEDULE_INSTANCES);
-        const timeZone = ss.getSpreadsheetTimeZone();  // Para logs formatados
-
-        // 1. Verifica se a planilha de instâncias existe
-        if (!instancesSheet) {
-            Logger.log(
-                `Erro: Planilha "${SHEETS.SCHEDULE_INSTANCES}" não encontrada.`);
-            return;  // Aborta a execução
-        }
-
-        // 2. Obtém e valida a data limite para limpeza da configuração
-        const cleanupDateString = getConfigValue('Data Limite');
-        if (!cleanupDateString) {
-            Logger.log(
-                `Erro: Configuração "Data Limite" não encontrada ou vazia na planilha "${SHEETS.CONFIG}".`);
-            Logger.log(
-                '*** cleanOldScheduleInstances abortada: Configuração de data limite ausente ***');
-            return;  // Aborta se a configuração não existe ou está vazia
-        }
-
-        const cleanupDate = parseDDMMYYYY(cleanupDateString);
-
-        if (!cleanupDate || isNaN(cleanupDate.getTime())) {
-            Logger.log(`Erro: Valor da configuração "Data Limite" inválido: "${cleanupDateString}". Esperado formato dd/MM/yyyy.`);
-            Logger.log(
-                '*** cleanOldScheduleInstances abortada: Data limite de limpeza inválida na configuração ***');
-            return;  // Aborta se a data na configuração for inválida
-        }
-
-        // Zera a hora da data limite para garantir que comparações sejam apenas por
-        // data
-        cleanupDate.setHours(0, 0, 0, 0);
-        Logger.log(
-            `Data limite para limpeza (instâncias ANTES desta data serão apagadas): ${Utilities.formatDate(cleanupDate, timeZone, 'dd/MM/yyyy')}`);
-
-        // 3. Obtém todos os dados da planilha de instâncias
-        const rawData = instancesSheet.getDataRange().getValues();
-
-        // Verifica se há dados além do cabeçalho
-        if (rawData.length <= 1) {
-            Logger.log(`Planilha "${SHEETS
-                .SCHEDULE_INSTANCES}" vazia ou apenas cabeçalho. Nenhuma limpeza necessária.`);
-            return;  // Aborta se não houver dados
-        }
-
-        const header = rawData[0];      // Guarda o cabeçalho
-        const data = rawData.slice(1);  // Dados sem o cabeçalho
-        const dataColIndex =
-            HEADERS.SCHEDULE_INSTANCES.DATA;  // Índice da coluna de data
-        const numCols = header.length;  // Número total de colunas na planilha
-        // (baseado no cabeçalho real)
-
-        // Verifica se a coluna de data existe
-        if (dataColIndex >= numCols) {
-            Logger.log(`Erro: Coluna de Data (índice ${dataColIndex}) não encontrada na planilha de instâncias (tem apenas ${numCols} colunas). Verifique a estrutura da planilha "${SHEETS.SCHEDULE_INSTANCES}".`);
-            Logger.log(
-                '*** cleanOldScheduleInstances abortada: Coluna de Data não encontrada ***');
-            return;  // Aborta se a coluna de data não existe
-        }
-
-        // 4. Filtra as linhas que devem ser mantidas
-        const rowsToKeep = [];
-        let initialRowCount =
-            data.length;  // Número de linhas de dados originais (sem cabeçalho)
-        let deletedCount = 0;
-
-        for (let i = 0; i < data.length; i++) {
-            const row = data[i];
-            const rowIndexInSheet = i + 2;  // Índice real da linha na planilha
-            // (contando o cabeçalho e base 1)
-
-            // Verifica se a linha tem colunas suficientes para conter a data
-            if (!row || row.length <= dataColIndex) {
-                Logger.log(`Warning: Ignorando linha ${rowIndexInSheet} na planilha de instâncias devido a colunas insuficientes (${row ? row.length : 0} vs requerido ${dataColIndex + 1}). Será tratada como apagável.`);
-                deletedCount++;  // Contabiliza linhas incompletas como apagadas
-                continue;        // Pula para a próxima linha
-            }
-
-            const rawInstanceDate = row[dataColIndex];
-            const instanceDate = formatValueToDate(
-                rawInstanceDate);  // Usa a função existente para formatar/validar
-
-            let keepRow = false;
-
-            // Verifica se a data da instância é válida
-            if (instanceDate && !isNaN(instanceDate.getTime())) {
-                // Zera a hora da data da instância para comparação consistente (já
-                // feito em formatValueToDate, mas reforça)
-                instanceDate.setHours(0, 0, 0, 0);
-
-                // Mantém a linha se a data da instância for IGUAL ou POSTERIOR à data
-                // limite de limpeza
-                if (instanceDate >= cleanupDate) {
-                    rowsToKeep.push(row);
-                    keepRow = true;  // Marca para manter
-                } else {
-                    // Linha será apagada por ser anterior à data limite
-                    // Logger.log(`Linha ${rowIndexInSheet} (Data:
-                    // ${Utilities.formatDate(instanceDate, timeZone, 'dd/MM/yyyy')}) é
-                    // anterior à data limite ${Utilities.formatDate(cleanupDate,
-                    // timeZone, 'dd/MM/yyyy')}. Marcada para apagar.`);
-                }
-            } else {
-                // Linha será apagada por ter uma data inválida/ausente
-                Logger.log(`Warning: Linha ${rowIndexInSheet} tem valor de data inválido ou ausente ("${rawInstanceDate}"). Marcada para apagar.`);
-            }
-
-            if (!keepRow) {
-                // Se a linha não foi marcada para manter, ela será apagada (inclui
-                // inválidas e antigas)
-                deletedCount++;
-            }
-        }
-
-        // Recalcula o número real de linhas deletadas com base no filtro
-        deletedCount = initialRowCount - rowsToKeep.length;
-        Logger.log(
-            `Filtragem completa. ${rowsToKeep.length} instâncias serão mantidas, ${deletedCount} serão apagadas.`);
-
-
-        // 5. Reescreve os dados (cabeçalho + linhas a manter) na planilha
-        // Prepara os dados a serem escritos, incluindo o cabeçalho no início
-        const dataToWrite = [header, ...rowsToKeep];
-
-        // Verifica se há dados para escrever (deve haver pelo menos o cabeçalho se
-        // a planilha não estava vazia e o cabeçalho foi lido)
-        if (dataToWrite.length === 0) {
-            Logger.log(
-                'Erro interno: O array dataToWrite está vazio inesperadamente.');
-        } else {
-            // Pad/Trim rowsToKeep to match the number of columns in the header.
-            // This prevents errors in setValues if some old rows had different column
-            // counts.
-            const paddedDataToWrite = dataToWrite.map(row => {
-                const paddedRow = [...row];  // Create a copy
-                while (paddedRow.length < numCols)
-                    paddedRow.push('');  // Pad if necessary
-                if (paddedRow.length > numCols)
-                    return paddedRow.slice(0, numCols);  // Trim if necessary
-                return paddedRow;
-            });
-
-            // Calcula o número total de linhas a serem escritas (cabeçalho + linhas
-            // mantidas)
-            const numRowsToWrite = paddedDataToWrite.length;
-
-            // Define o range que cobre a área original que precisa ser limpa
-            // (da linha 1 até a última linha onde havia dados, cobrindo todas as
-            // colunas originais)
-            const originalDataRange =
-                instancesSheet.getRange(1, 1, rawData.length, numCols);
-
-            try {
-                // Limpa o conteúdo da área original (cabeçalho + dados)
-                originalDataRange.clearContent();
-                Logger.log(`Conteúdo original (${rawData.length} linhas) da planilha "${SHEETS.SCHEDULE_INSTANCES}" limpo.`);
-
-                // Define o range onde os dados filtrados (e cabeçalho) serão escritos
-                // Começa na linha 1, na coluna 1, e cobre o número de linhas e colunas
-                // dos dados filtrados
-                const targetRange =
-                    instancesSheet.getRange(1, 1, numRowsToWrite, numCols);
-
-                // Escreve o cabeçalho e as linhas a manter
-                targetRange.setValues(paddedDataToWrite);
-                Logger.log(`Dados filtrados reescritos na planilha "${SHEETS.SCHEDULE_INSTANCES}". Total de linhas agora: ${numRowsToWrite}.`);
-
-                // Não é mais necessário limpar abaixo, pois clearContent() já limpou a
-                // área maior
-
-            } catch (e) {
-                // Se houver um erro durante a reescrita dos dados
-                Logger.log(`Erro ao limpar/reescrever dados na planilha "${SHEETS.SCHEDULE_INSTANCES}": ${e.message} Stack: ${e.stack}`);
-                // Lança o erro para que o gatilho (se usado) possa registrá-lo
-                throw new Error(`Erro ao reescrever dados da instância: ${e.message}`);
-            }
-        }
-
-        Logger.log(`Limpeza de instâncias antigas concluída. ${deletedCount} instâncias foram apagadas.`);
-        Logger.log('*** cleanOldScheduleInstances finalizada com sucesso ***');
-
-    } catch (e) {
-        // Captura erros inesperados durante a execução
-        Logger.log(
-            'Erro inesperado em cleanOldScheduleInstances: ' + e.message +
-            ' Stack: ' + e.stack);
-        // Dependendo de como você quer que os gatilhos se comportem, pode ser útil
-        // relançar o erro: throw e;
-    } finally {
-        // Garante que o bloqueio seja liberado, mesmo se ocorrer um erro
-        if (lock.hasLock()) {
-            lock.releaseLock();
-            Logger.log('Bloqueio de script liberado.');
-        }
+      const template = HtmlService.createTemplateFromFile('PublicView');
+      return template.evaluate()
+        .setTitle('Horários Públicos')
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    } catch (error) {
+      Logger.log(`FATAL ERROR loading public view: ${error.message} Stack: ${error.stack}`);
+      return HtmlService.createHtmlOutput('<h1>Erro Interno</h1><p>Erro ao carregar visualização pública.</p>').setTitle('Erro');
     }
+  }
+
+  // --- Route: Cancel View (Requires Admin Role) ---
+  else if (page === 'cancel') {
+    Logger.log(`Attempting to serve cancel view page for user: ${userEmail}`);
+    // **Strict Admin Check for this page**
+    if (userRole === USER_ROLES.ADMIN) {
+      Logger.log(`Admin access granted for cancel page.`);
+      try {
+        const template = HtmlService.createTemplateFromFile('CancelView');
+        // Pass user info if needed by the template, though JS usually fetches
+        // template.adminEmail = userEmail;
+        return template.evaluate()
+          .setTitle('Cancelar Reservas')
+          .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+      } catch (error) {
+        Logger.log(`FATAL ERROR loading cancel view: ${error.message} Stack: ${error.stack}`);
+        return HtmlService.createHtmlOutput('<h1>Erro Interno</h1><p>Erro ao carregar página de cancelamento.</p>').setTitle('Erro');
+      }
+    } else {
+      // Deny access if not Admin
+      Logger.log(`Access Denied for user ${userEmail} to cancel page. Role: ${userRole}`);
+      return HtmlService
+        .createHtmlOutput(`<h1>Acesso Negado</h1><p>Apenas administradores podem acessar esta página (${userEmail}).</p>`)
+        .setTitle('Acesso Negado');
+    }
+  }
+
+  // --- Default Route: Main App (Requires Any Authorized Role) ---
+  else {
+    Logger.log(`Attempting to serve main page for user: ${userEmail}`);
+    // Check if user has *any* authorized role for the main app
+    if (userRole) {
+      Logger.log(`Serving main page (Index.html) for user ${userEmail} with role ${userRole}.`);
+      try {
+        const template = HtmlService.createTemplateFromFile('Index');
+        return template.evaluate()
+          .setTitle('Sistema de Agendamento e Visualização')
+          .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+      } catch (error) {
+        Logger.log(`FATAL ERROR loading main Index page: ${error.message} Stack: ${error.stack}`);
+        return HtmlService.createHtmlOutput('<h1>Erro Interno</h1><p>Erro ao carregar aplicação principal.</p>').setTitle('Erro');
+      }
+    } else {
+      // Deny access if no authorized role for the main app
+      Logger.log(`Access Denied for user ${userEmail} to main application. Role: ${userRole}`);
+      return HtmlService
+        .createHtmlOutput(`<h1>Acesso Negado</h1><p>Seu usuário (${userEmail}) não tem permissão para acessar esta aplicação. Entre em contato com o administrador.</p>`)
+        .setTitle('Acesso Negado');
+    }
+  }
+}
+
+/**
+ * [CLIENT CALLABLE - For Public View] Gets relevant schedule instances for ALL classes for a specific week.
+ * Only returns 'Fixo' slots (any status) and 'Vago' slots that are booked ('Reposicao Agendada').
+ * Enriches available 'Fixo' slots with base discipline and professor.
+ * No authorization check needed here.
+ * @param {string} weekStartDateString - The starting date of the week (Monday, YYYY-MM-DD, representing UTC Monday).
+ * @returns {string} JSON {success, message, data: { "TurmaName1": [slots...], "TurmaName2": [slots...] }}
+ */
+function getPublicScheduleInstances(weekStartDateString) {
+  Logger.log(`*** getPublicScheduleInstances (Public View - Fixed/Booked Only) called for Semana: ${weekStartDateString} ***`);
+  try {
+    // 1. Validation (No Auth check here)
+    if (!weekStartDateString || typeof weekStartDateString !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(weekStartDateString)) {
+      return createJsonResponse(false, 'Semana de início inválida ou formato incorreto (esperado YYYY-MM-DD).', null);
+    }
+
+    // 2. Calculate Date Range (using UTC)
+    const timeZone = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(); // Still needed for display formatting & HH:mm
+    const parts = weekStartDateString.split('-');
+    const weekStartDate = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)));
+
+    if (isNaN(weekStartDate.getTime()) || weekStartDate.getUTCDay() !== 1) { // Check UTC Monday
+      return createJsonResponse(false, `A data de início (${weekStartDateString}) não é uma Segunda-feira válida para o sistema.`, null);
+    }
+
+    const weekEndDate = new Date(weekStartDate.getTime());
+    weekEndDate.setUTCDate(weekEndDate.getUTCDate() + 6);
+    Logger.log(`Filtering Public (Fixed/Booked) instances between UTC ${weekStartDate.toISOString().slice(0, 10)} and ${weekEndDate.toISOString().slice(0, 10)}`);
+
+    // 3. Read Data
+    const { data: instanceData } = getSheetData_(SHEETS.SCHEDULE_INSTANCES, HEADERS.SCHEDULE_INSTANCES);
+    const { data: baseData } = getSheetData_(SHEETS.BASE_SCHEDULES); // Needed for base info
+    const { data: bookingData } = getSheetData_(SHEETS.BOOKING_DETAILS);
+
+    // 4. Pre-process Maps (Make sure baseScheduleMap includes professor)
+    const baseScheduleMap = baseData.reduce((map, row) => {
+      const idCol = HEADERS.BASE_SCHEDULES.ID;
+      const discCol = HEADERS.BASE_SCHEDULES.DISCIPLINA_PADRAO;
+      const profCol = HEADERS.BASE_SCHEDULES.PROFESSOR_PRINCIPAL; // Ensure professor is included
+      const reqCols = Math.max(idCol, discCol, profCol) + 1;
+      if (row && row.length >= reqCols) {
+        const baseId = String(row[idCol] || '').trim();
+        if (baseId) {
+          map[baseId] = {
+            disciplina: String(row[discCol] || '').trim(),
+            professor: String(row[profCol] || '').trim() // Store professor
+          };
+        }
+      } return map;
+    }, {});
+    const bookingDetailsMap = bookingData.reduce((map, row) => {
+      const idInstCol = HEADERS.BOOKING_DETAILS.ID_INSTANCIA; const discCol = HEADERS.BOOKING_DETAILS.DISCIPLINA_REAL; const profRealCol = HEADERS.BOOKING_DETAILS.PROFESSOR_REAL; const profOrigCol = HEADERS.BOOKING_DETAILS.PROFESSOR_ORIGINAL; const statusCol = HEADERS.BOOKING_DETAILS.STATUS_RESERVA; const reqCols = Math.max(idInstCol, discCol, profRealCol, profOrigCol, statusCol) + 1;
+      if (row && row.length >= reqCols) { const instanceId = String(row[idInstCol] || '').trim(); const statusReserva = String(row[statusCol] || '').trim(); if (instanceId && statusReserva === 'Agendada') map[instanceId] = { disciplinaReal: String(row[discCol] || '').trim(), professorReal: String(row[profRealCol] || '').trim(), professorOriginalBooking: String(row[profOrigCol] || '').trim() }; } return map;
+    }, {});
+
+    // 5. Filter and Enrich Instance Data, THEN Group by Turma
+    const slotsByTurma = {};
+    // ... (column index definitions) ...
+    const instIdCol = HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA; const baseIdCol = HEADERS.SCHEDULE_INSTANCES.ID_BASE_HORARIO; const turmaCol = HEADERS.SCHEDULE_INSTANCES.TURMA; const profPrincCol = HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL; const dateCol = HEADERS.SCHEDULE_INSTANCES.DATA; const dayCol = HEADERS.SCHEDULE_INSTANCES.DIA_SEMANA; const hourCol = HEADERS.SCHEDULE_INSTANCES.HORA_INICIO; const typeCol = HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL; const statusCol = HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO; const maxIndexNeeded = Math.max(instIdCol, baseIdCol, turmaCol, profPrincCol, dateCol, dayCol, hourCol, typeCol, statusCol);
+
+
+    instanceData.forEach((row, index) => {
+      if (!row || row.length <= maxIndexNeeded) return;
+
+      const instanceId = String(row[instIdCol] || '').trim();
+      const baseId = String(row[baseIdCol] || '').trim();
+      const instanceTurma = String(row[turmaCol] || '').trim();
+      const instanceUTCDate = formatValueToDate(row[dateCol]);
+      const formattedHoraInicio = formatValueToHHMM(row[hourCol], timeZone);
+
+      if (!instanceId || !baseId || !instanceTurma || !instanceUTCDate || !formattedHoraInicio) return;
+      if (instanceUTCDate < weekStartDate || instanceUTCDate > weekEndDate) return;
+
+      const originalType = String(row[typeCol] || '').trim();
+      const instanceStatus = String(row[statusCol] || '').trim();
+
+      // *** PUBLIC VIEW FILTER LOGIC ***
+      let includeSlot = false;
+      if (originalType === TIPOS_HORARIO.FIXO) {
+        includeSlot = true;
+      } else if (originalType === TIPOS_HORARIO.VAGO && instanceStatus === STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
+        includeSlot = true;
+      }
+      if (!includeSlot) return;
+      // *** END FILTERING LOGIC ***
+
+      // Extract remaining info needed for enrichment (only if included)
+      const professorPrincipalInstancia = String(row[profPrincCol] || '').trim(); // Professor from instance row itself
+      const instanceDiaSemana = String(row[dayCol] || '').trim();
+
+      // Enrichment logic
+      let disciplinaParaExibir = '';
+      let professorParaExibir = '';
+      let professorOriginalNaReserva = ''; // From booking details specifically
+      const baseInfo = baseScheduleMap[baseId] || { disciplina: '', professor: '' }; // Get base info using baseId
+      const bookingDetails = bookingDetailsMap[instanceId]; // Get booking details using instanceId
+
+      if (instanceStatus === STATUS_OCUPACAO.DISPONIVEL) {
+        // *** FIX: Use baseInfo for Available Fixed slots ***
+        disciplinaParaExibir = baseInfo.disciplina;
+        // Use professor from base schedule map, NOT from the instance row directly here for base display
+        professorParaExibir = baseInfo.professor;
+        // If somehow base professor is empty for a fixed slot, fallback or mark as N/D
+        if (!professorParaExibir && originalType === TIPOS_HORARIO.FIXO) {
+          Logger.log(`Warning (Public View): Base Professor not found in map for available Fixed slot ${instanceId} (Base ID: ${baseId}).`);
+          professorParaExibir = 'Prof. N/D';
+        }
+      } else if (bookingDetails) { // Booked Fixed (Substituicao) or booked Vago (Reposicao)
+        disciplinaParaExibir = bookingDetails.disciplinaReal;
+        professorParaExibir = bookingDetails.professorReal;
+        professorOriginalNaReserva = bookingDetails.professorOriginalBooking;
+      } else { // Booked status but details missing (data inconsistency)
+        Logger.log(`Warning (Public View): Instância ${instanceId} (Status: ${instanceStatus}) sem detalhes de reserva 'Agendada'. Usando dados base.`);
+        // Fallback to base info, using professor from instance row as last resort if base map failed
+        disciplinaParaExibir = baseInfo.disciplina;
+        professorParaExibir = professorPrincipalInstancia || baseInfo.professor || 'Prof. N/D';
+      }
+
+      // Prepare final slot data object
+      const slotData = {
+        data: Utilities.formatDate(instanceUTCDate, timeZone, 'dd/MM/yyyy'),
+        diaSemana: instanceDiaSemana,
+        horaInicio: formattedHoraInicio,
+        tipoOriginal: originalType,
+        statusOcupacao: instanceStatus,
+        disciplinaParaExibir: disciplinaParaExibir,
+        professorParaExibir: professorParaExibir,
+        professorOriginalNaReserva: professorOriginalNaReserva,
+        // Include professorPrincipalInstancia for context if needed (e.g., tooltip)
+        professorPrincipal: professorPrincipalInstancia
+      };
+
+      // Group by Turma
+      if (!slotsByTurma[instanceTurma]) {
+        slotsByTurma[instanceTurma] = [];
+      }
+      slotsByTurma[instanceTurma].push(slotData);
+    });
+
+    const turmaCount = Object.keys(slotsByTurma).length;
+    Logger.log(`Found relevant public instances for ${turmaCount} turmas for week starting ${weekStartDateString} (UTC).`);
+    return createJsonResponse(true, `Horários encontrados para ${turmaCount} turma(s).`, slotsByTurma);
+
+  } catch (e) {
+    return createJsonResponse(false, `Erro ao buscar horários públicos: ${e.message}`, null);
+  }
+}
+
+/**
+ * [TRIGGERED/MANUAL] Removes available 'Vago' instances for a specific Turma/Date
+ * if the total count of 'Fixo' slots + booked ('Vago' or 'Fixo') slots
+ * reaches or exceeds a configured threshold for that day/turma.
+ */
+function cleanupExcessVagoSlots() {
+  Logger.log('*** cleanupExcessVagoSlots START ***');
+  let lock = null;
+  try {
+    // 1. Acquire Lock (essential for safe deletion)
+    lock = acquireScriptLock_();
+
+    // 2. Get Configuration
+    const threshold = parseInt(getConfigValue('Limite Maximo Aulas Dia Turma')) || 10; // Default to 10
+    Logger.log(`Using threshold: ${threshold} (Fixo + Vago Booked)`);
+
+    // 3. Read Instance Data
+    const timeZone = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+    const { header: instanceHeader, data: instanceData, sheet: instancesSheet } = getSheetData_(SHEETS.SCHEDULE_INSTANCES, HEADERS.SCHEDULE_INSTANCES);
+    const originalRowCount = instanceData.length;
+    if (originalRowCount === 0) {
+      Logger.log('No instances found to process.');
+      releaseScriptLock_(lock); return;
+    }
+
+    // Define column indices
+    const dateCol = HEADERS.SCHEDULE_INSTANCES.DATA;
+    const turmaCol = HEADERS.SCHEDULE_INSTANCES.TURMA;
+    const typeCol = HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL;
+    const statusCol = HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO;
+    const maxIndexNeeded = Math.max(dateCol, turmaCol, typeCol, statusCol);
+    if (instanceHeader.length <= maxIndexNeeded) {
+      throw new Error(`Planilha "${SHEETS.SCHEDULE_INSTANCES}" não contém todas as colunas necessárias para cleanupExcessVagoSlots.`);
+    }
+    const today = new Date(); // Use local date for "today" comparison
+    today.setHours(0, 0, 0, 0);
+
+    // 4. Group Data by Date (UTC String) and Turma
+    const groupedData = {}; // Format: groupedData[dateString][turmaName] = { fixoCount: 0, vagoBookedCount: 0, availableVagoRows: [] }
+
+    Logger.log(`Processing ${originalRowCount} instance rows...`);
+    instanceData.forEach((row, index) => {
+      if (!row || row.length <= maxIndexNeeded) return; // Skip incomplete
+
+      const instanceUTCDate = formatValueToDate(row[dateCol]); // Get UTC Date obj
+      const turma = String(row[turmaCol] || '').trim();
+      const originalType = String(row[typeCol] || '').trim();
+      const instanceStatus = String(row[statusCol] || '').trim();
+
+      // Validate essential fields for grouping/counting
+      if (!instanceUTCDate || !turma) return;
+
+      // --- Optional: Skip processing dates in the past? ---
+      // Create a local date representation for comparison with 'today'
+      let instanceLocalDate = null;
+      const rawDate = row[dateCol];
+      if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
+        instanceLocalDate = new Date(rawDate.getFullYear(), rawDate.getMonth(), rawDate.getDate());
+        if (instanceLocalDate < today) {
+          // Logger.log(`Skipping past date row ${index + 2}`); // Can be verbose
+          return; // Skip past dates for this logic
+        }
+      } else {
+        // Logger.log(`Skipping row ${index + 2} due to invalid date object`); // Can be verbose
+        return; // Skip if raw date wasn't valid date object
+      }
+      // --- End Past Date Skip ---
+
+      const dateStringKey = Utilities.formatDate(instanceUTCDate, 'UTC', 'yyyy-MM-dd'); // Use UTC date string as key
+
+      // Initialize group if needed
+      if (!groupedData[dateStringKey]) groupedData[dateStringKey] = {};
+      if (!groupedData[dateStringKey][turma]) {
+        groupedData[dateStringKey][turma] = { fixoCount: 0, vagoBookedCount: 0, availableVagoRows: [] };
+      }
+
+      // Count based on type and status
+      if (originalType === TIPOS_HORARIO.FIXO) {
+        groupedData[dateStringKey][turma].fixoCount++;
+      } else if (originalType === TIPOS_HORARIO.VAGO) {
+        if (instanceStatus === STATUS_OCUPACAO.DISPONIVEL) {
+          // Store the actual sheet row index (1-based)
+          groupedData[dateStringKey][turma].availableVagoRows.push(index + 2);
+        } else {
+          // Count booked Vago slots (Reposicao/Substituicao shouldn't happen but count any non-available)
+          groupedData[dateStringKey][turma].vagoBookedCount++;
+        }
+      }
+    });
+    Logger.log(`Finished grouping data by Date/Turma.`);
+
+    // 5. Identify Rows for Deletion
+    const rowsToDelete = [];
+    for (const dateKey in groupedData) {
+      for (const turmaName in groupedData[dateKey]) {
+        const group = groupedData[dateKey][turmaName];
+        const triggerCount = group.fixoCount + group.vagoBookedCount;
+
+        if (triggerCount >= threshold) {
+          Logger.log(`Threshold (${threshold}) MET for Turma "${turmaName}" on Date ${dateKey}. Trigger count: ${triggerCount}. Marking ${group.availableVagoRows.length} available Vago slots for deletion.`);
+          // Add all row indices from this group to the master list
+          rowsToDelete.push(...group.availableVagoRows);
+        }
+      }
+    }
+
+    // 6. Delete Rows (if any identified)
+    if (rowsToDelete.length > 0) {
+      Logger.log(`Preparing to delete ${rowsToDelete.length} rows...`);
+
+      // Sort row indices in DESCENDING order
+      rowsToDelete.sort((a, b) => b - a);
+
+      // Delete rows from bottom to top
+      let deletedCount = 0;
+      for (const rowIndex of rowsToDelete) {
+        try {
+          instancesSheet.deleteRow(rowIndex);
+          deletedCount++;
+          // Logger.log(`Deleted row ${rowIndex}.`); // Can be very verbose
+        } catch (e) {
+          Logger.log(`ERROR deleting row ${rowIndex}: ${e.message}`);
+          // Continue attempting to delete other rows even if one fails
+        }
+      }
+      Logger.log(`Successfully deleted ${deletedCount} out of ${rowsToDelete.length} identified rows.`);
+    } else {
+      Logger.log('No available Vago slots needed removal based on threshold.');
+    }
+
+    Logger.log('*** cleanupExcessVagoSlots FINISHED ***');
+
+  } catch (e) {
+    Logger.log(`ERROR in cleanupExcessVagoSlots: ${e.message}\nStack: ${e.stack}`);
+  } finally {
+    releaseScriptLock_(lock); // Ensure lock release
+  }
+}
+
+/**
+ * [CLIENT CALLABLE - For Admin Cancel View] Gets future bookings with 'Agendada' status.
+ * Returns combined data from Bookings and Instances.
+ * @returns {string} JSON {success, message, data: [booking details]}
+ */
+function getCancellableBookings() {
+  Logger.log('*** getCancellableBookings called ***');
+  try {
+    // Authorization: Ensure only Admin can call this
+    const userEmail = getActiveUserEmail_();
+    const userRole = getUserRolePlain_(userEmail);
+    if (userRole !== USER_ROLES.ADMIN) {
+      return createJsonResponse(false, 'Acesso negado. Apenas administradores podem visualizar esta lista.', null);
+    }
+
+    // Read data
+    const timeZone = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+    const { data: bookingData } = getSheetData_(SHEETS.BOOKING_DETAILS, HEADERS.BOOKING_DETAILS);
+    const { data: instanceData } = getSheetData_(SHEETS.SCHEDULE_INSTANCES, HEADERS.SCHEDULE_INSTANCES); // Need instance for context
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Create a map of instances for quick lookup
+    const instanceMap = instanceData.reduce((map, row) => {
+      const idCol = HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA;
+      if (row && row.length > idCol) {
+        const id = String(row[idCol] || '').trim();
+        if (id) {
+          map[id] = {
+            date: formatValueToDate(row[HEADERS.SCHEDULE_INSTANCES.DATA]), // UTC Date obj
+            time: formatValueToHHMM(row[HEADERS.SCHEDULE_INSTANCES.HORA_INICIO], timeZone), // HH:mm string
+            turma: String(row[HEADERS.SCHEDULE_INSTANCES.TURMA] || '').trim()
+          };
+        }
+      }
+      return map;
+    }, {});
+
+    // Filter and combine booking data
+    const cancellableBookings = [];
+    const bookingIdCol = HEADERS.BOOKING_DETAILS.ID_RESERVA;
+    const instanceFkCol = HEADERS.BOOKING_DETAILS.ID_INSTANCIA;
+    const statusCol = HEADERS.BOOKING_DETAILS.STATUS_RESERVA;
+    const typeCol = HEADERS.BOOKING_DETAILS.TIPO_RESERVA;
+    const discCol = HEADERS.BOOKING_DETAILS.DISCIPLINA_REAL;
+    const profRealCol = HEADERS.BOOKING_DETAILS.PROFESSOR_REAL;
+    const profOrigCol = HEADERS.BOOKING_DETAILS.PROFESSOR_ORIGINAL;
+    const creatorCol = HEADERS.BOOKING_DETAILS.CRIADO_POR;
+    const reqCols = Math.max(bookingIdCol, instanceFkCol, statusCol, typeCol, discCol, profRealCol, profOrigCol, creatorCol) + 1;
+
+
+    bookingData.forEach(row => {
+      if (!row || row.length < reqCols) return; // Skip incomplete booking rows
+
+      const bookingStatus = String(row[statusCol] || '').trim();
+      const instanceId = String(row[instanceFkCol] || '').trim();
+      const instanceInfo = instanceMap[instanceId]; // Get instance details from map
+
+      // Filter: Must be 'Agendada', linked to a valid instance, and instance date must be today or in the future
+      if (bookingStatus === 'Agendada' && instanceInfo && instanceInfo.date && instanceInfo.date >= today) {
+        cancellableBookings.push({
+          bookingId: String(row[bookingIdCol] || '').trim(),
+          instanceId: instanceId,
+          bookingType: String(row[typeCol] || '').trim(),
+          date: Utilities.formatDate(instanceInfo.date, timeZone, 'dd/MM/yyyy'), // Format display date
+          time: instanceInfo.time || 'N/D',
+          turma: instanceInfo.turma || 'N/D',
+          disciplina: String(row[discCol] || '').trim(),
+          profReal: String(row[profRealCol] || '').trim(),
+          profOrig: String(row[profOrigCol] || '').trim(),
+          criadoPor: String(row[creatorCol] || '').trim()
+        });
+      }
+    });
+
+    // Sort by date, then time, then turma (optional but good for display)
+    cancellableBookings.sort((a, b) => {
+      const dateA = a.date.split('/').reverse().join(''); // YYYYMMDD
+      const dateB = b.date.split('/').reverse().join('');
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      if (a.time !== b.time) return a.time.localeCompare(b.time);
+      return a.turma.localeCompare(b.turma);
+    });
+
+    Logger.log(`Found ${cancellableBookings.length} cancellable bookings.`);
+    return createJsonResponse(true, `${cancellableBookings.length} reserva(s) encontrada(s).`, cancellableBookings);
+
+  } catch (e) {
+    return createJsonResponse(false, `Erro ao buscar reservas canceláveis: ${e.message}`, null);
+  }
+}
+
+/**
+ * [CLIENT CALLABLE - Admin Only] Cancels a booking and reverts the instance status.
+ * @param {string} bookingIdToCancel - The ID of the booking to cancel (from Reservas Detalhadas).
+ * @returns {string} JSON {success, message, data: {cancelledBookingId}}
+ */
+function cancelBookingAdmin(bookingIdToCancel) {
+  Logger.log(`*** cancelBookingAdmin called for Booking ID: ${bookingIdToCancel} ***`);
+  let lock = null;
+  try {
+    // 1. Authorization (Strict Admin Check)
+    const userEmail = getActiveUserEmail_();
+    const userRole = getUserRolePlain_(userEmail);
+    if (userRole !== USER_ROLES.ADMIN) {
+      throw new Error('Apenas administradores podem cancelar reservas.');
+    }
+    if (!bookingIdToCancel || typeof bookingIdToCancel !== 'string' || bookingIdToCancel.trim() === '') {
+      throw new Error('ID da Reserva inválido ou ausente.');
+    }
+    const trimmedBookingId = bookingIdToCancel.trim();
+
+    // 2. Acquire Lock
+    lock = acquireScriptLock_();
+
+    // 3. Find Booking and Corresponding Instance
+    const { header: bookingHeader, data: bookingData, sheet: bookingsSheet } = getSheetData_(SHEETS.BOOKING_DETAILS, HEADERS.BOOKING_DETAILS);
+    const { header: instanceHeader, sheet: instancesSheet } = getSheetData_(SHEETS.SCHEDULE_INSTANCES, HEADERS.SCHEDULE_INSTANCES); // Need sheet object
+
+    const bookingIdCol = HEADERS.BOOKING_DETAILS.ID_RESERVA;
+    const instanceFkCol = HEADERS.BOOKING_DETAILS.ID_INSTANCIA;
+    const bookingStatusCol = HEADERS.BOOKING_DETAILS.STATUS_RESERVA;
+    const maxBookingIndex = Math.max(bookingIdCol, instanceFkCol, bookingStatusCol);
+
+    let bookingRowIndex = -1;
+    let bookingDetails = null;
+    let instanceId = null;
+
+    // Find the booking row by Booking ID
+    for (let i = 0; i < bookingData.length; i++) {
+      const row = bookingData[i];
+      if (row && row.length > maxBookingIndex && String(row[bookingIdCol] || '').trim() === trimmedBookingId) {
+        bookingRowIndex = i + 2; // 1-based sheet index
+        bookingDetails = row;
+        instanceId = String(row[instanceFkCol] || '').trim();
+        break;
+      }
+    }
+
+    if (bookingRowIndex === -1 || !bookingDetails || !instanceId) {
+      throw new Error(`Reserva com ID ${trimmedBookingId} não encontrada.`);
+    }
+    Logger.log(`Booking ${trimmedBookingId} found at row ${bookingRowIndex}, linked to Instance ID ${instanceId}.`);
+
+    // Check if booking is already cancelled
+    const currentBookingStatus = String(bookingDetails[bookingStatusCol] || '').trim();
+    if (currentBookingStatus !== 'Agendada') {
+      throw new Error(`Esta reserva (ID ${trimmedBookingId}) já não está com status "Agendada" (Status atual: ${currentBookingStatus}). Não pode ser cancelada novamente.`);
+    }
+
+    // Find the instance row using the linked Instance ID
+    const instanceIdCol = HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA;
+    const instanceRowFinder = instancesSheet.createTextFinder(instanceId).matchEntireCell(true);
+    const foundInstanceCells = instanceRowFinder.findAll();
+    if (foundInstanceCells.length === 0) {
+      // Data inconsistency: Booking exists but instance doesn't
+      Logger.log(`CRITICAL INCONSISTENCY: Booking ${trimmedBookingId} exists, but linked Instance ${instanceId} not found! Marking booking as cancelled, but cannot revert instance.`);
+      // Mark booking as cancelled anyway
+      bookingsSheet.getRange(bookingRowIndex, bookingStatusCol + 1).setValue('Cancelada (Instância Não Encontrada)');
+      throw new Error(`Erro de dados: Instância ${instanceId} ligada a esta reserva não foi encontrada. Reserva marcada como cancelada, mas o horário pode não ter sido liberado.`);
+    }
+    const instanceRowIndex = foundInstanceCells[0].getRow();
+    const instanceDetails = instancesSheet.getRange(instanceRowIndex, 1, 1, instanceHeader.length).getValues()[0];
+    Logger.log(`Linked Instance ${instanceId} found at row ${instanceRowIndex}.`);
+
+    // 4. Update Instance Sheet: Revert status, clear booking/event IDs
+    const instanceStatusCol = HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO;
+    const instanceBookingIdCol = HEADERS.SCHEDULE_INSTANCES.ID_RESERVA;
+    const instanceEventIdCol = HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR;
+    const existingEventId = String(instanceDetails[instanceEventIdCol] || '').trim(); // Get event ID *before* clearing
+
+    const updatedInstanceRow = [...instanceDetails];
+    updatedInstanceRow[instanceStatusCol] = STATUS_OCUPACAO.DISPONIVEL; // Revert status
+    updatedInstanceRow[instanceBookingIdCol] = ''; // Clear booking ID link
+    updatedInstanceRow[instanceEventIdCol] = ''; // Clear event ID link
+    updateSheetRow_(instancesSheet, instanceRowIndex, instanceHeader.length, updatedInstanceRow);
+    Logger.log(`Instance ${instanceId} status reverted to Disponivel, IDs cleared.`);
+
+    // 5. Update Booking Sheet: Change status to 'Cancelada'
+    bookingsSheet.getRange(bookingRowIndex, bookingStatusCol + 1).setValue('Cancelada'); // 1-based column
+    Logger.log(`Booking ${trimmedBookingId} status updated to Cancelada.`);
+
+    // 6. Delete Calendar Event (if exists)
+    if (existingEventId) {
+      Logger.log(`Attempting to delete Calendar event ID: ${existingEventId}`);
+      try {
+        const calendarIdConfig = getConfigValue('ID do Calendario');
+        if (calendarIdConfig) {
+          const calendar = CalendarApp.getCalendarById(calendarIdConfig.trim());
+          if (calendar) {
+            const event = calendar.getEventById(existingEventId);
+            if (event) {
+              event.deleteEvent();
+              Logger.log(`Calendar event ${existingEventId} deleted successfully.`);
+            } else {
+              Logger.log(`Calendar event ${existingEventId} not found (already deleted?).`);
+            }
+          } else {
+            Logger.log(`Calendar ID ${calendarIdConfig} not found/inaccessible, cannot delete event.`);
+          }
+        } else {
+          Logger.log('Calendar ID not configured, cannot delete event.');
+        }
+      } catch (calError) {
+        // Log error but don't fail the overall cancellation if calendar deletion fails
+        Logger.log(`WARNING: Failed to delete Calendar event ${existingEventId}: ${calError.message}`);
+      }
+    }
+
+    // 7. Send Cancellation Notification (Optional)
+    // TODO: Implement if needed - gather relevant emails (creator, profs) and send notification.
+    // sendCancellationEmail_(bookingDetails, instanceDetails, userEmail);
+    createScheduleInstances()
+
+    // 8. Release Lock and Return Success
+    releaseScriptLock_(lock);
+    return createJsonResponse(true, `Reserva ${trimmedBookingId} cancelada com sucesso.`, { cancelledBookingId: trimmedBookingId });
+
+  } catch (e) {
+    Logger.log(`ERROR in cancelBookingAdmin for ID ${bookingIdToCancel}: ${e.message}\nStack: ${e.stack}`);
+    releaseScriptLock_(lock);
+    return createJsonResponse(false, `Falha ao cancelar reserva: ${e.message}`, { failedBookingId: bookingIdToCancel });
+  }
+}
+
+/**
+ * Utility function to include HTML partials (CSS, JS) in the main HTML file.
+ * Used as <?!= include('Stylesheet'); ?> in HTML.
+ * @param {string} filename - The name of the HTML file (without .html extension).
+ * @returns {string} The content of the file.
+ */
+function include(filename) {
+  try {
+    return HtmlService.createHtmlOutputFromFile(filename).getContent();
+  } catch (e) {
+    Logger.log(`Error including file "${filename}": ${e.message}`);
+    return `<!-- Error including file: ${filename}.html - ${e.message} -->`;
+  }
 }
