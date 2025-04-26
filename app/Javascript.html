@@ -302,23 +302,25 @@
             scheduleContainer.innerHTML = `<p class="error-message">${errorMessage}</p>`;
             return;
         }
-        const slots = response.data;
-        if (!Array.isArray(slots)) {
-            const errorMsg = "Formato de dados inesperado recebido para horários (não é um array).";
-            logDebug(errorMsg, slots);
+        const responseData = response.data;
+        if (!responseData || !Array.isArray(responseData.slots) || typeof responseData.dailyCounts !== 'object') {
+            const errorMsg = "Formato de dados inesperado recebido para horários (esperado objeto com 'slots' e 'dailyCounts').";
+            logDebug(errorMsg, responseData);
             displayMessage(errorMsg, 'error');
             scheduleContainer.innerHTML = '<p class="error-message">Erro interno: formato de dados inválido.</p>';
             return;
         }
+        const slots = responseData.slots;
+        const dailyCounts = responseData.dailyCounts;
         if (slots.length === 0) {
             logDebug("Nenhum horário encontrado para os filtros selecionados.");
             displayMessage(response.message || 'Nenhum horário encontrado para a turma e semana selecionadas.', 'info');
             scheduleContainer.innerHTML = '<p class="info-message">Nenhum horário encontrado para os filtros selecionados.</p>';
             return;
         }
-        logDebug(`Received ${slots.length} slots. Rendering schedule table.`);
+        logDebug(`Received ${slots.length} slots and daily counts. Rendering schedule table.`);
         displayMessage(response.message || 'Horário carregado com sucesso.', 'success');
-        renderScheduleTable(slots, scheduleContainer);
+        renderScheduleTable(slots, scheduleContainer, dailyCounts);
     }
     function onScheduleLoadFailed(error) {
         logDebug("onScheduleLoadFailed called:", error);
@@ -344,10 +346,11 @@
             return statusSpan;
         }
     }
-    function renderScheduleTable(slots, containerElement) {
+    function renderScheduleTable(slots, containerElement, dailyCounts) {
         logDebug("renderScheduleTable called");
-        const daysOfWeek = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'/*, 'Domingo'*/];
-        const dayIndexMap = { 'Segunda': 0, 'Terça': 1, 'Quarta': 2, 'Quinta': 3, 'Sexta': 4, 'Sábado': 5/*, 'Domingo': 6 */ };
+        const DAY_LIMIT_THRESHOLD = 10;
+        const daysOfWeek = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+        const dayIndexMap = { 'Segunda': 0, 'Terça': 1, 'Quarta': 2, 'Quinta': 3, 'Sexta': 4, 'Sábado': 5 };
         const gridData = {};
         const uniqueHours = new Set();
         logDebug("Organizing slots into gridData...");
@@ -364,7 +367,6 @@
                 gridData[dayIndex][slot.horaInicio] = slot;
                 uniqueHours.add(slot.horaInicio);
             } else {
-                console.warn("Slot com Dia da Semana inválido:", slot.diaSemana, slot);
             }
         });
         logDebug(`Organized gridData. Found ${uniqueHours.size} unique hours.`);
@@ -374,7 +376,7 @@
         logDebug("Creating table header.");
         const thead = table.createTHead();
         const headerRow = thead.insertRow();
-        headerRow.insertCell().outerHTML = "<th></th>";
+        headerRow.insertCell().outerHTML = "<th>Horário</th>";
         daysOfWeek.forEach(day => {
             headerRow.insertCell().outerHTML = `<th>${day}</th>`;
         });
@@ -402,7 +404,6 @@
                     let isClickable = false;
                     if (slot.statusOcupacao === STATUS_OCUPACAO.DISPONIVEL) {
                         cellClasses = ['slot-available'];
-                        mainContent = `${firstWordDiscipline} - ${professor || 'Professor N/D'}`;
                         if (slot.tipoOriginal === TIPOS_HORARIO.VAGO) {
                             mainContent = `Vago`;
                             cellClasses.push('slot-vago');
@@ -412,6 +413,7 @@
                                 cellClasses.push('clickable-slot', 'clickable-reposicao');
                             }
                         } else if (slot.tipoOriginal === TIPOS_HORARIO.FIXO) {
+                            mainContent = `${firstWordDiscipline} - ${professor || 'Professor N/D'}`;
                             cellClasses.push('slot-fixo');
                             if (currentUserRole === 'Admin' || currentUserRole === 'Professor') {
                                 isClickable = true;
@@ -456,7 +458,6 @@
                             slotInfoText += ` - Prof. Base: ${profOriginalInstance}`;
                         }
                         slotInfoText += ` - Tipo: ${slot.tipoOriginal}, Status: ${slot.statusOcupacao}`;
-                        logDebug(`[renderScheduleTable] Attaching click handler for cell: Day=${day}, Hour=${hour}, ID=${slot.idInstancia}, Type=${possibleBookingType}`);
                         if (!slot.idInstancia || String(slot.idInstancia).trim() === '') {
                             console.error(`[renderScheduleTable] *** CRITICAL ERROR: slot.idInstancia is invalid ('${slot.idInstancia}') for clickable cell! Click will likely fail.`, slot);
                         }
@@ -472,6 +473,22 @@
                     cell.classList.add('slot-empty');
                 }
             });
+        });
+        logDebug("Creating table footer for daily counts.");
+        const tfoot = table.createTFoot();
+        const footerRow = tfoot.insertRow();
+        footerRow.classList.add('schedule-summary-row');
+        const labelCell = footerRow.insertCell();
+        labelCell.outerHTML = `<th class="summary-label">Total (Fixas+Agendadas):</th>`;
+        daysOfWeek.forEach(day => {
+            const count = dailyCounts[day] !== undefined ? dailyCounts[day] : 0;
+            const countCell = footerRow.insertCell();
+            countCell.classList.add('summary-count');
+            countCell.textContent = count;
+            if (count >= DAY_LIMIT_THRESHOLD) {
+                countCell.classList.add('limit-reached');
+                countCell.title = `Limite de ${DAY_LIMIT_THRESHOLD} aulas (Fixas+Agendadas) atingido/excedido para este dia.`;
+            }
         });
         logDebug("Appending table to schedule-container.");
         containerElement.appendChild(table);

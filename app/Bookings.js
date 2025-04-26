@@ -78,7 +78,7 @@ function processBooking_(bookingDetails, userEmail, userRole) {
     newBookingRow[HEADERS.BOOKING_DETAILS.DATA_CRIACAO] = creationTimestamp;
     newBookingRow[HEADERS.BOOKING_DETAILS.CRIADO_POR] = userEmail;
     appendSheetRow_(bookingsSheet, numBookingCols, newBookingRow);
-    const guestEmails = getGuestEmailsForBooking_(professorReal, professorOriginal);
+    const guestEmails = getGuestEmailsForBooking_(professorReal, professorPrincipalInstancia);
     Logger.log("processBooking_ completed successfully.");
     return {
         bookingId: bookingId,
@@ -90,7 +90,7 @@ function processBooking_(bookingDetails, userEmail, userRole) {
         guestEmails: guestEmails
     };
 }
-function getGuestEmailsForBooking_(profReal, profOrig) {
+function getGuestEmailsForBooking_(profReal, professorsPrincipalString) {
     const guests = new Set();
     const nameEmailMap = {};
     try {
@@ -119,11 +119,21 @@ function getGuestEmailsForBooking_(profReal, profOrig) {
     } else if (profReal) {
         Logger.log(`Warning: Email for Professor Real "${profReal}" not found.`);
     }
-    if (profOrig && profOrig !== profReal && nameEmailMap[profOrig]) {
-        guests.add(nameEmailMap[profOrig]);
-        Logger.log(`Adding guest (Original): ${profOrig} -> ${nameEmailMap[profOrig]}`);
-    } else if (profOrig && profOrig !== profReal) {
-        Logger.log(`Warning: Email for Professor Original "${profOrig}" not found.`);
+    if (professorsPrincipalString) {
+        const principalProfNames = professorsPrincipalString.split(',')
+            .map(name => name.trim())
+            .filter(name => name !== '');
+        Logger.log(`Processing principal professors from string "${professorsPrincipalString}": [${principalProfNames.join(', ')}]`);
+        principalProfNames.forEach(name => {
+            if (nameEmailMap[name]) {
+                guests.add(nameEmailMap[name]);
+                Logger.log(`Adding guest (Principal): ${name} -> ${nameEmailMap[name]}`);
+            } else {
+                Logger.log(`Warning: Email for Principal Professor "${name}" not found.`);
+            }
+        });
+    } else {
+        Logger.log(`Principal professors string is empty or null.`);
     }
     const guestArray = Array.from(guests);
     Logger.log(`Final guest list for booking: [${guestArray.join(', ')}]`);
@@ -343,6 +353,7 @@ function cancelBookingAdmin(bookingIdToCancel) {
                 Logger.log(`WARNING: Failed to delete Calendar event ${existingEventId}: ${calError.message}`);
             }
         }
+        createScheduleInstances();
         releaseScriptLock_(lock);
         lock = null;
         return createJsonResponse(true, `Reserva ${trimmedBookingId} cancelada com sucesso.`, { cancelledBookingId: trimmedBookingId });

@@ -1,6 +1,7 @@
 {
-  "scriptId": "1HKPJJOy7lDkl6jBT-Q42iOBkFnxi5qVZm-S55UwNn6AXXlmyDJvjSf_3",
+  "scriptId": "16vZVG4WhRRXgmrjbfKNj5kikzcAtlUwTPULh_8aQAEkXxmFkVkWISlGN",
   "rootDir": "app",
+  "projectId": "16vZVG4WhRRXgmrjbfKNj5kikzcAtlUwTPULh_8aQAEkXxmFkVkWISlGN",
   "scriptExtensions": [
     ".js",
     ".gs"
@@ -11,6 +12,5 @@
   "jsonExtensions": [
     ".json"
   ],
-  "filePushOrder": [],
-  "skipSubdirectories": false
+  "filePushOrder": []
 }

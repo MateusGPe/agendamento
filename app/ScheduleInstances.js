@@ -210,9 +210,10 @@ function getFilteredScheduleInstances(turma, weekStartDateString) {
             if (row && row.length >= reqCols) {
                 const baseId = String(row[idCol] || '').trim();
                 if (baseId) {
+                    const firstProfessor = (String(row[profCol] || '').split(',')[0] || '').trim();
                     map[baseId] = {
                         disciplina: String(row[discCol] || '').trim(),
-                        professor: String(row[profCol] || '').trim()
+                        professor: firstProfessor
                     };
                 }
             }
@@ -261,7 +262,9 @@ function getFilteredScheduleInstances(turma, weekStartDateString) {
             const instanceTurma = String(row[turmaCol] || '').trim();
             const instanceUTCDate = formatValueToDate(row[dateCol]);
             const formattedHoraInicio = formatValueToHHMM(row[hourCol], timeZone);
-            if (!instanceId || !baseId || !instanceTurma || !instanceUTCDate || !formattedHoraInicio) return;
+            if (!instanceId || !baseId || !instanceTurma || !instanceUTCDate || !formattedHoraInicio) {
+                return;
+            }
             if (instanceTurma !== trimmedTurma) return;
             if (instanceUTCDate < weekStartDate || instanceUTCDate > weekEndDate) return;
             const professorPrincipalInstance = String(row[profPrincCol] || '').trim();
@@ -275,15 +278,15 @@ function getFilteredScheduleInstances(turma, weekStartDateString) {
             const bookingDetails = bookingDetailsMap[instanceId];
             if (instanceStatus === STATUS_OCUPACAO.DISPONIVEL) {
                 disciplinaParaExibir = baseInfo.disciplina;
-                professorParaExibir = (originalType === TIPOS_HORARIO.VAGO) ? '' : baseInfo.professor;
+                professorParaExibir = (originalType === TIPOS_HORARIO.VAGO) ? '' : professorPrincipalInstance || baseInfo.professor;
             } else if (bookingDetails) {
                 disciplinaParaExibir = bookingDetails.disciplinaReal;
                 professorParaExibir = bookingDetails.professorReal;
                 professorOriginalNaReserva = bookingDetails.professorOriginalBooking;
             } else {
-                Logger.log(`Warning: Instância ${instanceId} (Status: ${instanceStatus}) sem detalhes de reserva 'Agendada'. Usando dados base.`);
+                Logger.log(`Warning: Instância ${instanceId} (Status: ${instanceStatus}) sem detalhes de reserva 'Agendada'. Usando dados base/instância.`);
                 disciplinaParaExibir = baseInfo.disciplina;
-                professorParaExibir = professorPrincipalInstance;
+                professorParaExibir = professorPrincipalInstance || baseInfo.professor;
             }
             filteredSlots.push({
                 idInstancia: instanceId,
@@ -299,9 +302,20 @@ function getFilteredScheduleInstances(turma, weekStartDateString) {
                 professorPrincipal: professorPrincipalInstance
             });
         });
+        const dailyCounts = { 'Segunda': 0, 'Terça': 0, 'Quarta': 0, 'Quinta': 0, 'Sexta': 0, 'Sábado': 0 };
+        filteredSlots.forEach(slot => {
+            if (slot.tipoOriginal === TIPOS_HORARIO.FIXO ||
+                (slot.tipoOriginal === TIPOS_HORARIO.VAGO && slot.statusOcupacao === STATUS_OCUPACAO.REPOSICAO_AGENDADA)) {
+                if (dailyCounts.hasOwnProperty(slot.diaSemana)) {
+                    dailyCounts[slot.diaSemana]++;
+                }
+            }
+        });
+        Logger.log(`Calculated daily counts for display (Turma ${trimmedTurma}, Week ${weekStartDateString}):`, JSON.stringify(dailyCounts));
         Logger.log(`Found ${filteredSlots.length} enriched slots for Turma "${trimmedTurma}" week starting ${weekStartDateString} (UTC).`);
-        return createJsonResponse(true, `${filteredSlots.length} horários encontrados.`, filteredSlots);
+        return createJsonResponse(true, `${filteredSlots.length} horários encontrados.`, { slots: filteredSlots, dailyCounts: dailyCounts });
     } catch (e) {
+        Logger.log(`Error in getFilteredScheduleInstances for Turma ${turma}, Week ${weekStartDateString}: ${e.message}\nStack: ${e.stack}`);
         return createJsonResponse(false, `Erro ao buscar horários filtrados: ${e.message}`, null);
     }
 }
