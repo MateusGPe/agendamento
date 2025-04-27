@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Guia Rápido - Sistema de Agendamento e Visualização de Horários</title>
+    <style>
+        /* Conteúdo do Stylesheet.html inserido aqui */
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            color: #333;
+            font-size: 16px;
+            -webkit-text-size-adjust: 100%;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1100px;
+            min-width: 300px;
+            margin: 20px auto;
+            background-color: #fff;
+            padding: 20px 15px;
+            box-shadow: 0 2px 15px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            box-sizing: border-box;
+        }
+        h1,
+        h2,
+        h3 {
+            color: #1a73e8;
+            margin-top: 0;
+            margin-bottom: 0.8em;
+            line-height: 1.3;
+        }
+        h1 {
+            border-bottom: 1px solid #eee;
+            padding-bottom: 0.5em;
+            margin-bottom: 1em;
+            font-size: 1.8em;
+        }
+        h2 {
+            font-size: 1.5em;
+        }
+        h3 {
+            font-size: 1.2em;
+        }
+        .filter-section h3,
+        .booking-form h3 {
+            margin-bottom: 1em;
+        }
+        p {
+            margin-bottom: 1em;
+        }
+        hr {
+            margin: 30px 0;
+            border: none;
+            border-top: 1px solid #e0e0e0;
+        }
+        a {
+            color: #1a73e8;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s ease-in-out, text-decoration 0.2s ease-in-out;
+        }
+        a:hover,
+        a:focus {
+            color: #1558b3;
+            text-decoration: underline;
+            outline: none;
+        }
+        a:focus-visible {
+            outline: 2px solid #1a73e8;
+            outline-offset: 2px;
+            border-radius: 2px;
+        }
+        button,
+        .button {
+            display: inline-block;
+            padding: 12px 18px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 500;
+            margin: 5px 10px 10px 0;
+            transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            text-align: center;
+            vertical-align: middle;
+            width: auto;
+            color: white;
+            background-color: #1a73e8;
+            box-sizing: border-box;
+        }
+        button:hover,
+        .button:hover {
+            background-color: #1558b3;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        button:disabled,
+        .button:disabled {
+            background-color: #e0e0e0;
+            color: #a0a0a0;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        button[onclick*="cancelBookingForm"] {
+            background-color: #f1f3f4;
+            color: #5f6368;
+        }
+        button[onclick*="cancelBookingForm"]:hover {
+            background-color: #e8eaed;
+        }
+        .cancel-button {
+            background-color: #dc3545;
+            padding: 5px 10px;
+            font-size: 0.9em;
+        }
+        .cancel-button:hover {
+            background-color: #c82333;
+        }
+        .report-absence-btn {
+            display: inline-block;
+            color: #333;
+            padding: 8px 8px;
+            font-size: 1.2em;
+            border-radius: 3px;
+            line-height: 1;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+        .report-absence-btn:hover {
+            background-color: #ffffff;
+        }
+        .action-button {
+            border: none;
+            cursor: pointer;
+            background: none;
+            opacity: 0.7;
+            transition: opacity 0.3s;
+            vertical-align: middle;
+        }
+        .slot-cell:hover .action-button {
+            opacity: 1;
+        }
+        .absence-icon-example {
+            display: inline-block;
+            background-color: #ffc107;
+            color: #333;
+            padding: 1px 3px;
+            font-size: 0.8em;
+            border: 1px solid #e0a800;
+            border-radius: 3px;
+            line-height: 1;
+            vertical-align: baseline;
+            cursor: default;
+        }
+        .filter-section label,
+        .booking-form label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 500;
+            font-size: 0.9em;
+            color: #3c4043;
+        }
+        .filter-section select,
+        .booking-form select,
+        .booking-form input[type="text"] {
+            width: 100%;
+            padding: 10px 12px;
+            margin-bottom: 18px;
+            border: 1px solid #dadce0;
+            border-radius: 4px;
+            box-sizing: border-box;
+            background-color: #fff;
+            font-size: 0.95em;
+            height: 40px;
+            color: #333;
+            line-height: normal;
+        }
+        .filter-section select,
+        .booking-form select {
+            appearance: none;
+            background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%235f6368%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.4-5.4-12.8z%22%2F%3E%3C%2Fsvg%3E');
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 10px auto;
+            padding-right: 35px;
+        }
+        .filter-section select:focus,
+        .booking-form select:focus,
+        .booking-form input[type="text"]:focus {
+            outline: none;
+            border-color: #1a73e8;
+            box-shadow: 0 0 0 1px #1a73e8;
+        }
+        .filter-section select:disabled {
+            background-color: #e8eaed;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        .filter-section,
+        .booking-form {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #dadce0;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+        }
+        .booking-form {
+            margin-top: 15px;
+            padding: 20px;
+        }
+        .booking-form p {
+            margin-bottom: 1.5em;
+            font-size: 0.95em;
+            color: #5f6368;
+            background-color: #fff;
+            padding: 8px 12px;
+            border-radius: 4px;
+            border: 1px solid #e0e0e0;
+        }
+        .booking-form p span {
+            font-weight: 500;
+            color: #202124;
+            display: block;
+        }
+        /**
+         * Turma (Class/Group) Styles
+         */
+        .turma-schedule-container {
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 1px dashed #ccc;
+        }
+        .turma-schedule-container:last-child {
+            border-bottom: none;
+        }
+        .turma-title {
+            font-size: 1.4em;
+            color: #1a73e8;
+            margin-bottom: 15px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        .schedule-container,
+        .cancel-table-container {
+            margin-top: 20px;
+            overflow-x: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #fff;
+            -webkit-overflow-scrolling: touch;
+        }
+        .cancel-table-container {
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+        .schedule-container p.info-message,
+        .schedule-container p.error-message {
+            padding: 25px 20px;
+            margin: 0;
+            text-align: center;
+            font-style: italic;
+            font-size: 1em;
+        }
+        .schedule-grid-table,
+        .cancel-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .schedule-grid-table th,
+        .schedule-grid-table td,
+        .cancel-table th,
+        .cancel-table td {
+            border: 1px solid #e0e0e0;
+            padding: 8px 10px;
+            vertical-align: middle;
+            box-sizing: border-box;
+        }
+        .schedule-grid-table th,
+        .cancel-table thead th {
+            background-color: #f8f9fa;
+            color: #3c4043;
+            font-weight: 500;
+            border-bottom: 2px solid #ddd;
+            position: sticky;
+            top: 0;
+            z-index: 3;
+        }
+        .cancel-table thead th {
+            z-index: 1;
+        }
+        .schedule-grid-table {
+            min-width: 700px;
+            table-layout: fixed;
+            font-size: 0.85em;
+        }
+        .schedule-grid-table th,
+        .schedule-grid-table td {
+            padding: 4px 6px;
+            text-align: center;
+        }
+        .schedule-grid-table td {
+            background-color: #fff;
+            position: relative;
+            line-height: 1.3;
+            min-width: 80px;
+            height: 60px;
+            word-wrap: break-word;
+        }
+        .schedule-grid-table tbody tr:nth-child(even) td {
+            background-color: #f9f9f9;
+        }
+        .schedule-grid-table td.hour-cell {
+            background-color: #e8f0fe;
+            font-weight: bold;
+            color: #1a73e8;
+            width: 60px;
+            min-width: 50px;
+            position: sticky;
+            left: 0;
+            z-index: 2;
+            padding: 6px 4px;
+        }
+        .schedule-grid-table tbody tr:nth-child(odd) td.hour-cell {
+            background-color: #e8f0fe;
+        }
+        .schedule-grid-table tbody tr:nth-child(even) td.hour-cell {
+            background-color: #d2e3fc;
+        }
+        .slot-cell {
+            transition: background-color 0.15s ease-in-out;
+        }
+        .slot-main-content {
+            margin-bottom: 1px;
+        }
+        .slot-status {
+            display: block;
+            font-size: 0.85em;
+            font-style: italic;
+            color: #5f6368;
+            margin-top: auto;
+        }
+        .slot-booked-public {
+            font-weight: 700;
+        }
+        .slot-status.status-disponivel,
+        .slot-status.status-reposicao {
+            color: #137333;
+        }
+        .slot-status.status-substituicao {
+            color: #a50e0e;
+        }
+        .slot-empty {
+            background-color: #f8f9fa;
+            color: #adb5bd;
+            font-style: italic;
+        }
+        .slot-available.slot-vago {
+            background-color: #e6f4ea;
+        }
+        .slot-available.slot-fixo {
+            background-color: #e8f0fe;
+        }
+        .slot-reposicao {
+            background-color: #d4edda;
+        }
+        .slot-substituicao {
+            background-color: #f8d7da;
+        }
+        .slot-unknown-status {
+            background-color: #fff3cd;
+        }
+        .clickable-slot {
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .clickable-slot:hover {
+            background-color: #fff3cd !important;
+            box-shadow: inset 0 0 0 2px #f79c00;
+            z-index: 1;
+        }
+        .selected-cell {
+            outline: 3px solid #1a73e8 !important;
+            outline-offset: -2px;
+            background-color: #d2e3fc !important;
+            z-index: 1;
+        }
+        .absent-professor {
+            text-decoration: line-through;
+            color: #dc3545;
+            font-style: italic;
+        }
+        .cancel-table {
+            font-size: 0.9em;
+        }
+        .cancel-table th,
+        .cancel-table td {
+            text-align: left;
+        }
+        .cancel-table tbody tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .cancelled-row td {
+            text-decoration: line-through;
+            color: #888;
+            background-color: #f1f1f1 !important;
+        }
+        .schedule-grid-table tfoot {
+            border-top: 2px solid #aaa;
+            background-color: #f0f0f0;
+            position: sticky;
+            bottom: 0;
+            z-index: 3;
+        }
+        .schedule-summary-row th,
+        .schedule-summary-row td {
+            font-weight: bold;
+            font-size: 0.9em;
+            padding: 8px;
+            text-align: center;
+            vertical-align: middle;
+            color: #333;
+            min-width: 80px;
+        }
+        .schedule-summary-row th.summary-label {
+            text-align: right;
+            background-color: #e8f0fe;
+            color: #1a73e8;
+            position: sticky;
+            left: 0;
+            z-index: 4;
+            background-clip: padding-box;
+        }
+        .schedule-summary-row td.summary-count {
+            background-color: #f8f9fa;
+        }
+        .schedule-summary-row td.limit-reached {
+            color: #d93025;
+            background-color: #fce8e6;
+            font-weight: 700;
+        }
+        .limit-indicator {
+            display: block;
+            font-size: 0.8em;
+            font-style: italic;
+            font-weight: normal;
+            margin-left: 4px;
+            color: inherit;
+        }
+        .section {
+            margin-top: 30px;
+            margin-bottom: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+        .section:last-of-type {
+            border-bottom: none;
+        }
+        .section>p {
+            font-size: 0.95em;
+            color: #5f6368;
+            margin-bottom: 15px;
+        }
+        .section>p .slot-type-vago,
+        .section>p .slot-status-disponivel {
+            color: #137333;
+            font-weight: bold;
+        }
+        .section>p .slot-type-fixo {
+            color: #174ea6;
+            font-weight: bold;
+        }
+        .loading {
+            position: fixed;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.85);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.5em;
+            color: #1a73e8;
+            z-index: 1000;
+        }
+        .loading::before {
+            content: '';
+            display: block;
+            width: 30px;
+            height: 30px;
+            margin-right: 12px;
+            border-radius: 50%;
+            border: 4px solid #e9ecef;
+            border-top-color: #1a73e8;
+            animation: spinner 0.75s linear infinite;
+        }
+        @keyframes spinner {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        .message {
+            margin-top: 20px;
+            padding: 12px 18px;
+            border-radius: 4px;
+            text-align: center;
+            word-break: break-word;
+            font-size: 0.95em;
+            border: 1px solid transparent;
+            display: none;
+        }
+        .message:not(:empty) {
+            display: block;
+        }
+        .message.success {
+            background-color: #e6f4ea;
+            color: #137333;
+            border-color: #a8d5b3;
+        }
+        .message.error {
+            background-color: #fce8e6;
+            color: #d93025;
+            border-color: #f5b4b0;
+        }
+        .message.info {
+            background-color: #e8f0fe;
+            color: #174ea6;
+            border-color: #a9c5f5;
+        }
+        @media screen and (max-width: 768px) {
+            body {
+                font-size: 15px;
+            }
+            .container {
+                padding: 15px 10px;
+                margin: 10px auto;
+                border-radius: 4px;
+            }
+            h1 {
+                font-size: 1.6em;
+            }
+            h2 {
+                font-size: 1.3em;
+            }
+            h3 {
+                font-size: 1.1em;
+            }
+            button,
+            .button {
+                width: 100%;
+                margin-right: 0;
+                margin-left: 0;
+                margin-bottom: 10px;
+                padding: 10px 15px;
+            }
+            .booking-form button:last-of-type {
+                margin-bottom: 0;
+            }
+            .filter-section select,
+            .booking-form input[type="text"],
+            .booking-form select {
+                font-size: 1em;
+                height: 44px;
+                padding: 10px;
+            }
+            .schedule-grid-table {
+                font-size: 0.8em;
+                min-width: unset;
+                table-layout: auto;
+            }
+            .schedule-grid-table th,
+            .schedule-grid-table td {
+                padding: 4px 5px;
+                min-width: 0;
+                height: auto;
+                word-break: break-word;
+            }
+            .schedule-grid-table td {
+                min-height: 50px;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+            }
+            .schedule-grid-table td.hour-cell {
+                width: 50px;
+                min-width: 45px;
+                padding: 5px 2px;
+                font-size: 0.9em;
+                min-height: 50px;
+                position: sticky;
+                left: 0;
+                z-index: 2;
+            }
+            .schedule-grid-table tbody tr:nth-child(odd) td.hour-cell {
+                background-color: #e8f0fe;
+            }
+            .schedule-grid-table tbody tr:nth-child(even) td.hour-cell {
+                background-color: #d2e3fc;
+            }
+            .slot-status {
+                font-size: 0.85em;
+            }
+            .schedule-grid-table tfoot th,
+            .schedule-grid-table tfoot td {
+                font-size: 0.85em;
+                padding: 5px;
+                min-width: 0;
+            }
+            .schedule-summary-row th.summary-label {
+                position: sticky;
+                left: 0;
+                z-index: 4;
+            }
+            .report-absence-btn {
+                font-size: 1.6em;
+                padding: 4px 8px;
+            }
+            .cancel-button {
+                padding: 4px 8px;
+                font-size: 0.85em;
+            }
+            .cancel-table {
+                font-size: 0.85em;
+            }
+            .cancel-table th,
+            .cancel-table td {
+                padding: 6px 8px;
+            }
+        }
+        @media screen and (max-width: 480px) {
+            body {
+                font-size: 14px;
+            }
+            .container {
+                padding: 10px 8px;
+                margin: 5px auto;
+                border-radius: 0;
+                box-shadow: none;
+            }
+            h1 {
+                font-size: 1.4em;
+            }
+            h2 {
+                font-size: 1.2em;
+            }
+            h3 {
+                font-size: 1.1em;
+            }
+            button,
+            .button {
+                padding: 10px 12px;
+                font-size: 0.95em;
+            }
+            .schedule-grid-table {
+                font-size: 0.75em;
+            }
+            .schedule-grid-table th,
+            .schedule-grid-table td {
+                padding: 3px 4px;
+            }
+            .schedule-grid-table td {
+                min-height: 45px;
+            }
+            .schedule-grid-table td.hour-cell {
+                width: 40px;
+                min-width: 35px;
+                font-size: 0.85em;
+                padding: 4px 1px;
+                min-height: 45px;
+            }
+            .slot-status {
+                font-size: 0.8em;
+            }
+            .schedule-grid-table tfoot th,
+            .schedule-grid-table tfoot td {
+                font-size: 0.8em;
+                padding: 4px;
+            }
+            .message {
+                padding: 10px 12px;
+                font-size: 0.9em;
+            }
+            .filter-section,
+            .booking-form {
+                padding: 10px;
+            }
+            .booking-form {
+                padding: 15px 10px;
+            }
+            .filter-section label,
+            .booking-form label {
+                font-size: 0.85em;
+            }
+            .filter-section select,
+            .booking-form select,
+            .booking-form input[type="text"] {
+                font-size: 0.95em;
+                height: 40px;
+            }
+        }
+
+        /* Styles specific for guide pages */
+        .container h1 {
+            margin-bottom: 20px;
+        }
+        .container h2 {
+             margin-top: 25px;
+             padding-bottom: 5px;
+             border-bottom: 1px solid #eee;
+        }
+        .container h3 {
+             margin-top: 20px;
+             color: #333;
+             font-size: 1.1em;
+        }
+         .container ol,
+         .container ul {
+            margin-bottom: 1em;
+            padding-left: 20px;
+        }
+        .container ol li,
+        .container ul li {
+            margin-bottom: 5px;
+        }
+         .container hr {
+            margin: 25px 0;
+        }
+        .container .attention {
+            color: #d93025;
+            font-weight: bold;
+         }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Guia Rápido - Sistema de Agendamento e Visualização de Horários</h1>
+
+        <p>Este guia rápido mostra como realizar as principais ações no sistema. Lembre-se: o sistema pode ser <strong class="attention">lento</strong>. Sempre <strong class="attention">aguarde</strong> a tela de "Carregando..." desaparecer!</p>
+
+        <p><strong>Acesso:</strong> Use o link fornecido (precisa estar logado(a) na sua conta IFSP autorizada).</p>
+
+        <hr>
+
+        <h2>1. Página Principal (Agendamento e Visualização)</h2>
+        <p>Você verá seu E-mail e Papel no topo.</p>
+        <ul>
+            <li><strong>Objetivo:</strong> Ver horários de uma turma/semana específica, agendar Reposições/Substituições, informar Ausências.</li>
+            <li><strong>Links Úteis:</strong> Use os links abaixo do seu papel para ir para a "Visualização Pública" ou "Cancelar Agendamentos".</li>
+        </ul>
+
+        <h3>1.1. Ver o Horário de uma Turma/Semana:</h3>
+        <ol>
+            <li>Na seção "Filtros de Visualização":</li>
+            <li>Selecione a <strong>Turma</strong>.</li>
+            <li>Selecione a <strong>Semana</strong> (começa na Segunda-feira). A semana atual é pré-selecionada.</li>
+            <li>Clique em <strong>"Buscar Horário"</strong>.</li>
+        </ol>
+        <p style="margin-left: 20px;"><strong class="attention">AGUARDE!</strong> A tela "Carregando..." aparecerá. Pode demorar.</p>
+
+        <h3>1.2. Entender a Grade de Horários:</h3>
+        <ul>
+            <li>Mostra os horários da Turma na Semana selecionada.</li>
+            <li><strong>Cores das Células:</strong>
+                <ul>
+                    <li><span style="color: #137333; font-weight: bold;">Verde Claro:</span> Horário <strong>VAGO</strong> disponível (clique para Reposição).</li>
+                    <li><span style="color: #174ea6; font-weight: bold;">Azul Claro:</span> Horário <strong>FIXO</strong> disponível (clique para Substituição ou clique no ícone para Ausência).</li>
+                    <li><span style="color: #137333; font-weight: bold;">Verde:</span> Horário <strong>VAGO</strong> agendado como Reposição.</li>
+                    <li><span style="color: #d93025; font-weight: bold;">Vermelho Claro:</span> Horário <strong>FIXO</strong> agendado como Substituição.</li>
+                    <li>Cinza/Vazio: Horário Vago não agendado.</li>
+                </ul>
+            </li>
+            <li><strong>Texto:</strong> Disciplina - Professor.</li>
+            <li><strong>Status:</strong> <code>(Disponivel)</code>, <code>(Reposicao Agendada)</code>, etc., entre parênteses.</li>
+            <li><strong>Professor Riscado:</strong> <s>Nome Professor</s> indica que o professor foi marcado como ausente.</li>
+            <li><strong>Ícone 📅❌:</strong> Aparece em horários FIXOS futuros (passe o mouse na célula). Clique para informar ausência.</li>
+            <li><strong>Rodapé:</strong> Mostra a soma total de aulas (Fixas + Reposições Agendadas) por dia, respeitando o limite estabelecido pelo <strong class="attention">Art. 26 § 3º da organização didática do IFSP</strong>. Se a contagem para um dia atingir ou exceder este limite, a célula ficará destacada.</li>
+        </ul>
+
+        <h3>1.3. Agendar Reposição/Recuperação Paralela:</h3>
+        <ul>
+            <li>Só pode em horário <strong>VAGO Disponível</strong> (verde claro).</li>
+        </ul>
+        <ol>
+            <li>Clique na célula <strong>verde claro</strong> desejada.</li>
+            <li>A seção "Agendar Reposição..." aparece.</li>
+            <li>Selecione o <strong>Professor</strong> que irá repor.</li>
+            <li>Selecione a <strong>Disciplina</strong>.</li>
+            <li>Clique em <strong>"Confirmar Agendamento..."</strong>.</li>
+        </ol>
+         <p style="margin-left: 20px;"><strong class="attention">AGUARDE!</strong></p>
+        <p style="margin-left: 20px;">O formulário some, a grade recarrega atualizada.</p>
+
+
+        <h3>1.4. Agendar Substituição:</h3>
+        <ul>
+            <li>Só pode em horário <strong>FIXO Disponível</strong> (azul claro).</li>
+        </ul>
+        <ol>
+            <li>Clique na célula <strong>azul claro</strong> desejada.</li>
+            <li>A seção "Agendar Substituição" aparece.</li>
+            <li>Selecione o <strong>Professor Substituto</strong>.</li>
+            <li>Selecione a <strong>Disciplina</strong>.</li>
+            <li>Clique em <strong>"Confirmar Agendamento..."</strong>.</li>
+        </ol>
+        <p style="margin-left: 20px;"><strong class="attention">AGUARDE!</strong></p>
+        <p style="margin-left: 20px;">O formulário some, a grade recarrega atualizada.</p>
+
+        <h3>1.5. Informar Ausência de Professor:</h3>
+        <ul>
+            <li>Só pode em horário <strong>FIXO futuro</strong>.</li>
+        </ul>
+        <ol>
+            <li>Passe o mouse na célula do horário <strong>FIXO</strong> desejado.</li>
+            <li>Clique no ícone <strong>📅❌</strong>.</li>
+            <li>A seção "Informar Ausência" aparece.</li>
+            <li>Selecione o <strong>Professor Ausente</strong> (só aparece quem já é Professor do horário).</li>
+            <li>Clique em <strong>"Confirmar Ausência"</strong>.</li>
+        </ol>
+        <p style="margin-left: 20px;"><strong class="attention">AGUARDE!</strong></p>
+         <p style="margin-left: 20px;">O formulário some, a grade recarrega atualizada (nome do professor aparece riscado).</p>
+
+        <h3>1.6. Cancelar Formulários:</h3>
+        <ul>
+            <li>Se abriu um formulário (Reposição, Substituição ou Ausência) mas desistiu, clique no botão <strong>"Cancelar"</strong> no formulário. Ele some.</li>
+        </ul>
+
+        <hr>
+
+        <h2>2. Visualização Pública</h2>
+        <ul>
+            <li><strong>Objetivo:</strong> Ver horários de <strong>todas as turmas</strong> em uma semana (somente horários FIXOS e AGENDADOS).</li>
+            <li><strong>Acesso:</strong> Clique no link "Visualizar Agendamentos" na página principal.</li>
+            <li><strong>Filtro:</strong> Selecione a <strong>Semana</strong> e clique em <strong>"Buscar Horários"</strong>.</li>
+            <li><strong class="attention">Não é possível:</strong> Agendar, informar ausência ou cancelar por aqui. É apenas para ver.</li>
+        </ul>
+
+        <hr>
+
+        <h2>3. Cancelar Agendamentos</h2>
+        <ul>
+            <li><strong>Objetivo:</strong> Ver e cancelar reservas futuras que você tem permissão para cancelar.</li>
+            <li><strong>Acesso:</strong> Clique no link "Cancelar Agendamentos" na página principal.</li>
+        </ul>
+        <h3>Como Cancelar:</h3>
+        <ol>
+            <li>Clique em <strong>"Carregar Reservas Agendadas"</strong>.</li>
+        </ol>
+         <p style="margin-left: 20px;"><strong class="attention">AGUARDE!</strong></p>
+        <ol start="2">
+            <li>Uma lista aparece com suas reservas futuras.</li>
+            <li>Encontre a reserva na lista e clique no botão <strong>"Cancelar"</strong>.</li>
+            <li>Leia a mensagem de confirmação e clique em <strong>"OK"</strong> se tiver certeza.</li>
+        </ol>
+        <p style="margin-left: 20px;"><strong class="attention">AGUARDE!</strong></p>
+         <ol start="5">
+            <li>A linha da reserva na lista será riscada e o botão mudará para "Cancelada".</li>
+        </ol>
+
+        <hr>
+
+        <h2>4. Notificações e Calendar</h2>
+        <ul>
+            <li>Você receberá um <strong>e-mail</strong> de confirmação ao agendar. Outros envolvidos e administradores também recebem cópia.</li>
+            <li>Um <strong>evento</strong> é criado no Google Calendar configurado para o sistema.</li>
+            <li><strong class="attention">IMPORTANTE:</strong> O evento no Calendar <strong>SEMPRE criará uma sala de Google Meet</strong>. <strong class="attention">IGNORE esta sala de Meet</strong>. A aula/atividade agendada acontece onde foi planejado (geralmente presencial).</li>
+            <li>Ao cancelar uma reserva, o sistema tenta excluir o evento correspondente no Calendar.</li>
+        </ul>
+
+        <hr>
+
+        <h2>5. Paciência é Fundamental!</h2>
+        <ul>
+            <li>O sistema não é instantâneo. Sempre que clicar em um botão para buscar dados, agendar, informar ausência ou cancelar, <strong class="attention">aguarde a tela "Carregando..." e a mensagem de resultado (success/erro)</strong>.</li>
+            <li>Clicar várias vezes só atrapalha.</li>
+        </ul>
+
+        <p style="margin-top: 30px;">Em caso de dúvidas ou problemas, contate a administração.</p>
+
+         <!-- Removing the back link as it's specific to the Apps Script web app -->
+        <!-- <p><a href="<?= ScriptApp.getService().getUrl() ?>">← Voltar para o Aplicativo Principal</a></p> -->
+
+    </div>
+</body>
+</html>

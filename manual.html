@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Manual Completo - Sistema de Agendamento e Visualização de Horários</title>
+    <style>
+        /* Conteúdo do Stylesheet.html inserido aqui */
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            color: #333;
+            font-size: 16px;
+            -webkit-text-size-adjust: 100%;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1100px;
+            min-width: 300px;
+            margin: 20px auto;
+            background-color: #fff;
+            padding: 20px 15px;
+            box-shadow: 0 2px 15px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            box-sizing: border-box;
+        }
+        h1,
+        h2,
+        h3 {
+            color: #1a73e8;
+            margin-top: 0;
+            margin-bottom: 0.8em;
+            line-height: 1.3;
+        }
+        h1 {
+            border-bottom: 1px solid #eee;
+            padding-bottom: 0.5em;
+            margin-bottom: 1em;
+            font-size: 1.8em;
+        }
+        h2 {
+            font-size: 1.5em;
+        }
+        h3 {
+            font-size: 1.2em;
+        }
+        .filter-section h3,
+        .booking-form h3 {
+            margin-bottom: 1em;
+        }
+        p {
+            margin-bottom: 1em;
+        }
+        hr {
+            margin: 30px 0;
+            border: none;
+            border-top: 1px solid #e0e0e0;
+        }
+        a {
+            color: #1a73e8;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s ease-in-out, text-decoration 0.2s ease-in-out;
+        }
+        a:hover,
+        a:focus {
+            color: #1558b3;
+            text-decoration: underline;
+            outline: none;
+        }
+        a:focus-visible {
+            outline: 2px solid #1a73e8;
+            outline-offset: 2px;
+            border-radius: 2px;
+        }
+        button,
+        .button {
+            display: inline-block;
+            padding: 12px 18px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 500;
+            margin: 5px 10px 10px 0;
+            transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            text-align: center;
+            vertical-align: middle;
+            width: auto;
+            color: white;
+            background-color: #1a73e8;
+            box-sizing: border-box;
+        }
+        button:hover,
+        .button:hover {
+            background-color: #1558b3;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        button:disabled,
+        .button:disabled {
+            background-color: #e0e0e0;
+            color: #a0a0a0;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        button[onclick*="cancelBookingForm"] {
+            background-color: #f1f3f4;
+            color: #5f6368;
+        }
+        button[onclick*="cancelBookingForm"]:hover {
+            background-color: #e8eaed;
+        }
+        .cancel-button {
+            background-color: #dc3545;
+            padding: 5px 10px;
+            font-size: 0.9em;
+        }
+        .cancel-button:hover {
+            background-color: #c82333;
+        }
+        .report-absence-btn {
+            display: inline-block;
+            color: #333;
+            padding: 8px 8px;
+            font-size: 1.2em;
+            border-radius: 3px;
+            line-height: 1;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+        .report-absence-btn:hover {
+            background-color: #ffffff;
+        }
+        .action-button {
+            border: none;
+            cursor: pointer;
+            background: none;
+            opacity: 0.7;
+            transition: opacity 0.3s;
+            vertical-align: middle;
+        }
+        .slot-cell:hover .action-button {
+            opacity: 1;
+        }
+        .absence-icon-example {
+            display: inline-block;
+            background-color: #ffc107;
+            color: #333;
+            padding: 1px 3px;
+            font-size: 0.8em;
+            border: 1px solid #e0a800;
+            border-radius: 3px;
+            line-height: 1;
+            vertical-align: baseline;
+            cursor: default;
+        }
+        .filter-section label,
+        .booking-form label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 500;
+            font-size: 0.9em;
+            color: #3c4043;
+        }
+        .filter-section select,
+        .booking-form select,
+        .booking-form input[type="text"] {
+            width: 100%;
+            padding: 10px 12px;
+            margin-bottom: 18px;
+            border: 1px solid #dadce0;
+            border-radius: 4px;
+            box-sizing: border-box;
+            background-color: #fff;
+            font-size: 0.95em;
+            height: 40px;
+            color: #333;
+            line-height: normal;
+        }
+        .filter-section select,
+        .booking-form select {
+            appearance: none;
+            background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%235f6368%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.4-5.4-12.8z%22%2F%3E%3C%2Fsvg%3E');
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 10px auto;
+            padding-right: 35px;
+        }
+        .filter-section select:focus,
+        .booking-form select:focus,
+        .booking-form input[type="text"]:focus {
+            outline: none;
+            border-color: #1a73e8;
+            box-shadow: 0 0 0 1px #1a73e8;
+        }
+        .filter-section select:disabled {
+            background-color: #e8eaed;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        .filter-section,
+        .booking-form {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #dadce0;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+        }
+        .booking-form {
+            margin-top: 15px;
+            padding: 20px;
+        }
+        .booking-form p {
+            margin-bottom: 1.5em;
+            font-size: 0.95em;
+            color: #5f6368;
+            background-color: #fff;
+            padding: 8px 12px;
+            border-radius: 4px;
+            border: 1px solid #e0e0e0;
+        }
+        .booking-form p span {
+            font-weight: 500;
+            color: #202124;
+            display: block;
+        }
+        /**
+         * Turma (Class/Group) Styles
+         */
+        .turma-schedule-container {
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 1px dashed #ccc;
+        }
+        .turma-schedule-container:last-child {
+            border-bottom: none;
+        }
+        .turma-title {
+            font-size: 1.4em;
+            color: #1a73e8;
+            margin-bottom: 15px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        .schedule-container,
+        .cancel-table-container {
+            margin-top: 20px;
+            overflow-x: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #fff;
+            -webkit-overflow-scrolling: touch;
+        }
+        .cancel-table-container {
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+        .schedule-container p.info-message,
+        .schedule-container p.error-message {
+            padding: 25px 20px;
+            margin: 0;
+            text-align: center;
+            font-style: italic;
+            font-size: 1em;
+        }
+        .schedule-grid-table,
+        .cancel-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .schedule-grid-table th,
+        .schedule-grid-table td,
+        .cancel-table th,
+        .cancel-table td {
+            border: 1px solid #e0e0e0;
+            padding: 8px 10px;
+            vertical-align: middle;
+            box-sizing: border-box;
+        }
+        .schedule-grid-table th,
+        .cancel-table thead th {
+            background-color: #f8f9fa;
+            color: #3c4043;
+            font-weight: 500;
+            border-bottom: 2px solid #ddd;
+            position: sticky;
+            top: 0;
+            z-index: 3;
+        }
+        .cancel-table thead th {
+            z-index: 1;
+        }
+        .schedule-grid-table {
+            min-width: 700px;
+            table-layout: fixed;
+            font-size: 0.85em;
+        }
+        .schedule-grid-table th,
+        .schedule-grid-table td {
+            padding: 4px 6px;
+            text-align: center;
+        }
+        .schedule-grid-table td {
+            background-color: #fff;
+            position: relative;
+            line-height: 1.3;
+            min-width: 80px;
+            height: 60px;
+            word-wrap: break-word;
+        }
+        .schedule-grid-table tbody tr:nth-child(even) td {
+            background-color: #f9f9f9;
+        }
+        .schedule-grid-table td.hour-cell {
+            background-color: #e8f0fe;
+            font-weight: bold;
+            color: #1a73e8;
+            width: 60px;
+            min-width: 50px;
+            position: sticky;
+            left: 0;
+            z-index: 2;
+            padding: 6px 4px;
+        }
+        .schedule-grid-table tbody tr:nth-child(odd) td.hour-cell {
+            background-color: #e8f0fe;
+        }
+        .schedule-grid-table tbody tr:nth-child(even) td.hour-cell {
+            background-color: #d2e3fc;
+        }
+        .slot-cell {
+            transition: background-color 0.15s ease-in-out;
+        }
+        .slot-main-content {
+            margin-bottom: 1px;
+        }
+        .slot-status {
+            display: block;
+            font-size: 0.85em;
+            font-style: italic;
+            color: #5f6368;
+            margin-top: auto;
+        }
+        .slot-booked-public {
+            font-weight: 700;
+        }
+        .slot-status.status-disponivel,
+        .slot-status.status-reposicao {
+            color: #137333;
+        }
+        .slot-status.status-substituicao {
+            color: #a50e0e;
+        }
+        .slot-empty {
+            background-color: #f8f9fa;
+            color: #adb5bd;
+            font-style: italic;
+        }
+        .slot-available.slot-vago {
+            background-color: #e6f4ea;
+        }
+        .slot-available.slot-fixo {
+            background-color: #e8f0fe;
+        }
+        .slot-reposicao {
+            background-color: #d4edda;
+        }
+        .slot-substituicao {
+            background-color: #f8d7da;
+        }
+        .slot-unknown-status {
+            background-color: #fff3cd;
+        }
+        .clickable-slot {
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .clickable-slot:hover {
+            background-color: #fff3cd !important;
+            box-shadow: inset 0 0 0 2px #f79c00;
+            z-index: 1;
+        }
+        .selected-cell {
+            outline: 3px solid #1a73e8 !important;
+            outline-offset: -2px;
+            background-color: #d2e3fc !important;
+            z-index: 1;
+        }
+        .absent-professor {
+            text-decoration: line-through;
+            color: #dc3545;
+            font-style: italic;
+        }
+        .cancel-table {
+            font-size: 0.9em;
+        }
+        .cancel-table th,
+        .cancel-table td {
+            text-align: left;
+        }
+        .cancel-table tbody tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .cancelled-row td {
+            text-decoration: line-through;
+            color: #888;
+            background-color: #f1f1f1 !important;
+        }
+        .schedule-grid-table tfoot {
+            border-top: 2px solid #aaa;
+            background-color: #f0f0f0;
+            position: sticky;
+            bottom: 0;
+            z-index: 3;
+        }
+        .schedule-summary-row th,
+        .schedule-summary-row td {
+            font-weight: bold;
+            font-size: 0.9em;
+            padding: 8px;
+            text-align: center;
+            vertical-align: middle;
+            color: #333;
+            min-width: 80px;
+        }
+        .schedule-summary-row th.summary-label {
+            text-align: right;
+            background-color: #e8f0fe;
+            color: #1a73e8;
+            position: sticky;
+            left: 0;
+            z-index: 4;
+            background-clip: padding-box;
+        }
+        .schedule-summary-row td.summary-count {
+            background-color: #f8f9fa;
+        }
+        .schedule-summary-row td.limit-reached {
+            color: #d93025;
+            background-color: #fce8e6;
+            font-weight: 700;
+        }
+        .limit-indicator {
+            display: block;
+            font-size: 0.8em;
+            font-style: italic;
+            font-weight: normal;
+            margin-left: 4px;
+            color: inherit;
+        }
+        .section {
+            margin-top: 30px;
+            margin-bottom: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+        .section:last-of-type {
+            border-bottom: none;
+        }
+        .section>p {
+            font-size: 0.95em;
+            color: #5f6368;
+            margin-bottom: 15px;
+        }
+        .section>p .slot-type-vago,
+        .section>p .slot-status-disponivel {
+            color: #137333;
+            font-weight: bold;
+        }
+        .section>p .slot-type-fixo {
+            color: #174ea6;
+            font-weight: bold;
+        }
+        .loading {
+            position: fixed;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.85);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.5em;
+            color: #1a73e8;
+            z-index: 1000;
+        }
+        .loading::before {
+            content: '';
+            display: block;
+            width: 30px;
+            height: 30px;
+            margin-right: 12px;
+            border-radius: 50%;
+            border: 4px solid #e9ecef;
+            border-top-color: #1a73e8;
+            animation: spinner 0.75s linear infinite;
+        }
+        @keyframes spinner {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        .message {
+            margin-top: 20px;
+            padding: 12px 18px;
+            border-radius: 4px;
+            text-align: center;
+            word-break: break-word;
+            font-size: 0.95em;
+            border: 1px solid transparent;
+            display: none;
+        }
+        .message:not(:empty) {
+            display: block;
+        }
+        .message.success {
+            background-color: #e6f4ea;
+            color: #137333;
+            border-color: #a8d5b3;
+        }
+        .message.error {
+            background-color: #fce8e6;
+            color: #d93025;
+            border-color: #f5b4b0;
+        }
+        .message.info {
+            background-color: #e8f0fe;
+            color: #174ea6;
+            border-color: #a9c5f5;
+        }
+        @media screen and (max-width: 768px) {
+            body {
+                font-size: 15px;
+            }
+            .container {
+                padding: 15px 10px;
+                margin: 10px auto;
+                border-radius: 4px;
+            }
+            h1 {
+                font-size: 1.6em;
+            }
+            h2 {
+                font-size: 1.3em;
+            }
+            h3 {
+                font-size: 1.1em;
+            }
+            button,
+            .button {
+                width: 100%;
+                margin-right: 0;
+                margin-left: 0;
+                margin-bottom: 10px;
+                padding: 10px 15px;
+            }
+            .booking-form button:last-of-type {
+                margin-bottom: 0;
+            }
+            .filter-section select,
+            .booking-form input[type="text"],
+            .booking-form select {
+                font-size: 1em;
+                height: 44px;
+                padding: 10px;
+            }
+            .schedule-grid-table {
+                font-size: 0.8em;
+                min-width: unset;
+                table-layout: auto;
+            }
+            .schedule-grid-table th,
+            .schedule-grid-table td {
+                padding: 4px 5px;
+                min-width: 0;
+                height: auto;
+                word-break: break-word;
+            }
+            .schedule-grid-table td {
+                min-height: 50px;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+            }
+            .schedule-grid-table td.hour-cell {
+                width: 50px;
+                min-width: 45px;
+                padding: 5px 2px;
+                font-size: 0.9em;
+                min-height: 50px;
+                position: sticky;
+                left: 0;
+                z-index: 2;
+            }
+            .schedule-grid-table tbody tr:nth-child(odd) td.hour-cell {
+                background-color: #e8f0fe;
+            }
+            .schedule-grid-table tbody tr:nth-child(even) td.hour-cell {
+                background-color: #d2e3fc;
+            }
+            .slot-status {
+                font-size: 0.85em;
+            }
+            .schedule-grid-table tfoot th,
+            .schedule-grid-table tfoot td {
+                font-size: 0.85em;
+                padding: 5px;
+                min-width: 0;
+            }
+            .schedule-summary-row th.summary-label {
+                position: sticky;
+                left: 0;
+                z-index: 4;
+            }
+            .report-absence-btn {
+                font-size: 1.6em;
+                padding: 4px 8px;
+            }
+            .cancel-button {
+                padding: 4px 8px;
+                font-size: 0.85em;
+            }
+            .cancel-table {
+                font-size: 0.85em;
+            }
+            .cancel-table th,
+            .cancel-table td {
+                padding: 6px 8px;
+            }
+        }
+        @media screen and (max-width: 480px) {
+            body {
+                font-size: 14px;
+            }
+            .container {
+                padding: 10px 8px;
+                margin: 5px auto;
+                border-radius: 0;
+                box-shadow: none;
+            }
+            h1 {
+                font-size: 1.4em;
+            }
+            h2 {
+                font-size: 1.2em;
+            }
+            h3 {
+                font-size: 1.1em;
+            }
+            button,
+            .button {
+                padding: 10px 12px;
+                font-size: 0.95em;
+            }
+            .schedule-grid-table {
+                font-size: 0.75em;
+            }
+            .schedule-grid-table th,
+            .schedule-grid-table td {
+                padding: 3px 4px;
+            }
+            .schedule-grid-table td {
+                min-height: 45px;
+            }
+            .schedule-grid-table td.hour-cell {
+                width: 40px;
+                min-width: 35px;
+                font-size: 0.85em;
+                padding: 4px 1px;
+                min-height: 45px;
+            }
+            .slot-status {
+                font-size: 0.8em;
+            }
+            .schedule-grid-table tfoot th,
+            .schedule-grid-table tfoot td {
+                font-size: 0.8em;
+                padding: 4px;
+            }
+            .message {
+                padding: 10px 12px;
+                font-size: 0.9em;
+            }
+            .filter-section,
+            .booking-form {
+                padding: 10px;
+            }
+            .booking-form {
+                padding: 15px 10px;
+            }
+            .filter-section label,
+            .booking-form label {
+                font-size: 0.85em;
+            }
+            .filter-section select,
+            .booking-form select,
+            .booking-form input[type="text"] {
+                font-size: 0.95em;
+                height: 40px;
+            }
+        }
+
+        /* Styles specific for documentation pages */
+        .container h1 {
+            margin-bottom: 20px;
+        }
+        .container h2 {
+             margin-top: 25px;
+             padding-bottom: 5px;
+             border-bottom: 1px solid #eee;
+        }
+        .container h3 {
+             margin-top: 20px;
+             color: #333;
+             font-size: 1.1em;
+        }
+        .container ul {
+            margin-bottom: 1em;
+            padding-left: 20px;
+        }
+        .container ul li {
+            margin-bottom: 5px;
+        }
+        .container hr {
+            margin: 25px 0;
+        }
+        .container .faq dt {
+            font-weight: bold;
+            margin-top: 15px;
+            margin-bottom: 5px;
+        }
+        .container .faq dd {
+            margin-left: 20px;
+            margin-bottom: 10px;
+            color: #555;
+        }
+         .container .attention {
+            color: #d93025;
+            font-weight: bold;
+         }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Manual do Usuário - Sistema de Agendamento e Visualização de Horários</h1>
+
+        <p>Este documento explica como utilizar o Sistema de Agendamento e Visualização de Horários do IFSP, desenvolvido em Google Apps Script.</p>
+
+        <p><strong>Público-Alvo:</strong> Professores, Coordenadores e Servidores Autorizados.</p>
+        <p><strong>Guia Rápido: <a href="/quickguide.html">Clique aqui.</a></p>
+
+        <hr>
+
+        <h2>1. Introdução</h2>
+        <p>Bem-vindo(a) ao Sistema de Agendamento e Visualização de Horários. Esta ferramenta foi criada para facilitar a organização e o acompanhamento dos horários de aula, permitindo a visualização da grade por turma e semana, bem como o agendamento de reposições e substituições e a comunicação de ausências por usuários autorizados.</p>
+        <p>O sistema é construído sobre Google Sheets e Google Apps Script. Devido à forma como esses sistemas funcionam, <strong class="attention">a navegação e o carregamento de dados podem ser um pouco lentos</strong>. Por favor, tenha paciência e aguarde as telas de "Carregando..." aparecerem e desaparecerem. Clicar repetidamente não acelera o processo e pode causar erros.</p>
+        <p>O aplicativo possui três visualizações principais:</p>
+        <ul>
+            <li><strong>Página Principal (Agendamento e Visualização):</strong> Onde usuários autorizados (Administradores e Professores) podem filtrar e ver horários, e agendar reposições/substituições ou informar ausências.</li>
+            <li><strong>Visualização Pública (Visualizar Agendamentos):</strong> Uma página simplificada e somente para visualização, onde qualquer pessoa com o link pode ver os horários fixos e agendamentos para todas as turmas em uma determinada semana.</li>
+            <li><strong>Cancelar Agendamentos:</strong> Uma página para usuários autorizados (Administradores e Professores designados) visualizarem e cancelarem reservas futuras já agendadas.</li>
+        </ul>
+
+        <h2>2. Acesso ao Sistema</h2>
+        <p>Você acessará o sistema através de um link fornecido pela administração. É necessário estar logado(a) em uma conta Google (<code>@ifsp.edu.br</code>) que tenha sido previamente autorizada para usar o sistema.</p>
+        <p>Ao acessar a página principal, você verá seu e-mail logado e seu Papel (por exemplo, "Admin", "Professor") exibidos. Seu papel determina quais ações você pode realizar no sistema. Se seu papel não aparecer ou você vir uma mensagem de "Acesso Negado", entre em contato com o administrador do sistema.</p>
+
+        <h2>3. Página Principal: Agendamento e Visualização</h2>
+        <p>Esta é a tela principal para usuários autorizados realizarem ações no sistema.</p>
+
+        <h3>3.1. Informações do Usuário</h3>
+        <p>No topo da página, após o título, você verá:</p>
+        <ul>
+            <li><strong>Usuário:</strong> Seu e-mail cadastrado.</li>
+            <li><strong>Papel:</strong> Seu nível de permissão no sistema (Admin ou Professor).</li>
+        </ul>
+        <p>Logo abaixo, há links para a "Visualização Pública" e a página de "Cancelar Agendamentos".</p>
+
+        <h3>3.2. Filtros de Visualização</h3>
+        <p>Antes de ver qualquer horário, você precisa selecionar:</p>
+        <ul>
+            <li><strong>Turma:</strong> Escolha a turma cujos horários você deseja visualizar.</li>
+            <li><strong>Semana:</strong> Selecione a semana de início (sempre uma Segunda-feira) que você quer carregar. O sistema geralmente pré-seleciona a semana atual.</li>
+        </ul>
+        <p>Após selecionar ambos os filtros, clique no botão <strong>"Buscar Horário"</strong>.</p>
+
+        <h3>3.3. Carregando o Horário (Aguarde!)</h3>
+        <p>Ao clicar em "Buscar Horário", uma mensagem de <strong class="attention">"Carregando... Isso demora um pouco!!!"</strong> aparecerá. <strong class="attention">Por favor, aguarde pacificamente.</strong> O sistema está buscando e processando os dados na planilha. Isso pode levar de alguns segundos a mais de um minuto, dependendo da quantidade de dados e da carga nos servidores do Google.</p>
+
+        <h3>3.4. A Grade de Horários</h3>
+        <p>Após o carregamento, a grade de horários para a turma e semana selecionadas será exibida.</p>
+        <ul>
+            <li><strong>Colunas:</strong> Os dias da semana (Segunda a Sábado).</li>
+            <li><strong>Linhas:</strong> Os horários de início das aulas.</li>
+            <li><strong>Células:</strong> Representam um slot de horário específico (Dia + Hora) para a turma selecionada.</li>
+        </ul>
+        <p>Cada célula pode exibir diferentes informações e cores, dependendo do tipo de horário original e do seu status atual:</p>
+        <ul>
+            <li><strong>Células Claras (Status: Disponível):</strong>
+                <ul>
+                    <li><span style="color: #137333; font-weight: bold;">Verde Claro (Tipo: Vago)</span>: Indica um horário que não faz parte do horário fixo da turma e está livre para agendamento (geralmente Reposições/Recuperações). Usuários autorizados podem clicar nestas células para agendar.</li>
+                    <li><span style="color: #174ea6; font-weight: bold;">Azul Claro (Tipo: Fixo)</span>: Indica um horário que faz parte do horário fixo da turma e está livre para agendamento de Substituições. Mostrará a disciplina e o(s) professor(es) principal(is). Usuários autorizados podem clicar nestas células para agendar.</li>
+                </ul>
+            </li>
+            <li><strong>Células Coloridas (Status: Agendado):</strong>
+                <ul>
+                    <li><span style="color: #137333; font-weight: bold;">Verde (Status: Reposição Agendada)</span>: Indica um horário que era "Vago" e foi agendado como Reposição. Mostrará a disciplina e o professor que irá repor.</li>
+                    <li><span style="color: #d93025; font-weight: bold;">Vermelho Claro (Status: Substituição Agendada)</span>: Indica um horário que era "Fixo" e foi agendado como Substituição. Mostrará a disciplina e o Professor Substituto. Se o professor original for diferente, ele pode ser indicado entre parênteses.</li>
+                </ul>
+            </li>
+            <li><strong>Células Cinzas (Status: Vago sem Agendamento):</strong> Horários Vagos que não foram agendados aparecem como células vazias ou cinzas na grade. Eles não são clicáveis para agendamento.</li>
+            <li><strong>Células Amarelas (Status: Desconhecido/Aviso):</strong> Raramente, um status inesperado pode aparecer, indicado por amarelo.</li>
+            <li><strong>Texto na Célula:</strong> Geralmente mostra a disciplina e o(s) Professor(es) associados.</li>
+            <li><strong>Status entre Parênteses:</strong> Ex: <code>(Disponivel)</code>, <code>(Reposicao Agendada)</code>, <code>(Substituicao Agendada)</code>. Indica o estado atual do slot.</li>
+            <li><strong>Professor(es) Ausente(s):</strong> Em horários FIXOS futuros, se um professor foi marcado como ausente, o nome dele aparecerá riscado (<s class="absent-professor">Nome Professor</s>) na célula.</li>
+            <li><strong>Tooltip (Dica ao passar o mouse):</strong> Passe o mouse sobre uma célula para ver mais detalhes (Data, Hora, Turma, Tipo Original, Status, Professores, Ausentes, ID).</li>
+        </ul>
+
+        <h3>3.5. Agendamento de Reposição/Recuperação Paralela</h3>
+        <p><strong>Quem pode agendar:</strong> Administradores e Professores.</p>
+        <p><strong>Onde agendar:</strong> Em células de horário <strong>Vago</strong> com status <strong>Disponível</strong> (cor verde claro).</p>
+        <p><strong>Como agendar:</strong></p>
+        <ol>
+            <li>Na grade, clique em uma célula de horário <strong>Vago (verde claro)</strong> que você deseja agendar como reposição.</li>
+            <li>A seção "Agendar Reposição/Recuperação Paralela" aparecerá abaixo da grade com um formulário.</li>
+            <li>Verifique se as informações do "Slot Selecionado" estão corretas.</li>
+            <li>Selecione o <strong>"Professor que irá repor"</strong> na lista.</li>
+            <li>Selecione a <strong>"Disciplina da Reposição"</strong> na lista.</li>
+            <li>Clique em <strong>"Confirmar Agendamento de Reposição/Recuperação"</strong>.</li>
+            <li>Aguarde a tela de carregamento. Uma mensagem de sucesso ou erro aparecerá.</li>
+            <li>Após o sucesso, o formulário sumirá e a grade será recarregada automaticamente para mostrar o agendamento.</li>
+        </ol>
+
+        <h3>3.6. Agendamento de Substituição</h3>
+        <p><strong>Quem pode agendar:</strong> Administradores e Professores.</p>
+        <p><strong>Onde agendar:</strong> Em células de horário <strong>Fixo</strong> com status <strong>Disponível</strong> (cor azul claro).</p>
+        <p><strong>Como agendar:</strong></p>
+        <ol>
+            <li>Na grade, clique em uma célula de horário <strong>Fixo (azul claro)</strong> que você deseja agendar como substituição.</li>
+            <li>A seção "Agendar Substituição" aparecerá abaixo da grade com um formulário.</li>
+            <li>Verifique se as informações do "Slot Selecionado" estão corretas.</li>
+            <li>Selecione o <strong>"Professor Substituto"</strong> na lista.</li>
+            <li>Selecione a <strong>"Disciplina da Substituição"</strong> na lista.</li>
+            <li>Clique em <strong>"Confirmar Agendamento de Substituição"</strong>.</li>
+            <li>Aguarde a tela de carregamento. Uma mensagem de sucesso ou erro aparecerá.</li>
+            <li>Após o sucesso, o formulário sumirá e a grade será recarregada automaticamente para mostrar o agendamento.</li>
+        </ol>
+
+        <h3>3.7. Cancelando Formulários de Agendamento/Ausência</h3>
+        <p>Se você clicou em uma célula mas desistiu do agendamento ou do registro de ausência, basta clicar no botão <strong>"Cancelar"</strong> no formulário que apareceu. O formulário será ocultado e a célula selecionada na grade voltará ao normal.</p>
+
+        <h3>3.8. Informar Ausência de Professor</h3>
+        <p><strong>Quem pode informar:</strong> Administradores e Professores (geralmente apenas para si mesmos, a menos que sejam administradores de cancelamento).</p>
+        <p><strong>Onde informar:</strong> Em horários <strong>Fixo</strong> futuros.</p>
+        <p><strong>Como informar:</strong></p>
+        <ol>
+            <li>Na grade, localize a célula de horário <strong>Fixo</strong> desejada (pode estar Disponível, Reposição Agendada ou Substituição Agendada).</li>
+            <li>Passe o mouse sobre a célula para ver o ícone de calendário com "X" (📅❌) aparecer.</li>
+            <li>Clique no ícone 📅❌.</li>
+            <li>A seção "Informar Ausência de Professor" aparecerá abaixo da grade com um formulário.</li>
+            <li>Verifique se as informações do "Horário Selecionado" estão corretas.</li>
+            <li>Selecione o <strong>"Professor Ausente"</strong> na lista (a lista mostrará apenas os Professores associados a este horário fixo).</li>
+            <li>Clique em <strong>"Confirmar Ausência"</strong>.</li>
+            <li>Aguarde a tela de carregamento. Uma mensagem de sucesso ou erro aparecerá.</li>
+            <li>Após o sucesso, o formulário sumirá e a grade será recarregada automaticamente. O nome do professor marcado como ausente aparecerá riscado.</li>
+        </ol>
+
+        <h3>3.9. Rodapé da Grade (Contagem Diária)</h3>
+        <p>Na parte inferior da grade de horários, há uma linha de rodapé com a contagem total de aulas por dia da semana para a turma selecionada naquela semana. Essa contagem considera tanto os horários <strong>FIXOS</strong> quanto os horários <strong>VAGOS</strong> que foram agendados como <strong>REPOSIÇÃO</strong> para cada dia da semana exibido. Este sistema respeita o limite de horas-aula presenciais por dia estabelecido pelo <strong class="attention">Art. 26 § 3º da organização didática do IFSP</strong>.</p>
+        <ul>
+            <li><strong>Limite:</strong> Se a contagem para um dia atingir ou exceder este limite (atualmente configurado para 10 aulas por dia em regime integral), a célula da contagem ficará destacada (vermelha) para indicar que o limite foi atingido. <em>Nota: Este limite é usado pelo sistema, com base no Art. 26 § 3º, para evitar a criação excessiva de horários VAGOS disponíveis para agendamento em dias que já estão cheios com horários Fixos ou Vagos agendados.</em></li>
+        </ul>
+
+        <h2>4. Visualização Pública (Visualizar Agendamentos)</h2>
+        <p>Esta página destina-se à visualização geral dos horários por qualquer pessoa com o link, sem necessidade de login autorizado no sistema.</p>
+        <ul>
+            <li><strong>Acesso:</strong> Clique no link "Visualizar Agendamentos" na página principal ou acesse o link direto fornecido.</li>
+            <li><strong>Filtro:</strong> Você só pode filtrar por <strong>Semana</strong>. Selecione a semana desejada na lista e clique em "Buscar Horários".</li>
+            <li><strong>Grade:</strong> A grade exibirá os horários para <strong>todas as turmas</strong> na semana selecionada.</li>
+            <li><strong>Conteúdo:</strong> Serão mostrados apenas horários que são <strong>FIXOS</strong> ou que foram <strong>AGENDADOS</strong> (Reposição ou Substituição). Horários VAGOS que não foram agendados <em>não</em> aparecem na visualização pública.</li>
+            <li><strong>Funcionalidade:</strong> Esta página é <strong class="attention">apenas para visualização</strong>. Você não pode clicar nas células para agendar ou informar ausências.</li>
+            <li><strong>Desempenho:</strong> O carregamento nesta página também pode ser lento, pois ele busca dados de <em>todas</em> as turmas para a semana.</li>
+        </ul>
+
+        <h2>5. Cancelar Agendamentos</h2>
+        <p>Esta página permite que usuários autorizados (Administradores e Professores designados para cancelamento, ou Professores que criaram a reserva/estão nela como Prof. Substituto/Original) visualizem e cancelem reservas futuras.</p>
+        <ul>
+            <li><strong>Acesso:</strong> Clique no link "Cancelar Agendamentos" na página principal.</li>
+            <li><strong>Carregar Reservas:</strong> Clique no botão <strong>"Carregar Reservas Agendadas"</strong>. Aguarde a tela de carregamento. O sistema listará as reservas futuras que você tem permissão para cancelar.</li>
+            <li><strong>Lista de Reservas:</strong> Uma tabela será exibida com detalhes das reservas encontradas (ID, Tipo, Data, Hora, Turma, Disciplina, Professor Substituto, Professor Original, Agendado Por).</li>
+            <li><strong>Ação de Cancelar:</strong>
+                <ol>
+                    <li>Localize a reserva que deseja cancelar na tabela.</li>
+                    <li>Clique no botão <strong>"Cancelar"</strong> na coluna "Ação".</li>
+                    <li>Uma janela de confirmação aparecerá com alguns detalhes da reserva. Leia atentamente.</li>
+                    <li>Se tiver certeza, clique em "OK". Se não, clique em "Cancelar".</li>
+                    <li>Ao confirmar, aguarde a tela de carregamento. Uma mensagem de sucesso ou erro aparecerá.</li>
+                    <li>Em caso de sucesso, a linha da reserva na tabela será riscada e o botão mudará para "Cancelada" (desabilitado).</li>
+                </ol>
+            </li>
+            <li><strong>Permissões de Cancelamento:</strong> Você só verá e poderá cancelar reservas que você criou, nas quais você está listado como "Professor Substituto" ou "Professor Original", ou se você tiver o papel de "Admin" ou for o "Professor Administrador de Cancelamento" configurado no sistema.</li>
+        </ul>
+
+        <h2>6. Notificações por E-mail</h2>
+        <p>Ao realizar um agendamento (Reposição ou Substituição), o sistema enviará automaticamente uma notificação por e-mail.</p>
+        <ul>
+            <li><strong>Remetente:</strong> O e-mail será enviado pelo sistema, com o nome "Sistema de Reservas IFSP".</li>
+            <li><strong>Destinatários:</strong> O e-mail será enviado para:
+                <ul>
+                    <li>O e-mail do usuário que realizou o agendamento.</li>
+                    <li>Os e-mails dos professores envolvidos na reserva (o Professor Substituto e o(s) Professor(es) do horário original).</li>
+                    <li>Endereços de e-mail de administradores configurados para receber cópias (geralmente CAE e MTM).</li>
+                </ul>
+            </li>
+            <li><strong>Conteúdo:</strong> O e-mail conterá os detalhes da reserva (Tipo, Data, Hora, Turma, Disciplina, Professor envolvido, ID da Reserva, quem agendou, data/hora da criação).</li>
+        </ul>
+
+        <h2>7. Integração com Google Calendar</h2>
+        <p>Quando um agendamento (Reposição ou Substituição) é realizado com sucesso e o sistema está configurado com um calendário, um evento correspondente será criado ou atualizado neste calendário.</p>
+        <ul>
+            <li><strong>Criação/Atualização:</strong> O evento será criado no Google Calendar especificado na configuração do sistema. Se o slot já possuía um evento associado de um agendamento anterior que foi cancelado, o sistema pode tentar atualizar o evento existente em vez de criar um novo.</li>
+            <li><strong>Detalhes do Evento:</strong> O título e a descrição do evento incluirão os detalhes da reserva (Tipo, Disciplina, Turma, Professores, ID da Reserva, quem agendou).</li>
+            <li><strong>Convidados:</strong> Os e-mails dos professores envolvidos na reserva (Professor Substituto e Professor(es) do horário original) serão adicionados como convidados ao evento do calendário.</li>
+            <li><strong class="attention">Evento do Google Meet: ATENÇÃO!</strong> Devido a uma funcionalidade padrão do Google Calendar ao adicionar convidados via script, o evento <strong class="attention">automaticamente terá uma sala do Google Meet associada</strong>. <strong class="attention">Você pode IGNORAR essa sala de Meet</strong>. Ela não é usada pelo sistema e não impede que a aula/atividade aconteça presencialmente (ou onde for planejado). Não é possível desabilitar a criação dessa sala de Meet via Apps Script no momento.</li>
+            <li><strong>Cancelamento e Calendar:</strong> Ao cancelar uma reserva pela página "Cancelar Agendamentos", o sistema tentará <strong class="attention">excluir</strong> o evento correspondente do Google Calendar. Isso ajuda a manter o calendário atualizado. Se o evento já foi excluído manualmente ou houver outro erro, uma mensagem de aviso pode aparecer, mas o cancelamento no sistema (planilha) será efetuado.</li>
+            <li><strong>Erros no Calendar:</strong> Se o sistema encontrar problemas ao criar ou atualizar o evento no Google Calendar (por exemplo, ID do calendário inválido ou permissões), o agendamento <strong class="attention">continuará válido nas planilhas</strong>, mas uma mensagem de aviso será exibida na tela de sucesso e incluída no e-mail de notificação.</li>
+        </ul>
+
+        <h2>8. Observação de Desempenho</h2>
+        <p>Reforçando: O sistema depende da comunicação com as planilhas Google e do processamento via Google Apps Script. <strong class="attention">Carregar dados, buscar horários, agendar ou cancelar podem levar algum tempo (até mais de um minuto)</strong>. Sempre aguarde a tela de "Carregando..." desaparecer e as mensagens de sucesso ou erro aparecerem antes de tentar qualquer outra ação. Sua paciência é fundamental para o bom funcionamento.</p>
+
+        <h2>9. Perguntas Frequentes (FAQ)</h2>
+
+        <dl class="faq">
+            <dt>P: O sistema está muito lento. É normal?</dt>
+            <dd>R: Sim, infelizmente é normal. O sistema funciona sobre Google Sheets e Google Apps Script, que possuem limitações de performance para processamento e leitura/escrita de dados, especialmente com um volume maior de informações. Por favor, seja paciente e aguarde as operações serem concluídas.</dd>
+
+            <dt>P: Por que eu não consigo agendar uma reposição ou substituição?</dt>
+            <dd>R: Existem alguns motivos:
+                <ul>
+                    <li><strong>Permissão:</strong> Apenas usuários com papel "Admin" ou "Professor" podem agendar.</li>
+                    <li><strong>Tipo de Slot:</strong> Reposições só podem ser agendadas em horários "Vagos" disponíveis. Substituições só podem ser agendadas em horários "Fixos" disponíveis.</li>
+                    <li><strong>Status:</strong> O horário deve estar "Disponível". Se já foi agendado ou tem outro status, não pode ser reservado novamente.</li>
+                    <li><strong>Limite Diário:</strong> O sistema pode impedir a criação de <em>novos</em> horários VAGOS se o dia já atingiu o limite de aulas fixas + vagas agendadas, conforme Art. 26 § 3º da organização didática do IFSP. Embora você veja a grade, o clique em um Vago pode não abrir o formulário se o limite já foi atingido <em>no momento da busca</em>.</li>
+                </ul>
+            </dd>
+
+            <dt>P: Por que eu não consigo informar uma ausência?</dt>
+            <dd>R: Apenas usuários com papel "Admin" ou "Professor" podem informar ausências. Além disso, geralmente, um professor só pode informar a <em>sua própria</em> ausência, a menos que ele(a) seja um administrador ou tenha a permissão de "Professor Administrador de Cancelamento".</dd>
+
+            <dt>P: O que significa quando o nome de um professor aparece riscado na grade?</dt>
+            <dd>R: Significa que aquele professor foi marcado como ausente para aquele horário específico.</dd>
+
+            <dt>P: O que é a contagem no rodapé da grade?</dt>
+            <dd>R: É a soma de horários FIXOS e horários VAGOS que foram agendados como REPOSIÇÃO para cada dia da semana exibido. Ajuda a ter uma ideia da ocupação diária da turma, dentro do limite estabelecido pelo Art. 26 § 3º da organização didática do IFSP.</dd>
+
+            <dt>P: Agendei algo e recebi um convite de calendário com Google Meet. Preciso usar o Meet?</dt>
+            <dd>R: <strong class="attention">Não, pode ignorar o Meet.</strong> A criação automática da sala de Meet é uma característica padrão do Google Calendar quando eventos são criados via scripts e convidados são adicionados. A aula ou atividade agendada deve ocorrer no local e formato planejados (geralmente presencial).</dd>
+
+            <dt>P: Se eu cancelar uma reserva pela página "Cancelar Agendamentos", o evento no meu Google Calendar também some?</dt>
+            <dd>R: Sim, o sistema tenta excluir o evento correspondente do calendário configurado.</dd>
+
+            <dt>P: Se eu agendar, mas o evento não aparecer no calendário, a reserva é inválida?</dt>
+            <dd>R: Não. O agendamento principal é registrado nas planilhas do sistema. A integração com o Google Calendar é uma funcionalidade auxiliar. Se houver um erro na integração, a reserva <em>estará válida no sistema</em>, mas você receberá um aviso na tela e por e-mail.</dd>
+        </dl>
+
+        <p style="margin-top: 30px;">Esperamos que este manual ajude você a utilizar o Sistema de Agendamento e Visualização de Horários de forma eficaz. Em caso de dúvidas, problemas ou sugestões, por favor, entre em contato com a equipe responsável pela administração do sistema.</p>
+
+        <!-- Removing the back link as it's specific to the Apps Script web app -->
+        <!-- <p><a href="<?= ScriptApp.getService().getUrl() ?>">← Voltar para Agendamento Principal</a></p> -->
+
+    </div>
+</body>
+</html>
