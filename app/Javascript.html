@@ -7,6 +7,13 @@
         }
     }
     let currentUserRole = null;
+    let currentUserProfessorName = null;
+    const ABSENCE_DEBUG = true;
+    function logAbsenceDebug(...args) {
+        if (ABSENCE_DEBUG) {
+            console.log("[ABSENCE DEBUG]", ...args);
+        }
+    }
     function showLoading() {
         logDebug("showLoading called");
         const loadingDiv = document.getElementById("loading");
@@ -126,8 +133,8 @@
             const month = parseInt(parts[1], 10);
             const day = parseInt(parts[2], 10);
             if (year > 1000 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-                const dateObj = new Date(year, month - 1, day);
-                if (!isNaN(dateObj.getTime()) && dateObj.getFullYear() === year && (dateObj.getMonth() + 1) === month && dateObj.getDate() === day) {
+                const dateObj = new Date(Date.UTC(year, month - 1, day));
+                if (!isNaN(dateObj.getTime()) && dateObj.getUTCFullYear() === year && (dateObj.getUTCMonth() + 1) === month && dateObj.getUTCDate() === day) {
                     const formattedDay = String(day).padStart(2, '0');
                     const formattedMonth = String(month).padStart(2, '0');
                     const result = `${formattedDay}/${formattedMonth}/${year}`;
@@ -223,6 +230,12 @@
                 }
             } catch (dateError) {
                 console.error("Error calculating or selecting current week:", dateError);
+                const weekSelect = document.getElementById('week-filter');
+                if (weekSelect && weekSelect.options.length > 1) {
+                    weekSelect.selectedIndex = 1;
+                } else if (weekSelect) {
+                    weekSelect.selectedIndex = 0;
+                }
             }
         } else {
             const errorMsg = 'Dados de filtros (turmas/semanas) incompletos ou em formato inesperado recebidos do backend.';
@@ -243,14 +256,17 @@
         const turmaFilter = document.getElementById('turma-filter');
         const weekFilter = document.getElementById('week-filter');
         const scheduleContainer = document.getElementById('schedule-container');
-        logDebug("Hiding booking forms and clearing messages before loading new schedule.");
+        logDebug("Hiding forms and clearing messages before loading new schedule.");
         cancelBookingForm('Reposicao');
         cancelBookingForm('Substituicao');
+        cancelAbsenceForm();
         displayMessage('');
         if (scheduleContainer) {
             scheduleContainer.innerHTML = '<p class="info-message">Carregando horário...</p>';
         } else {
             console.error("Schedule container element not found!");
+            displayMessage("Erro interno: Container de horário não encontrado.", "error");
+            return;
         }
         const selectedTurma = turmaFilter ? turmaFilter.value : '';
         const selectedWeek = weekFilter ? weekFilter.value : '';
@@ -258,13 +274,13 @@
         if (!selectedTurma) {
             logDebug("Validation failed: Turma not selected.");
             displayMessage('Por favor, selecione a Turma.', 'error');
-            if (scheduleContainer) scheduleContainer.innerHTML = '<p class="info-message">Selecione a Turma e a Semana e clique em "Buscar Horário".</p>';
+            scheduleContainer.innerHTML = '<p class="info-message">Selecione a Turma e a Semana e clique em "Buscar Horário".</p>';
             return;
         }
         if (!selectedWeek) {
             logDebug("Validation failed: Week not selected.");
             displayMessage('Por favor, selecione a Semana.', 'error');
-            if (scheduleContainer) scheduleContainer.innerHTML = '<p class="info-message">Selecione a Turma e a Semana e clique em "Buscar Horário".</p>';
+            scheduleContainer.innerHTML = '<p class="info-message">Selecione a Turma e a Semana e clique em "Buscar Horário".</p>';
             return;
         }
         showLoading();
@@ -279,7 +295,7 @@
         hideLoading();
         const scheduleContainer = document.getElementById('schedule-container');
         if (!scheduleContainer) {
-            console.error("Schedule container not found!");
+            console.error("Schedule container not found when trying to load data!");
             displayMessage('Erro interno: Container de horário não encontrado.', 'error');
             return;
         }
@@ -314,12 +330,18 @@
         const dailyCounts = responseData.dailyCounts;
         if (slots.length === 0) {
             logDebug("Nenhum horário encontrado para os filtros selecionados.");
-            displayMessage(response.message || 'Nenhum horário encontrado para a turma e semana selecionadas.', 'info');
-            scheduleContainer.innerHTML = '<p class="info-message">Nenhum horário encontrado para os filtros selecionados.</p>';
+            const noSlotsMessage = response.message && response.message !== 'Horário carregado com sucesso.'
+                ? response.message
+                : 'Nenhum horário encontrado para a turma e semana selecionadas.';
+            displayMessage(noSlotsMessage, 'info');
+            scheduleContainer.innerHTML = `<p class="info-message">${noSlotsMessage}</p>`;
             return;
         }
         logDebug(`Received ${slots.length} slots and daily counts. Rendering schedule table.`);
-        displayMessage(response.message || 'Horário carregado com sucesso.', 'success');
+        const successMessage = response.message && response.message !== 'Horário carregado com sucesso.'
+            ? response.message
+            : `${slots.length} horários encontrados.`;
+        displayMessage(successMessage, 'success');
         renderScheduleTable(slots, scheduleContainer, dailyCounts);
     }
     function onScheduleLoadFailed(error) {
@@ -332,22 +354,13 @@
             scheduleContainer.innerHTML = '<p class="error-message">Erro ao carregar horário.</p>';
         }
     }
-    function formatCellContent(mainContent, status) {
-        const statusText = status && status.trim() !== '' ? status.trim() : 'Status Desconhecido';
-        let statusClass = 'status-default';
-        if (status === STATUS_OCUPACAO.DISPONIVEL) statusClass = 'status-disponivel';
-        else if (status === STATUS_OCUPACAO.REPOSICAO_AGENDADA) statusClass = 'status-reposicao';
-        else if (status === STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) statusClass = 'status-substituicao';
-        const statusSpan = `<span class="slot-status ${statusClass}">(${statusText})</span>`;
-        if (mainContent && mainContent.trim() !== '') {
-            const mainContentDiv = `<div class="slot-main-content">${mainContent.trim()}</div>`;
-            return `${mainContentDiv}${statusSpan}`;
-        } else {
-            return statusSpan;
-        }
-    }
     function renderScheduleTable(slots, containerElement, dailyCounts) {
         logDebug("renderScheduleTable called");
+        logDebug(`CurrentUserRole at start of renderScheduleTable: '${currentUserRole}'`);
+        logDebug(`TIPOS_HORARIO.FIXO constant value: '${TIPOS_HORARIO.FIXO}'`);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        logDebug(`Today's date (local midnight) for comparison: ${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`);
         const DAY_LIMIT_THRESHOLD = 10;
         const daysOfWeek = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
         const dayIndexMap = { 'Segunda': 0, 'Terça': 1, 'Quarta': 2, 'Quinta': 3, 'Sexta': 4, 'Sábado': 5 };
@@ -366,7 +379,6 @@
                 }
                 gridData[dayIndex][slot.horaInicio] = slot;
                 uniqueHours.add(slot.horaInicio);
-            } else {
             }
         });
         logDebug(`Organized gridData. Found ${uniqueHours.size} unique hours.`);
@@ -393,19 +405,29 @@
                 cell.classList.add('slot-cell');
                 const slot = gridData[currentDayIndex] ? gridData[currentDayIndex][hour] : null;
                 if (slot) {
-                    let mainContent = '';
-                    let cellClasses = ['slot-occupied'];
-                    const disciplina = slot.disciplinaParaExibir || '';
-                    const professor = slot.professorParaExibir || '';
-                    const profOriginalBooking = slot.professorOriginalNaReserva || '';
-                    const profOriginalInstance = slot.professorPrincipal || '';
-                    const firstWordDiscipline = disciplina.split(' ')[0] || 'Aula';
+                    let mainContentHtml = '';
+                    let cellClasses = [];
+                    let statusTextForDisplay = slot.statusOcupacao;
                     let possibleBookingType = null;
                     let isClickable = false;
+                    const disciplina = slot.disciplinaParaExibir || '';
+                    const professorAtual = slot.professorParaExibir || '';
+                    const profOriginalBooking = slot.professorOriginalNaReserva || '';
+                    const profPrincipalInstance = slot.professorPrincipal || '';
+                    const professoresAusentesString = slot.professoresAusentes || '';
+                    const firstWordDiscipline = disciplina.split(' ')[0] || 'Aula';
+                    let slotDate = null;
+                    try {
+                        const dateParts = slot.data.split('/');
+                        if (dateParts.length === 3) {
+                            slotDate = new Date(parseInt(dateParts[2]), parseInt(dateParts[1]) - 1, parseInt(dateParts[0]));
+                        }
+                    } catch (e) { logAbsenceDebug("Error parsing slot date:", slot.data, e); }
+                    const isFutureSlot = slotDate && slotDate >= today;
                     if (slot.statusOcupacao === STATUS_OCUPACAO.DISPONIVEL) {
-                        cellClasses = ['slot-available'];
+                        cellClasses.push('slot-available');
                         if (slot.tipoOriginal === TIPOS_HORARIO.VAGO) {
-                            mainContent = `Vago`;
+                            mainContentHtml = `Vago`;
                             cellClasses.push('slot-vago');
                             if (currentUserRole === 'Admin' || currentUserRole === 'Professor') {
                                 isClickable = true;
@@ -413,7 +435,8 @@
                                 cellClasses.push('clickable-slot', 'clickable-reposicao');
                             }
                         } else if (slot.tipoOriginal === TIPOS_HORARIO.FIXO) {
-                            mainContent = `${firstWordDiscipline} - ${professor || 'Professor N/D'}`;
+                            const formattedProfessors = formatProfessorList(profPrincipalInstance, professoresAusentesString);
+                            mainContentHtml = `${firstWordDiscipline} - ${formattedProfessors || 'N/D'}`;
                             cellClasses.push('slot-fixo');
                             if (currentUserRole === 'Admin' || currentUserRole === 'Professor') {
                                 isClickable = true;
@@ -422,52 +445,87 @@
                             }
                         }
                     } else if (slot.statusOcupacao === STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
-                        mainContent = `${firstWordDiscipline} - ${professor}`;
-                        cellClasses.push('slot-reposicao');
+                        mainContentHtml = `${firstWordDiscipline} - ${professorAtual}`;
+                        cellClasses.push('slot-reposicao', 'slot-booked-public');
                     } else if (slot.statusOcupacao === STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) {
-                        let profText = professor;
-                        const originalToShow = profOriginalBooking || profOriginalInstance;
-                        if (originalToShow && originalToShow !== professor) {
-                            profText = `${professor} (Orig: ${originalToShow})`;
+                        cellClasses.push('slot-substituicao', 'slot-booked-public');
+                        let formattedSubstitute = formatProfessorList(professorAtual, professoresAusentesString);
+                        const originalToShow = profOriginalBooking || profPrincipalInstance;
+                        if (originalToShow && originalToShow !== professorAtual) {
+                            let formattedOriginal = formatProfessorList(originalToShow, professoresAusentesString, true);
+                            formattedSubstitute = `${formattedSubstitute} (Orig: ${formattedOriginal})`;
                         }
-                        mainContent = `${firstWordDiscipline} - ${profText}`;
-                        cellClasses.push('slot-substituicao');
+                        mainContentHtml = `${firstWordDiscipline} - ${formattedSubstitute}`;
                     } else {
-                        mainContent = `${firstWordDiscipline} - ${professor}`;
+                        const formattedProfs = formatProfessorList(profPrincipalInstance || professorAtual, professoresAusentesString);
+                        mainContentHtml = `${firstWordDiscipline} - ${formattedProfs}`;
                         cellClasses.push('slot-unknown-status');
                         console.warn(`Slot with unknown status encountered: ${slot.statusOcupacao}`, slot);
                     }
-                    cell.classList.add(...cellClasses);
-                    cell.innerHTML = formatCellContent(mainContent, slot.statusOcupacao);
-                    let tooltipText = `Data: ${slot.data}\nHora: ${slot.horaInicio}\nTurma: ${slot.turma}\nTipo Original: ${slot.tipoOriginal}\nStatus: ${slot.statusOcupacao}`;
-                    if (disciplina) tooltipText += `\nDisciplina: ${disciplina}`;
-                    if (professor) tooltipText += `\nProfessor Atual: ${professor}`;
-                    if (slot.statusOcupacao === STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) {
-                        const originalToShow = profOriginalBooking || profOriginalInstance;
-                        if (originalToShow && originalToShow !== professor) {
-                            tooltipText += `\nProfessor Original: ${originalToShow}`;
+                    cell.classList.add(...new Set(cellClasses));
+                    let absenceButtonHtml = '';
+                    if (slot.tipoOriginal === TIPOS_HORARIO.FIXO && isFutureSlot && (currentUserRole === 'Admin' || currentUserRole === 'Professor')) {
+                        const checkType = slot.tipoOriginal; const constType = TIPOS_HORARIO.FIXO;
+                        const typeMatch = checkType === constType; const roleMatchAdmin = currentUserRole === 'Admin';
+                        const roleMatchProf = currentUserRole === 'Professor'; const showButtonForAdmin = typeMatch && isFutureSlot && roleMatchAdmin;
+                        const showButtonForProf = typeMatch && isFutureSlot && roleMatchProf;
+                        logAbsenceDebug(`CHECKING Absence Button: ID=${slot.idInstancia}, Date='${slot.data}', isFuture=${isFutureSlot}, Type='${checkType}' (Match: ${typeMatch}), Role='${currentUserRole}', ShowForAdmin=${showButtonForAdmin}, ShowForProf=${showButtonForProf}`);
+                        if (showButtonForAdmin || showButtonForProf) {
+                            logAbsenceDebug(`-> Preparing Absence Button HTML for Slot ID: ${slot.idInstancia}`);
+                            const absenceSlotInfoText = `${slot.data} ${slot.horaInicio} (${slot.diaSemana}) - Turma: ${slot.turma} - Prof(s): ${profPrincipalInstance || 'N/D'}`;
+                            const escapedSlotInfo = absenceSlotInfoText.replace(/"/g, '"').replace(/'/g, '\'');
+                            const escapedProfessors = (profPrincipalInstance || '').replace(/"/g, '"').replace(/'/g, '\'');
+                            absenceButtonHtml = `
+                                <div style="margin-top: 4px;">
+                                    <button
+                                        type="button"
+                                        class="action-button report-absence-btn"
+                                        title="Informar Ausência de Professor neste Horário"
+                                        onclick="event.stopPropagation(); showAbsenceForm('${slot.idInstancia}', '${escapedSlotInfo}', '${escapedProfessors}');">
+                                        📅❌
+                                    </button>
+                                </div>`;
                         }
-                    } else if (slot.tipoOriginal === TIPOS_HORARIO.FIXO && profOriginalInstance) {
-                        tooltipText += `\nProfessor Base: ${profOriginalInstance}`;
+                    }
+                    const statusSpanHtml = createStatusSpanHtml(statusTextForDisplay, cellClasses);
+                    const mainContentDivHtml = `<div class="slot-main-content">${mainContentHtml}</div>`;
+                    cell.innerHTML = `${mainContentDivHtml}${statusSpanHtml}${absenceButtonHtml}`;
+                    let tooltipText = `Data: ${slot.data}\nHora: ${slot.horaInicio}\nTurma: ${slot.turma}\nTipo Original: ${slot.tipoOriginal}\nStatus: ${statusTextForDisplay}`;
+                    if (disciplina) tooltipText += `\nDisciplina: ${disciplina}`;
+                    if (slot.statusOcupacao === STATUS_OCUPACAO.DISPONIVEL && slot.tipoOriginal === TIPOS_HORARIO.FIXO) {
+                        tooltipText += `\nProf. Base: ${profPrincipalInstance || 'N/D'}`;
+                    } else if (slot.statusOcupacao === STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
+                        tooltipText += `\nProf. Reposição: ${professorAtual || 'N/D'}`;
+                    } else if (slot.statusOcupacao === STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) {
+                        tooltipText += `\nProf. Substituto: ${professorAtual || 'N/D'}`;
+                        const originalToShow = profOriginalBooking || profPrincipalInstance;
+                        if (originalToShow && originalToShow !== professorAtual) {
+                            tooltipText += `\nProf. Original: ${originalToShow}`;
+                        }
+                    } else if (profPrincipalInstance) {
+                        tooltipText += `\nProf. Base: ${profPrincipalInstance}`;
+                    }
+                    if (professoresAusentesString) {
+                        tooltipText += `\nAusentes: ${professoresAusentesString}`;
                     }
                     tooltipText += `\nID Instância: ${slot.idInstancia}`;
                     cell.title = tooltipText;
                     if (isClickable && possibleBookingType) {
-                        let slotInfoText = `${slot.data} ${slot.horaInicio} (${slot.diaSemana}) - Turma: ${slot.turma}`;
-                        if (slot.tipoOriginal === TIPOS_HORARIO.FIXO && profOriginalInstance) {
-                            slotInfoText += ` - Prof. Base: ${profOriginalInstance}`;
-                        }
-                        slotInfoText += ` - Tipo: ${slot.tipoOriginal}, Status: ${slot.statusOcupacao}`;
-                        if (!slot.idInstancia || String(slot.idInstancia).trim() === '') {
-                            console.error(`[renderScheduleTable] *** CRITICAL ERROR: slot.idInstancia is invalid ('${slot.idInstancia}') for clickable cell! Click will likely fail.`, slot);
-                        }
                         const currentIdInstancia = String(slot.idInstancia || '');
                         const currentBookingType = possibleBookingType;
-                        const currentSlotInfoText = slotInfoText;
-                        cell.onclick = () => {
-                            logDebug(`Cell clicked! Calling selectSlot with ID='${currentIdInstancia}', Type='${currentBookingType}'`);
-                            selectSlot(currentIdInstancia, currentBookingType, currentSlotInfoText);
-                        };
+                        let bookingSlotInfoText = `${slot.data} ${slot.horaInicio} (${slot.diaSemana}) - Turma: ${slot.turma}`;
+                        if (slot.tipoOriginal === TIPOS_HORARIO.FIXO && profPrincipalInstance) {
+                            bookingSlotInfoText += ` - Prof. Base: ${profPrincipalInstance}`;
+                        }
+                        bookingSlotInfoText += ` - Tipo: ${slot.tipoOriginal}, Status: ${slot.statusOcupacao}`;
+                        cell.addEventListener('click', (event) => {
+                            if (event.target.closest('.report-absence-btn')) {
+                                logDebug("Booking click listener ignored - click was on absence button.");
+                                return;
+                            }
+                            logDebug(`Cell clicked (booking)! Calling selectSlot with ID='${currentIdInstancia}', Type='${currentBookingType}'`);
+                            selectSlot(currentIdInstancia, currentBookingType, bookingSlotInfoText);
+                        });
                     }
                 } else {
                     cell.classList.add('slot-empty');
@@ -494,9 +552,17 @@
         containerElement.appendChild(table);
         logDebug("renderScheduleTable finished.");
     }
+    function createStatusSpanHtml(statusText, cellClasses) {
+        let statusClass = 'status-default';
+        if (statusText === STATUS_OCUPACAO.DISPONIVEL) statusClass = 'status-disponivel';
+        else if (statusText === STATUS_OCUPACAO.REPOSICAO_AGENDADA) statusClass = 'status-reposicao';
+        else if (statusText === STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) statusClass = 'status-substituicao';
+        return `<span class="slot-status ${statusClass}">(${statusText})</span>`;
+    }
     function selectSlot(idInstancia, bookingType, slotInfo) {
         logDebug(`[selectSlot] Function called with: idInstancia='${idInstancia}' (type: ${typeof idInstancia}), bookingType='${bookingType}', currentUserRole='${currentUserRole}'`);
         displayMessage('');
+        cancelAbsenceForm();
         if (!idInstancia || String(idInstancia).trim() === '') {
             console.error(`[selectSlot] *** CRITICAL ERROR: Received invalid idInstancia ('${idInstancia}')! Cannot proceed.`);
             displayMessage('Erro interno: ID do horário selecionado é inválido.', 'error');
@@ -529,12 +595,8 @@
         });
         let clickedCell = null;
         try {
-            clickedCell = document.querySelector(`.schedule-grid-table td.clickable-slot[title*="ID Instância: ${idInstancia}"]`);
-            if (!clickedCell) {
-                logDebug("[selectSlot] querySelector failed to find cell by title/ID, attempting Array.find...");
-                clickedCell = Array.from(document.querySelectorAll('.schedule-grid-table td.clickable-slot'))
-                    .find(cell => cell.title && cell.title.includes(`ID Instância: ${idInstancia}`));
-            }
+            clickedCell = Array.from(document.querySelectorAll('.schedule-grid-table td.clickable-slot'))
+                .find(cell => cell.title && cell.title.includes(`ID Instância: ${idInstancia}`));
         } catch (selectorError) {
             console.error("[selectSlot] Error finding clicked cell:", selectorError);
         }
@@ -606,8 +668,7 @@
                     slotIdInput.value = '';
                 }
                 if (slotInfoSpan) slotInfoSpan.textContent = '';
-                logDebug("Form fields reset.");
-            } else {
+                logDebug("Booking Form fields reset.");
             }
         } else {
             console.warn(`Form element '#${formPrefix}-form' not found during cancel.`);
@@ -706,6 +767,124 @@
         displayMessage('Erro na comunicação com o servidor ao tentar agendar: ' + error.message, 'error');
         logDebug("Communication failed. Keeping form open.");
     }
+    function formatProfessorList(profString, absentString, isOriginal = false) {
+        if (!profString) return isOriginal ? '-' : 'N/D';
+        const professors = profString.split(',').map(p => p.trim()).filter(p => p);
+        const absents = (absentString || '').split(',').map(p => p.trim()).filter(p => p);
+        return professors.map(prof => {
+            if (absents.includes(prof)) {
+                return `<span class="absent-professor" title="${prof} - Ausente">${prof}</span>`;
+            }
+            return prof;
+        }).join(', ');
+    }
+    function showAbsenceForm(instanceId, slotInfo, professorPrincipalString) {
+        logAbsenceDebug(`showAbsenceForm called for Instance ID: ${instanceId}`);
+        displayMessage('');
+        cancelBookingForm('Reposicao');
+        cancelBookingForm('Substituicao');
+        const absenceSection = document.getElementById('absence-section');
+        const absenceForm = document.getElementById('absence-form');
+        const slotIdInput = document.getElementById('absence-selected-slot-id');
+        const slotInfoSpan = document.getElementById('absence-selected-slot-info');
+        const professorSelect = document.getElementById('absence-professor-select');
+        if (!absenceSection || !absenceForm || !slotIdInput || !slotInfoSpan || !professorSelect) {
+            console.error("Absence form elements not found!");
+            displayMessage('Erro interno: Componentes do formulário de ausência não encontrados.', 'error');
+            return;
+        }
+        professorSelect.innerHTML = '<option value="" disabled selected>-- Selecione o Professor --</option>';
+        const professorsInSlot = professorPrincipalString.split(',').map(p => p.trim()).filter(p => p !== '');
+        if (professorsInSlot.length === 0) {
+            logAbsenceDebug(`No professors listed in slot ${instanceId} (${professorPrincipalString})`);
+            displayMessage('Nenhum professor principal definido para este horário.', 'error');
+            return;
+        }
+        professorsInSlot.forEach(profName => {
+            const option = document.createElement('option');
+            option.value = profName;
+            option.textContent = profName;
+            professorSelect.appendChild(option);
+        });
+        logAbsenceDebug(`Populated absence dropdown for slot ${instanceId} with: [${professorsInSlot.join(', ')}]`);
+        slotIdInput.value = instanceId;
+        slotInfoSpan.textContent = slotInfo;
+        professorSelect.selectedIndex = 0;
+        professorSelect.required = true;
+        absenceSection.style.display = 'block';
+        absenceForm.style.display = 'block';
+        try {
+            absenceForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } catch (scrollError) {
+            absenceForm.scrollIntoView();
+        }
+    }
+    function cancelAbsenceForm() {
+        logAbsenceDebug("cancelAbsenceForm called");
+        const absenceForm = document.getElementById('absence-form');
+        const slotIdInput = document.getElementById('absence-selected-slot-id');
+        const slotInfoSpan = document.getElementById('absence-selected-slot-info');
+        const professorSelect = document.getElementById('absence-professor-select');
+        if (absenceForm) absenceForm.style.display = 'none';
+        if (slotIdInput) slotIdInput.value = '';
+        if (slotInfoSpan) slotInfoSpan.textContent = '';
+        if (professorSelect) professorSelect.selectedIndex = 0;
+    }
+    function submitAbsenceReport() {
+        logAbsenceDebug("submitAbsenceReport called");
+        displayMessage('');
+        const slotIdInput = document.getElementById('absence-selected-slot-id');
+        const professorSelect = document.getElementById('absence-professor-select');
+        if (!slotIdInput || !professorSelect) {
+            console.error("Absence form elements missing during submission.");
+            displayMessage("Erro interno: Formulário inválido.", "error");
+            return;
+        }
+        const instanceId = slotIdInput.value;
+        const professorToMarkAbsent = professorSelect.value;
+        if (!instanceId) {
+            displayMessage("Erro: ID do horário não encontrado. Selecione o horário novamente.", "error");
+            return;
+        }
+        if (!professorToMarkAbsent) {
+            displayMessage("Por favor, selecione o professor ausente.", "error");
+            professorSelect.focus();
+            return;
+        }
+        logAbsenceDebug(`Submitting absence report for Instance: ${instanceId}, Professor: ${professorToMarkAbsent}`);
+        showLoading();
+        google.script.run
+            .withSuccessHandler(onAbsenceReportResponse)
+            .withFailureHandler(onAbsenceReportFailed)
+            .reportAbsence(instanceId, professorToMarkAbsent);
+    }
+    function onAbsenceReportResponse(jsonStringResponse) {
+        logAbsenceDebug("onAbsenceReportResponse received:", jsonStringResponse);
+        hideLoading();
+        let response;
+        try {
+            response = JSON.parse(jsonStringResponse);
+        } catch (e) {
+            console.error("Erro ao parsear resposta JSON (Absence Report):", e, jsonStringResponse);
+            displayMessage("Erro ao processar resposta do servidor.", 'error');
+            return;
+        }
+        if (response && response.success) {
+            displayMessage(response.message || "Ausência registrada com sucesso!", 'success');
+            cancelAbsenceForm();
+            logAbsenceDebug("Reloading schedule after successful absence report.");
+            loadFilteredSchedule();
+        } else {
+            const errorMsg = response && response.message ? response.message : "Falha ao registrar ausência.";
+            displayMessage(errorMsg, 'error');
+        }
+    }
+    function onAbsenceReportFailed(error) {
+        logAbsenceDebug("onAbsenceReportFailed called:", error);
+        hideLoading();
+        console.error("Erro na comunicação ao registrar ausência:", error);
+        displayMessage('Erro na comunicação com o servidor: ' + error.message, 'error');
+    }
     document.addEventListener('DOMContentLoaded', function () {
         logDebug("DOMContentLoaded event fired. Starting application initialization.");
         showLoading();
@@ -730,8 +909,10 @@
             hideLoading();
             if (response && response.data) {
                 const initialData = response.data;
-                let userResponseData = initialData.user || { role: null, email: '[Error]' };
+                let userResponseData = initialData.user || { role: null, email: '[Error]', professorName: null };
                 currentUserRole = userResponseData.role;
+                currentUserProfessorName = userResponseData.professorName || null;
+                logDebug(`Current User Role: ${currentUserRole}, Professor Name: ${currentUserProfessorName}`);
                 const userEmailSpan = document.getElementById('user-email');
                 const userRoleSpan = document.getElementById('user-role');
                 logDebug("Updating user info display...");
@@ -760,16 +941,24 @@
                 populateDropdown('substituicao-disciplina', disciplines, '-- Disciplinas --');
                 const reposicaoSection = document.getElementById('reposicao-section');
                 const substituicaoSection = document.getElementById('substituicao-section');
-                logDebug("Controlling visibility of booking sections based on role:", currentUserRole);
-                const showSections = (currentUserRole === 'Admin' || currentUserRole === 'Professor');
+                const absenceSection = document.getElementById('absence-section');
+                logDebug("Controlling visibility of sections based on role:", currentUserRole);
+                const showBookingForms = (currentUserRole === 'Admin' || currentUserRole === 'Professor');
+                const showAbsenceSection = (currentUserRole === 'Admin' || currentUserRole === 'Professor');
                 if (reposicaoSection) {
-                    reposicaoSection.style.display = showSections ? 'block' : 'none';
+                    reposicaoSection.style.display = showBookingForms ? 'block' : 'none';
                     logDebug(`Reposicao section display set to: ${reposicaoSection.style.display}`);
                 } else { console.warn("Reposicao section not found."); }
                 if (substituicaoSection) {
-                    substituicaoSection.style.display = showSections ? 'block' : 'none';
+                    substituicaoSection.style.display = showBookingForms ? 'block' : 'none';
                     logDebug(`Substituicao section display set to: ${substituicaoSection.style.display}`);
                 } else { console.warn("Substituicao section not found."); }
+                if (absenceSection) {
+                    absenceSection.style.display = showAbsenceSection ? 'block' : 'none';
+                    logDebug(`Absence section display set to: ${absenceSection.style.display}`);
+                } else {
+                    console.warn("Absence section not found.");
+                }
                 logDebug("Calling loadFilterOptions to populate grid filters.");
                 loadFilterOptions();
                 const messageDiv = document.getElementById('message');
@@ -793,17 +982,23 @@
                 const userRoleSpan = document.getElementById('user-role');
                 if (userEmailSpan) userEmailSpan.textContent = 'Erro';
                 if (userRoleSpan) userRoleSpan.textContent = 'Erro';
+                populateDropdown('turma-filter', [], '-- Erro --');
+                populateDropdown('week-filter', [], '-- Erro --');
                 populateDropdown('reposicao-professor-real', [], '-- Erro --');
                 populateDropdown('substituicao-professor-real', [], '-- Erro --');
                 populateDropdown('reposicao-disciplina', [], '-- Erro --');
                 populateDropdown('substituicao-disciplina', [], '-- Erro --');
+                const filterButton = document.querySelector('.filter-section button');
+                if (filterButton) filterButton.disabled = true;
             } catch (uiError) {
                 console.error("Error updating UI elements during initial load failure:", uiError);
             }
             const reposicaoSection = document.getElementById('reposicao-section');
             const substituicaoSection = document.getElementById('substituicao-section');
+            const absenceSection = document.getElementById('absence-section');
             if (reposicaoSection) reposicaoSection.style.display = 'none';
             if (substituicaoSection) substituicaoSection.style.display = 'none';
+            if (absenceSection) absenceSection.style.display = 'none';
         }
     });
     logDebug("Defining global constants: STATUS_OCUPACAO, TIPOS_RESERVA, TIPOS_HORARIO");

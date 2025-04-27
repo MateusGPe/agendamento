@@ -301,35 +301,39 @@
                     const professor = slot.professorParaExibir || '';
                     const profOriginalBooking = slot.professorOriginalNaReserva || '';
                     const profOriginalInstance = slot.professorPrincipal || '';
+                    const professoresAusentesString = slot.professoresAusentes || '';
                     const firstWordDiscipline = disciplina.split(' ')[0] || 'Aula';
                     if (slot.statusOcupacao === STATUS_OCUPACAO.DISPONIVEL) {
-                        cellClasses.push('slot-available', 'slot-fixo');
-                        mainContent = `${firstWordDiscipline} - ${professor || 'N/D'}`;
-                        statusToDisplay = null;
+                        if (slot.tipoOriginal === TIPOS_HORARIO.FIXO) {
+                            cellClasses.push('slot-available', 'slot-fixo');
+                            mainContent = `${firstWordDiscipline} - ${formatPublicProfessorList(professor, professoresAusentesString) || 'N/D'}`;
+                            statusToDisplay = null;
+                        } else {
+                            cell.classList.add('slot-empty');
+                            return;
+                        }
                     } else if (slot.statusOcupacao === STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
                         cellClasses.push('slot-booked-public', 'slot-reposicao');
-                        mainContent = `${firstWordDiscipline} - ${professor}`;
+                        mainContent = `${firstWordDiscipline} - ${formatPublicProfessorList(professor, '')}`;
                     } else if (slot.statusOcupacao === STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) {
                         cellClasses.push('slot-booked-public', 'slot-substituicao');
-                        let profText = professor;
+                        let profText = formatPublicProfessorList(professor, professoresAusentesString);
                         const originalToShow = profOriginalBooking || profOriginalInstance;
-                        if (originalToShow && originalToShow !== professor) profText = `${professor} (Orig: ${originalToShow})`;
+                        if (originalToShow && originalToShow !== professor) {
+                            let formattedOriginal = formatPublicProfessorList(originalToShow, professoresAusentesString, true);
+                            profText = `${profText} (Orig: ${formattedOriginal})`;
+                        }
                         mainContent = `${firstWordDiscipline} - ${profText}`;
                     } else {
                         cellClasses.push('slot-unknown-status');
-                        mainContent = `${firstWordDiscipline} - ${professor}`;
+                        mainContent = `${firstWordDiscipline} - ${formatPublicProfessorList(professor, professoresAusentesString)}`;
                         console.warn("Unexpected slot status found in public view render:", slot.statusOcupacao, slot);
                     }
                     cell.classList.add(...cellClasses);
                     cell.innerHTML = formatPublicCellContent(mainContent, statusToDisplay);
                     let tooltipText = `Data: ${slot.data}\nHora: ${slot.horaInicio}\nTipo Original: ${slot.tipoOriginal}\nStatus: ${slot.statusOcupacao}`;
-                    if (disciplina) tooltipText += `\nDisciplina: ${disciplina}`;
-                    if (professor) tooltipText += `\nProfessor Atual: ${professor}`;
-                    if (slot.statusOcupacao === 'Substituicao Agendada') {
-                        const originalToShow = profOriginalBooking || profOriginalInstance;
-                        if (originalToShow && originalToShow !== professor) tooltipText += `\nProf. Original: ${originalToShow}`;
-                    } else if (slot.tipoOriginal === 'Fixo' && profOriginalInstance) {
-                        tooltipText += `\nProf. Base: ${profOriginalInstance}`;
+                    if (professoresAusentesString) {
+                        tooltipText += `\nAusentes: ${professoresAusentesString}`;
                     }
                     cell.title = tooltipText;
                 } else {
@@ -340,7 +344,18 @@
         containerElement.appendChild(table);
         logPublicDebug("Finished rendering single public schedule table.");
     }
-    function formatPublicCellContent(mainContent, status) {
+    function formatPublicProfessorList(profString, absentString, isOriginal = false) {
+        if (!profString) return isOriginal ? '-' : 'N/D';
+        const professors = profString.split(',').map(p => p.trim()).filter(p => p);
+        const absents = (absentString || '').split(',').map(p => p.trim()).filter(p => p);
+        return professors.map(prof => {
+            if (absents.includes(prof)) {
+                return `<span class="absent-professor" title="${prof} - Ausente">${prof}</span>`;
+            }
+            return prof;
+        }).join(', ');
+    }
+    function formatPublicCellContent(mainContentFormattedHtml, status) {
         let statusSpanHtml = '';
         if (status && String(status).trim() !== '') {
             const statusText = status.trim();
@@ -350,8 +365,8 @@
             else if (status === STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) statusClass = 'status-substituicao';
             statusSpanHtml = `<span class="slot-status ${statusClass}">(${statusText})</span>`;
         }
-        if (mainContent && mainContent.trim() !== '') {
-            const mainContentDiv = `<div class="slot-main-content">${mainContent.trim()}</div>`;
+        if (mainContentFormattedHtml && mainContentFormattedHtml.trim() !== '') {
+            const mainContentDiv = `<div class="slot-main-content">${mainContentFormattedHtml.trim()}</div>`;
             return `${mainContentDiv}${statusSpanHtml}`;
         } else {
             return statusSpanHtml;

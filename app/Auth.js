@@ -137,33 +137,28 @@ function getProfessorNameByEmail_(userEmail) {
     try {
         const userSheet = getSheetByName_(SHEETS.AUTHORIZED_USERS);
         const lastRow = userSheet.getLastRow();
-        if (lastRow < 2) return null; // No data rows
-
+        if (lastRow < 2) return null;
         const emailCol = HEADERS.AUTHORIZED_USERS.EMAIL + 1;
         const nameCol = HEADERS.AUTHORIZED_USERS.NOME + 1;
         const roleCol = HEADERS.AUTHORIZED_USERS.PAPEL + 1;
         const maxCol = Math.max(emailCol, nameCol, roleCol);
-
         if (userSheet.getLastColumn() < maxCol) {
             Logger.log(`WARNING: Sheet "${SHEETS.AUTHORIZED_USERS}" has fewer columns (${userSheet.getLastColumn()}) than needed (${maxCol}) for name lookup.`);
             return null;
         }
-
         const range = userSheet.getRange(2, 1, lastRow - 1, maxCol);
         const data = range.getValues();
-
         for (let i = 0; i < data.length; i++) {
             const row = data[i];
             const emailInSheet = String(row[emailCol - 1] || '').trim().toLowerCase();
             const roleInSheet = String(row[roleCol - 1] || '').trim();
-
             if (emailInSheet === trimmedEmail && roleInSheet === USER_ROLES.PROFESSOR) {
                 const name = String(row[nameCol - 1] || '').trim();
-                return name || null; // Return name if found, otherwise null
+                return name || null;
             }
         }
         Logger.log(`Professor name not found for email: ${trimmedEmail}`);
-        return null; // Email not found or not a Professor
+        return null;
     } catch (e) {
         Logger.log(`Error in getProfessorNameByEmail_ for ${trimmedEmail}: ${e.message}`);
         return null;

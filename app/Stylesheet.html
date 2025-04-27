@@ -1,4 +1,4 @@
-<!-- PublicViewJavascript.html -->
+<!-- Stylesheet.html -->
 <style>
   body {
     font-family: 'Roboto', sans-serif;
@@ -8,6 +8,7 @@
     color: #333;
     font-size: 16px;
     -webkit-text-size-adjust: 100%;
+    line-height: 1.6;
   }
   .container {
     max-width: 1100px;
@@ -25,6 +26,7 @@
     color: #1a73e8;
     margin-top: 0;
     margin-bottom: 0.8em;
+    line-height: 1.3;
   }
   h1 {
     border-bottom: 1px solid #eee;
@@ -38,8 +40,11 @@
   h3 {
     font-size: 1.2em;
   }
+  .filter-section h3,
+  .booking-form h3 {
+    margin-bottom: 1em;
+  }
   p {
-    line-height: 1.6;
     margin-bottom: 1em;
   }
   hr {
@@ -64,27 +69,35 @@
     outline-offset: 2px;
     border-radius: 2px;
   }
-  button {
-    background-color: #1a73e8;
-    color: white;
+  button,
+  .button {
+    display: inline-block;
     padding: 12px 18px;
     border: none;
     border-radius: 4px;
     cursor: pointer;
     font-size: 1em;
     font-weight: 500;
-    margin-top: 5px;
-    margin-right: 10px;
-    margin-bottom: 10px;
+    margin: 5px 10px 10px 0;
     transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-    display: inline-block;
-    width: auto;
     text-align: center;
     vertical-align: middle;
+    width: auto;
+    color: white;
+    background-color: #1a73e8;
+    box-sizing: border-box;
   }
-  button:hover {
+  button:hover,
+  .button:hover {
     background-color: #1558b3;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+  button:disabled,
+  .button:disabled {
+    background-color: #e0e0e0;
+    color: #a0a0a0;
+    cursor: not-allowed;
+    box-shadow: none;
   }
   button[onclick*="cancelBookingForm"] {
     background-color: #f1f3f4;
@@ -93,31 +106,61 @@
   button[onclick*="cancelBookingForm"]:hover {
     background-color: #e8eaed;
   }
-  button:disabled {
-    background-color: #e0e0e0;
-    color: #a0a0a0;
-    cursor: not-allowed;
-    box-shadow: none;
+  .cancel-button {
+    background-color: #dc3545;
+    padding: 5px 10px;
+    font-size: 0.9em;
   }
-  .filter-section {
-    margin-bottom: 20px;
-    padding: 15px;
-    border: 1px solid #dadce0;
-    border-radius: 8px;
-    background-color: #f8f9fa;
+  .cancel-button:hover {
+    background-color: #c82333;
   }
-  .filter-section h3 {
-    margin-top: 0;
-    margin-bottom: 1em;
+  .report-absence-btn {
+    display: inline-block;
+    color: #333;
+    padding: 8px 8px;
+    font-size: 1.2em;
+    border-radius: 3px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
   }
-  .filter-section label {
+  .report-absence-btn:hover {
+    background-color: #ffffff;
+  }
+  .action-button {
+    border: none;
+    cursor: pointer;
+    background: none;
+    opacity: 0.7;
+    transition: opacity 0.3s;
+    vertical-align: middle;
+  }
+  .slot-cell:hover .action-button {
+    opacity: 1;
+  }
+  .absence-icon-example {
+    display: inline-block;
+    background-color: #ffc107;
+    color: #333;
+    padding: 1px 3px;
+    font-size: 0.8em;
+    border: 1px solid #e0a800;
+    border-radius: 3px;
+    line-height: 1;
+    vertical-align: baseline;
+    cursor: default;
+  }
+  .filter-section label,
+  .booking-form label {
     display: block;
     margin-bottom: 6px;
     font-weight: 500;
     font-size: 0.9em;
     color: #3c4043;
   }
-  .filter-section select {
+  .filter-section select,
+  .booking-form select,
+  .booking-form input[type="text"] {
     width: 100%;
     padding: 10px 12px;
     margin-bottom: 18px;
@@ -127,6 +170,11 @@
     background-color: #fff;
     font-size: 0.95em;
     height: 40px;
+    color: #333;
+    line-height: normal;
+  }
+  .filter-section select,
+  .booking-form select {
     appearance: none;
     background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%235f6368%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.4-5.4-12.8z%22%2F%3E%3C%2Fsvg%3E');
     background-repeat: no-repeat;
@@ -144,7 +192,37 @@
   .filter-section select:disabled {
     background-color: #e8eaed;
     cursor: not-allowed;
+    opacity: 0.7;
   }
+  .filter-section,
+  .booking-form {
+    margin-bottom: 20px;
+    padding: 15px;
+    border: 1px solid #dadce0;
+    border-radius: 8px;
+    background-color: #f8f9fa;
+  }
+  .booking-form {
+    margin-top: 15px;
+    padding: 20px;
+  }
+  .booking-form p {
+    margin-bottom: 1.5em;
+    font-size: 0.95em;
+    color: #5f6368;
+    background-color: #fff;
+    padding: 8px 12px;
+    border-radius: 4px;
+    border: 1px solid #e0e0e0;
+  }
+  .booking-form p span {
+    font-weight: 500;
+    color: #202124;
+    display: block;
+  }
+  /**
+ * Turma (Class/Group) Styles
+ */
   .turma-schedule-container {
     margin-bottom: 30px;
     padding-bottom: 15px;
@@ -160,12 +238,18 @@
     padding-bottom: 5px;
     border-bottom: 1px solid #eee;
   }
-  .schedule-container {
+  .schedule-container,
+  .cancel-table-container {
     margin-top: 20px;
     overflow-x: auto;
     border: 1px solid #ddd;
     border-radius: 4px;
     background-color: #fff;
+    -webkit-overflow-scrolling: touch;
+  }
+  .cancel-table-container {
+    max-height: 60vh;
+    overflow-y: auto;
   }
   .schedule-container p.info-message,
   .schedule-container p.error-message {
@@ -175,25 +259,22 @@
     font-style: italic;
     font-size: 1em;
   }
-  .schedule-grid-table {
+  .schedule-grid-table,
+  .cancel-table {
     width: 100%;
-    min-width: 700px;
     border-collapse: collapse;
-    font-size: 0.85em;
-    table-layout: fixed;
   }
   .schedule-grid-table th,
-  .schedule-grid-table td {
+  .schedule-grid-table td,
+  .cancel-table th,
+  .cancel-table td {
     border: 1px solid #e0e0e0;
-    padding: 6px 8px;
-    text-align: center;
+    padding: 8px 10px;
     vertical-align: middle;
-    min-width: 80px;
-    height: 60px;
-    word-wrap: break-word;
     box-sizing: border-box;
   }
-  .schedule-grid-table th {
+  .schedule-grid-table th,
+  .cancel-table thead th {
     background-color: #f8f9fa;
     color: #3c4043;
     font-weight: 500;
@@ -202,10 +283,26 @@
     top: 0;
     z-index: 3;
   }
+  .cancel-table thead th {
+    z-index: 1;
+  }
+  .schedule-grid-table {
+    min-width: 700px;
+    table-layout: fixed;
+    font-size: 0.85em;
+  }
+  .schedule-grid-table th,
+  .schedule-grid-table td {
+    padding: 4px 6px;
+    text-align: center;
+  }
   .schedule-grid-table td {
     background-color: #fff;
     position: relative;
     line-height: 1.3;
+    min-width: 80px;
+    height: 60px;
+    word-wrap: break-word;
   }
   .schedule-grid-table tbody tr:nth-child(even) td {
     background-color: #f9f9f9;
@@ -219,8 +316,10 @@
     position: sticky;
     left: 0;
     z-index: 2;
-    text-align: center;
     padding: 6px 4px;
+  }
+  .schedule-grid-table tbody tr:nth-child(odd) td.hour-cell {
+    background-color: #e8f0fe;
   }
   .schedule-grid-table tbody tr:nth-child(even) td.hour-cell {
     background-color: #d2e3fc;
@@ -241,17 +340,12 @@
   .slot-booked-public {
     font-weight: 700;
   }
-  .slot-status.status-disponivel {
-    color: #137333;
-  }
+  .slot-status.status-disponivel,
   .slot-status.status-reposicao {
     color: #137333;
   }
   .slot-status.status-substituicao {
     color: #a50e0e;
-  }
-  .slot-status.status-default {
-    color: #5f6368;
   }
   .slot-empty {
     background-color: #f8f9fa;
@@ -280,12 +374,75 @@
   .clickable-slot:hover {
     background-color: #fff3cd !important;
     box-shadow: inset 0 0 0 2px #f79c00;
+    z-index: 1;
   }
   .selected-cell {
     outline: 3px solid #1a73e8 !important;
     outline-offset: -2px;
     background-color: #d2e3fc !important;
     z-index: 1;
+  }
+  .absent-professor {
+    text-decoration: line-through;
+    color: #dc3545;
+    font-style: italic;
+  }
+  .cancel-table {
+    font-size: 0.9em;
+  }
+  .cancel-table th,
+  .cancel-table td {
+    text-align: left;
+  }
+  .cancel-table tbody tr:nth-child(even) {
+    background-color: #f9f9f9;
+  }
+  .cancelled-row td {
+    text-decoration: line-through;
+    color: #888;
+    background-color: #f1f1f1 !important;
+  }
+  .schedule-grid-table tfoot {
+    border-top: 2px solid #aaa;
+    background-color: #f0f0f0;
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
+  }
+  .schedule-summary-row th,
+  .schedule-summary-row td {
+    font-weight: bold;
+    font-size: 0.9em;
+    padding: 8px;
+    text-align: center;
+    vertical-align: middle;
+    color: #333;
+    min-width: 80px;
+  }
+  .schedule-summary-row th.summary-label {
+    text-align: right;
+    background-color: #e8f0fe;
+    color: #1a73e8;
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    background-clip: padding-box;
+  }
+  .schedule-summary-row td.summary-count {
+    background-color: #f8f9fa;
+  }
+  .schedule-summary-row td.limit-reached {
+    color: #d93025;
+    background-color: #fce8e6;
+    font-weight: 700;
+  }
+  .limit-indicator {
+    display: block;
+    font-size: 0.8em;
+    font-style: italic;
+    font-weight: normal;
+    margin-left: 4px;
+    color: inherit;
   }
   .section {
     margin-top: 30px;
@@ -301,68 +458,14 @@
     color: #5f6368;
     margin-bottom: 15px;
   }
-  .section>p .slot-type-vago {
+  .section>p .slot-type-vago,
+  .section>p .slot-status-disponivel {
     color: #137333;
     font-weight: bold;
   }
   .section>p .slot-type-fixo {
     color: #174ea6;
     font-weight: bold;
-  }
-  .section>p .slot-status-disponivel {
-    color: #137333;
-    font-weight: bold;
-  }
-  .booking-form {
-    margin-top: 15px;
-    padding: 20px;
-    border: 1px solid #dadce0;
-    border-radius: 8px;
-    background-color: #f8f9fa;
-  }
-  .booking-form h3 {
-    margin-bottom: 1em;
-  }
-  .booking-form p {
-    margin-bottom: 1.5em;
-    font-size: 0.95em;
-    color: #5f6368;
-    background-color: #fff;
-    padding: 8px 12px;
-    border-radius: 4px;
-    border: 1px solid #e0e0e0;
-  }
-  .booking-form p span {
-    font-weight: 500;
-    color: #202124;
-    display: block;
-  }
-  .booking-form label {
-    display: block;
-    margin-bottom: 6px;
-    font-weight: 500;
-    font-size: 0.9em;
-    color: #3c4043;
-  }
-  .booking-form input[type="text"],
-  .booking-form select {
-    width: 100%;
-    padding: 10px 12px;
-    margin-bottom: 18px;
-    border: 1px solid #dadce0;
-    border-radius: 4px;
-    box-sizing: border-box;
-    background-color: #fff;
-    font-size: 0.95em;
-    height: 40px;
-  }
-  .booking-form select {
-    appearance: none;
-    background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%235f6368%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.4-5.4-12.8z%22%2F%3E%3C%2Fsvg%3E');
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-    background-size: 10px auto;
-    padding-right: 35px;
   }
   .loading {
     position: fixed;
@@ -420,9 +523,13 @@
     border-color: #a9c5f5;
   }
   @media screen and (max-width: 768px) {
+    body {
+      font-size: 15px;
+    }
     .container {
       padding: 15px 10px;
       margin: 10px auto;
+      border-radius: 4px;
     }
     h1 {
       font-size: 1.6em;
@@ -433,135 +540,157 @@
     h3 {
       font-size: 1.1em;
     }
-    .filter-section button,
-    .booking-form button {
+    button,
+    .button {
       width: 100%;
       margin-right: 0;
+      margin-left: 0;
       margin-bottom: 10px;
-      box-sizing: border-box;
+      padding: 10px 15px;
     }
     .booking-form button:last-of-type {
       margin-bottom: 0;
-    }
-    .schedule-grid-table {
-      font-size: 0.75em;
-      min-width: unset;
-    }
-    .schedule-grid-table th,
-    .schedule-grid-table td {
-      padding: 4px 5px;
-      min-width: 55px;
-      height: 50px;
-    }
-    .schedule-grid-table td.hour-cell {
-      width: 45px;
-      min-width: 40px;
-    }
-    .slot-status {
-      font-size: 0.8em;
     }
     .filter-section select,
     .booking-form input[type="text"],
     .booking-form select {
       font-size: 1em;
+      height: 44px;
+      padding: 10px;
+    }
+    .schedule-grid-table {
+      font-size: 0.8em;
+      min-width: unset;
+      table-layout: auto;
+    }
+    .schedule-grid-table th,
+    .schedule-grid-table td {
+      padding: 4px 5px;
+      min-width: 0;
+      height: auto;
+      word-break: break-word;
+    }
+    .schedule-grid-table td {
+      min-height: 50px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .schedule-grid-table td.hour-cell {
+      width: 50px;
+      min-width: 45px;
+      padding: 5px 2px;
+      font-size: 0.9em;
+      min-height: 50px;
+      position: sticky;
+      left: 0;
+      z-index: 2;
+    }
+    .schedule-grid-table tbody tr:nth-child(odd) td.hour-cell {
+      background-color: #e8f0fe;
+    }
+    .schedule-grid-table tbody tr:nth-child(even) td.hour-cell {
+      background-color: #d2e3fc;
+    }
+    .slot-status {
+      font-size: 0.85em;
+    }
+    .schedule-grid-table tfoot th,
+    .schedule-grid-table tfoot td {
+      font-size: 0.85em;
+      padding: 5px;
+      min-width: 0;
+    }
+    .schedule-summary-row th.summary-label {
+      position: sticky;
+      left: 0;
+      z-index: 4;
+    }
+    .report-absence-btn {
+      font-size: 1.6em;
+      padding: 4px 8px;
+    }
+    .cancel-button {
+      padding: 4px 8px;
+      font-size: 0.85em;
+    }
+    .cancel-table {
+      font-size: 0.85em;
+    }
+    .cancel-table th,
+    .cancel-table td {
+      padding: 6px 8px;
     }
   }
-  .cancel-table-container {
-    margin-top: 20px;
-    max-height: 60vh;
-    overflow-y: auto;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-  }
-  .cancel-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.9em;
-  }
-  .cancel-table th,
-  .cancel-table td {
-    border: 1px solid #e0e0e0;
-    padding: 8px 10px;
-    text-align: left;
-    vertical-align: middle;
-  }
-  .cancel-table thead th {
-    background-color: #f8f9fa;
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    border-bottom: 2px solid #ddd;
-  }
-  .cancel-table tbody tr:nth-child(even) {
-    background-color: #f9f9f9;
-  }
-  .cancel-button {
-    background-color: #dc3545;
-    color: white;
-    padding: 5px 10px;
-    font-size: 0.9em;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-  }
-  .cancel-button:hover {
-    background-color: #c82333;
-  }
-  .cancel-button:disabled {
-    background-color: #e0e0e0;
-    cursor: not-allowed;
-  }
-  .cancelled-row td {
-    text-decoration: line-through;
-    color: #888;
-    background-color: #f1f1f1 !important;
-  }
-  .schedule-grid-table tfoot {
-    border-top: 2px solid #aaa;
-    background-color: #f0f0f0;
-  }
-  .schedule-summary-row th,
-  .schedule-summary-row td {
-    font-weight: bold;
-    font-size: 0.9em;
-    padding: 8px 8px;
-    text-align: center;
-    vertical-align: middle;
-    color: #333;
-    min-width: 80px;
-    box-sizing: border-box;
-  }
-  .schedule-summary-row th.summary-label {
-    text-align: right;
-    background-color: #e8f0fe;
-    color: #1a73e8;
-    position: sticky;
-    left: 0;
-    z-index: 4;
-  }
-  .schedule-summary-row td.summary-count {
-    background-color: #f8f9fa;
-  }
-  .schedule-summary-row td.limit-reached {
-    color: #d93025;
-    background-color: #fce8e6;
-    font-weight: 700;
-  }
-  .limit-indicator {
-    display: block;
-    font-size: 0.8em;
-    font-style: italic;
-    font-weight: normal;
-    margin-left: 4px;
-    color: inherit;
-  }
-  @media screen and (max-width: 768px) {
+  @media screen and (max-width: 480px) {
+    body {
+      font-size: 14px;
+    }
+    .container {
+      padding: 10px 8px;
+      margin: 5px auto;
+      border-radius: 0;
+      box-shadow: none;
+    }
+    h1 {
+      font-size: 1.4em;
+    }
+    h2 {
+      font-size: 1.2em;
+    }
+    h3 {
+      font-size: 1.1em;
+    }
+    button,
+    .button {
+      padding: 10px 12px;
+      font-size: 0.95em;
+    }
+    .schedule-grid-table {
+      font-size: 0.75em;
+    }
+    .schedule-grid-table th,
+    .schedule-grid-table td {
+      padding: 3px 4px;
+    }
+    .schedule-grid-table td {
+      min-height: 45px;
+    }
+    .schedule-grid-table td.hour-cell {
+      width: 40px;
+      min-width: 35px;
+      font-size: 0.85em;
+      padding: 4px 1px;
+      min-height: 45px;
+    }
+    .slot-status {
+      font-size: 0.8em;
+    }
     .schedule-grid-table tfoot th,
     .schedule-grid-table tfoot td {
       font-size: 0.8em;
-      padding: 5px 5px;
-      min-width: 55px;
+      padding: 4px;
+    }
+    .message {
+      padding: 10px 12px;
+      font-size: 0.9em;
+    }
+    .filter-section,
+    .booking-form {
+      padding: 10px;
+    }
+    .booking-form {
+      padding: 15px 10px;
+    }
+    .filter-section label,
+    .booking-form label {
+      font-size: 0.85em;
+    }
+    .filter-section select,
+    .booking-form select,
+    .booking-form input[type="text"] {
+      font-size: 0.95em;
+      height: 40px;
     }
   }
 </style>

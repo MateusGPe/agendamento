@@ -47,12 +47,6 @@ function releaseScriptLock_(lock) {
   } else {
   }
 }
-/**
- * Tries to convert a value to a valid Date object normalized to UTC midnight.
- * Handles Sheets' "zero date" (1899-12-30) by returning null.
- * @param {*} rawValue - The value from the sheet cell.
- * @returns {Date|null} A valid Date object (UTC midnight) or null.
- */
 function formatValueToDate(rawValue) {
   if (rawValue instanceof Date && !isNaN(rawValue.getTime())) {
     if (rawValue.getFullYear() === 1899 && rawValue.getMonth() === 11 && rawValue.getDate() === 30) {
@@ -62,11 +56,6 @@ function formatValueToDate(rawValue) {
   }
   return null;
 }
-/**
- * Parses a string in 'dd/MM/yyyy' format or a Date object to a Date object normalized to UTC midnight.
- * @param {*} value - String 'dd/MM/yyyy', Date object, or other.
- * @returns {Date|null} The Date object (UTC midnight) or null if invalid.
- */
 function parseDDMMYYYY(value) {
   if (value instanceof Date && !isNaN(value.getTime())) {
     return new Date(Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()));
@@ -88,13 +77,6 @@ function parseDDMMYYYY(value) {
   }
   return null;
 }
-/**
- * Formats a value (Date, string, or Sheets time number) to "HH:mm" string using the sheet's timezone.
- * Handles Sheets' "zero date" artifact if it contains time components.
- * @param {*} rawValue - The value from the sheet.
- * @param {string} timeZone - The spreadsheet's time zone ID (e.g., "America/Sao_Paulo").
- * @returns {string|null} Formatted time string "HH:mm" or null.
- */
 function formatValueToHHMM(rawValue, timeZone) {
   try {
     if (!timeZone) {
@@ -139,17 +121,18 @@ function formatValueToHHMM(rawValue, timeZone) {
     return null;
   }
 }
-/**
- * Appends multiple rows to a sheet efficiently. (Internal use)
- * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The sheet object.
- * @param {number} numCols - The number of columns expected/to write.
- * @param {any[][]} rowsToAppend - 2D array of row data.
- */
+function invalidateSheetCache_(sheetName) {
+  const cache = CacheService.getScriptCache();
+  const cacheKey = `SHEET_DATA_${SPREADSHEET_ID}_${sheetName}`;
+  cache.remove(cacheKey);
+  Logger.log(`Cache invalidated for sheet "${sheetName}".`);
+}
 function appendSheetRows_(sheet, numCols, rowsToAppend) {
   if (!rowsToAppend || rowsToAppend.length === 0) {
     return;
   }
   try {
+    invalidateSheetCache_(sheet.getName());
     const finalRows = rowsToAppend.map(row => {
       const finalRow = [...row];
       while (finalRow.length < numCols) finalRow.push('');
@@ -164,11 +147,19 @@ function appendSheetRows_(sheet, numCols, rowsToAppend) {
     throw new Error(`Erro interno ao adicionar novas linhas na planilha "${sheet.getName()}": ${e.message}`);
   }
 }
-/**
- * Helper to update guests on a Calendar event. (Internal use)
- * @param {GoogleAppsScript.Calendar.CalendarEvent} event - The event object.
- * @param {string[]} newGuestEmails - Array of email addresses that *should* be guests.
- */
+function updateSheetRow_(sheet, rowIndex, numCols, updatedRowData) {
+  try {
+    invalidateSheetCache_(sheet.getName());
+    const finalRow = [...updatedRowData];
+    while (finalRow.length < numCols) finalRow.push('');
+    if (finalRow.length > numCols) finalRow.length = numCols;
+    sheet.getRange(rowIndex, 1, 1, numCols).setValues([finalRow]);
+    Logger.log(`Row ${rowIndex} updated successfully in sheet "${sheet.getName()}".`);
+  } catch (e) {
+    Logger.log(`ERROR updating row ${rowIndex} in sheet "${sheet.getName()}": ${e.message}`);
+    throw new Error(`Erro interno ao atualizar a linha ${rowIndex} na planilha "${sheet.getName()}": ${e.message}`);
+  }
+}
 function updateCalendarGuests_(event, newGuestEmails) {
   if (!event || typeof event.getGuestList !== 'function') return;
   const newGuestsLower = newGuestEmails.map(g => String(g || '').toLowerCase()).filter(g => g && g.includes('@'));

@@ -111,6 +111,7 @@ function generateNewInstances_(startDateUTC, endDateUTC, validBaseSchedules, exi
                 newRow[HEADERS.SCHEDULE_INSTANCES.HORA_INICIO] = baseSchedule.hour;
                 newRow[HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL] = baseType;
                 newRow[HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO] = STATUS_OCUPACAO.DISPONIVEL;
+                newRow[HEADERS.SCHEDULE_INSTANCES.PROFESSORES_AUSENTES] = '';
                 newInstanceRows.push(newRow);
                 existingInstanceKeys[predictableKey] = true;
             }
@@ -132,12 +133,14 @@ function createScheduleInstances() {
         const { header: instanceHeader, data: instanceData, sheet: instancesSheet } = getSheetData_(SHEETS.SCHEDULE_INSTANCES, HEADERS.SCHEDULE_INSTANCES);
         if (baseData.length === 0) {
             Logger.log('Planilha "Horarios Base" está vazia. Saindo.');
-            releaseScriptLock_(lock); return;
+            releaseScriptLock_(lock);
+            return;
         };
         const validBaseSchedules = validateBaseSchedules_(baseData, timeZone);
         if (validBaseSchedules.length === 0) {
             Logger.log('Nenhum horário base válido encontrado após validação. Saindo.');
-            releaseScriptLock_(lock); return;
+            releaseScriptLock_(lock);
+            return;
         }
         Logger.log(`Found ${validBaseSchedules.length} valid base schedules.`);
         const existingInstanceKeys = createExistingInstanceMap_(instanceData, timeZone);
@@ -249,7 +252,8 @@ function getFilteredScheduleInstances(turma, weekStartDateString) {
         const hourCol = HEADERS.SCHEDULE_INSTANCES.HORA_INICIO;
         const typeCol = HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL;
         const statusCol = HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO;
-        const maxIndexNeeded = Math.max(instIdCol, baseIdCol, turmaCol, profPrincCol, dateCol, dayCol, hourCol, typeCol, statusCol);
+        const absentCol = HEADERS.SCHEDULE_INSTANCES.PROFESSORES_AUSENTES;
+        const maxIndexNeeded = Math.max(instIdCol, baseIdCol, turmaCol, profPrincCol, dateCol, dayCol, hourCol, typeCol, statusCol, absentCol);
         if (instanceHeader.length <= maxIndexNeeded) {
             throw new Error(`Planilha "${SHEETS.SCHEDULE_INSTANCES}" não contém todas as colunas necessárias (encontradas ${instanceHeader.length}, esperado pelo menos ${maxIndexNeeded + 1}).`);
         }
@@ -271,6 +275,7 @@ function getFilteredScheduleInstances(turma, weekStartDateString) {
             const instanceDiaSemana = String(row[dayCol] || '').trim();
             const originalType = String(row[typeCol] || '').trim();
             const instanceStatus = String(row[statusCol] || '').trim();
+            const professoresAusentes = String(row[absentCol] || '').trim();
             let disciplinaParaExibir = '';
             let professorParaExibir = '';
             let professorOriginalNaReserva = '';
@@ -299,7 +304,8 @@ function getFilteredScheduleInstances(turma, weekStartDateString) {
                 disciplinaParaExibir: disciplinaParaExibir,
                 professorParaExibir: professorParaExibir,
                 professorOriginalNaReserva: professorOriginalNaReserva,
-                professorPrincipal: professorPrincipalInstance
+                professorPrincipal: professorPrincipalInstance,
+                professoresAusentes: professoresAusentes
             });
         });
         const dailyCounts = { 'Segunda': 0, 'Terça': 0, 'Quarta': 0, 'Quinta': 0, 'Sexta': 0, 'Sábado': 0 };
@@ -428,11 +434,12 @@ function cleanOldScheduleInstances() {
         const originalRowCount = instanceData.length;
         if (originalRowCount === 0) {
             Logger.log('No instances found to clean.');
-            releaseScriptLock_(lock); return;
+            releaseScriptLock_(lock);
+            return;
         }
         const dateCol = HEADERS.SCHEDULE_INSTANCES.DATA;
-        const numCols = instanceHeader.length;
-        if (dateCol >= numCols) throw new Error(`Coluna de Data (índice ${dateCol}) não encontrada na planilha "${SHEETS.SCHEDULE_INSTANCES}".`);
+        const numCols = instanceHeader.length > 0 ? instanceHeader.length : (Math.max(...Object.values(HEADERS.SCHEDULE_INSTANCES)) + 1);
+        if (dateCol >= numCols) throw new Error(`Coluna de Data (índice ${dateCol}) não encontrada na planilha "${SHEETS.SCHEDULE_INSTANCES}". Check HEADERS definition.`);
         const rowsToKeep = [];
         instanceData.forEach((row) => {
             if (row && row.length > dateCol) {
@@ -481,16 +488,17 @@ function cleanupExcessVagoSlots() {
         const timeZone = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
         const { header: instanceHeader, data: instanceData, sheet: instancesSheet } = getSheetData_(SHEETS.SCHEDULE_INSTANCES, HEADERS.SCHEDULE_INSTANCES);
         const originalDataRowCount = instanceData.length;
-        const numCols = instanceHeader.length > 0 ? instanceHeader.length : (Object.keys(HEADERS.SCHEDULE_INSTANCES).length);
+        const numCols = instanceHeader.length > 0 ? instanceHeader.length : (Math.max(...Object.values(HEADERS.SCHEDULE_INSTANCES)) + 1);
         if (originalDataRowCount === 0) {
             Logger.log('No instances found to process.');
-            releaseScriptLock_(lock); return;
+            releaseScriptLock_(lock);
+            return;
         }
         const dateCol = HEADERS.SCHEDULE_INSTANCES.DATA;
         const turmaCol = HEADERS.SCHEDULE_INSTANCES.TURMA;
         const typeCol = HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL;
         const statusCol = HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO;
-        const maxIndexNeeded = Math.max(dateCol, turmaCol, typeCol, statusCol);
+        const maxIndexNeeded = Math.max(dateCol, turmaCol, typeCol, statusCol /* Add other needed cols if any */);
         if (instanceHeader.length <= maxIndexNeeded) {
             throw new Error(`Planilha "${SHEETS.SCHEDULE_INSTANCES}" não contém todas as colunas necessárias (Index: ${maxIndexNeeded}) para cleanupExcessVagoSlots.`);
         }
@@ -507,15 +515,15 @@ function cleanupExcessVagoSlots() {
             const instanceStatus = String(row[statusCol] || '').trim();
             if (!instanceUTCDate || !turma) return;
             let instanceLocalDate = null;
-             const rawDate = row[dateCol];
-             if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
-                 instanceLocalDate = new Date(rawDate.getFullYear(), rawDate.getMonth(), rawDate.getDate());
-                 if (instanceLocalDate < today) {
-                     return;
-                 }
-             } else {
-                 return;
-             }
+            const rawDate = row[dateCol];
+            if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
+                instanceLocalDate = new Date(rawDate.getFullYear(), rawDate.getMonth(), rawDate.getDate());
+                if (instanceLocalDate < today) {
+                    return;
+                }
+            } else {
+                return;
+            }
             const dateStringKey = Utilities.formatDate(instanceUTCDate, 'UTC', 'yyyy-MM-dd');
             if (!groupedData[dateStringKey]) groupedData[dateStringKey] = {};
             if (!groupedData[dateStringKey][turma]) {
@@ -617,11 +625,30 @@ function getPublicScheduleInstances(weekStartDateString) {
             } return map;
         }, {});
         const bookingDetailsMap = bookingData.reduce((map, row) => {
-            const idInstCol = HEADERS.BOOKING_DETAILS.ID_INSTANCIA; const discCol = HEADERS.BOOKING_DETAILS.DISCIPLINA_REAL; const profRealCol = HEADERS.BOOKING_DETAILS.PROFESSOR_REAL; const profOrigCol = HEADERS.BOOKING_DETAILS.PROFESSOR_ORIGINAL; const statusCol = HEADERS.BOOKING_DETAILS.STATUS_RESERVA; const reqCols = Math.max(idInstCol, discCol, profRealCol, profOrigCol, statusCol) + 1;
-            if (row && row.length >= reqCols) { const instanceId = String(row[idInstCol] || '').trim(); const statusReserva = String(row[statusCol] || '').trim(); if (instanceId && statusReserva === 'Agendada') map[instanceId] = { disciplinaReal: String(row[discCol] || '').trim(), professorReal: String(row[profRealCol] || '').trim(), professorOriginalBooking: String(row[profOrigCol] || '').trim() }; } return map;
+            const idInstCol = HEADERS.BOOKING_DETAILS.ID_INSTANCIA;
+            const discCol = HEADERS.BOOKING_DETAILS.DISCIPLINA_REAL;
+            const profRealCol = HEADERS.BOOKING_DETAILS.PROFESSOR_REAL;
+            const profOrigCol = HEADERS.BOOKING_DETAILS.PROFESSOR_ORIGINAL;
+            const statusCol = HEADERS.BOOKING_DETAILS.STATUS_RESERVA;
+            const reqCols = Math.max(idInstCol, discCol, profRealCol, profOrigCol, statusCol) + 1;
+            if (row && row.length >= reqCols) {
+                const instanceId = String(row[idInstCol] || '').trim();
+                const statusReserva = String(row[statusCol] || '').trim();
+                if (instanceId && statusReserva === 'Agendada') map[instanceId] = { disciplinaReal: String(row[discCol] || '').trim(), professorReal: String(row[profRealCol] || '').trim(), professorOriginalBooking: String(row[profOrigCol] || '').trim() };
+            } return map;
         }, {});
         const slotsByTurma = {};
-        const instIdCol = HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA; const baseIdCol = HEADERS.SCHEDULE_INSTANCES.ID_BASE_HORARIO; const turmaCol = HEADERS.SCHEDULE_INSTANCES.TURMA; const profPrincCol = HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL; const dateCol = HEADERS.SCHEDULE_INSTANCES.DATA; const dayCol = HEADERS.SCHEDULE_INSTANCES.DIA_SEMANA; const hourCol = HEADERS.SCHEDULE_INSTANCES.HORA_INICIO; const typeCol = HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL; const statusCol = HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO; const maxIndexNeeded = Math.max(instIdCol, baseIdCol, turmaCol, profPrincCol, dateCol, dayCol, hourCol, typeCol, statusCol);
+        const instIdCol = HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA;
+        const baseIdCol = HEADERS.SCHEDULE_INSTANCES.ID_BASE_HORARIO;
+        const turmaCol = HEADERS.SCHEDULE_INSTANCES.TURMA;
+        const profPrincCol = HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL;
+        const dateCol = HEADERS.SCHEDULE_INSTANCES.DATA;
+        const dayCol = HEADERS.SCHEDULE_INSTANCES.DIA_SEMANA;
+        const hourCol = HEADERS.SCHEDULE_INSTANCES.HORA_INICIO;
+        const typeCol = HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL;
+        const statusCol = HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO;
+        const absentCol = HEADERS.SCHEDULE_INSTANCES.PROFESSORES_AUSENTES;
+        const maxIndexNeeded = Math.max(instIdCol, baseIdCol, turmaCol, profPrincCol, dateCol, dayCol, hourCol, typeCol, statusCol, absentCol);
         instanceData.forEach((row, index) => {
             if (!row || row.length <= maxIndexNeeded) return;
             const instanceId = String(row[instIdCol] || '').trim();
@@ -633,6 +660,7 @@ function getPublicScheduleInstances(weekStartDateString) {
             if (instanceUTCDate < weekStartDate || instanceUTCDate > weekEndDate) return;
             const originalType = String(row[typeCol] || '').trim();
             const instanceStatus = String(row[statusCol] || '').trim();
+            const professoresAusentes = String(row[absentCol] || '').trim();
             let includeSlot = false;
             if (originalType === TIPOS_HORARIO.FIXO) {
                 includeSlot = true;
@@ -672,7 +700,8 @@ function getPublicScheduleInstances(weekStartDateString) {
                 disciplinaParaExibir: disciplinaParaExibir,
                 professorParaExibir: professorParaExibir,
                 professorOriginalNaReserva: professorOriginalNaReserva,
-                professorPrincipal: professorPrincipalInstancia
+                professorPrincipal: professorPrincipalInstancia,
+                professoresAusentes: professoresAusentes
             };
             if (!slotsByTurma[instanceTurma]) {
                 slotsByTurma[instanceTurma] = [];
@@ -699,7 +728,9 @@ function getScheduleViewFilters() {
         const { startGenerationDate: firstMondayUTC } = calculateGenerationRange_(numWeeks);
         const weekStartDates = [];
         Logger.log(`Generating ${numWeeks} week start dates (UTC Mondays) for filters starting from: ${firstMondayUTC.toISOString().slice(0, 10)}`);
-        for (let i = 0; i < numWeeks; i++) {
+        for (let i = 0;
+            i < numWeeks;
+            i++) {
             const weekStartDate = new Date(firstMondayUTC.getTime());
             weekStartDate.setUTCDate(firstMondayUTC.getUTCDate() + (i * 7));
             const valueString = Utilities.formatDate(weekStartDate, 'UTC', 'yyyy-MM-dd');

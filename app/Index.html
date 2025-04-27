@@ -73,6 +73,21 @@
         <button type="button" onclick="cancelBookingForm('Substituicao')">Cancelar</button>
       </div>
     </div>
+    <div id="absence-section" class="section" style="display: none;">
+      <h2>Informar Ausência de Professor</h2>
+      <p>Selecione um horário <span class="slot-type-fixo">FIXO</span> futuro na grade acima e clique no ícone <span class="absence-icon-example">📅❌</span> para informar uma ausência.</p>
+      <div id="absence-form" class="booking-form" style="display: none;">
+        <h3>Detalhes da Ausência</h3>
+        <p>Horário Selecionado: <span id="absence-selected-slot-info"></span></p>
+        <input type="hidden" id="absence-selected-slot-id">
+        <label for="absence-professor-select">Professor Ausente:</label>
+        <select id="absence-professor-select" required>
+          <option value="" disabled selected>-- Selecione o Professor --</option>
+        </select>
+        <button onclick="submitAbsenceReport()">Confirmar Ausência</button>
+        <button type="button" onclick="cancelAbsenceForm()">Cancelar</button>
+      </div>
+    </div>
   </div>
   <?!= include('Javascript'); ?>
 </body>

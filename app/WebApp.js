@@ -70,6 +70,7 @@ function getInitialData() {
     Logger.log('*** getInitialData called ***');
     let userEmail = '[Unavailable]';
     let userRole = null;
+    let userProfessorName = null;
     let professors = [];
     let turmas = [];
     let disciplines = [];
@@ -79,6 +80,11 @@ function getInitialData() {
         userRole = getUserRolePlain_(userEmail);
         if (!userRole) {
             errorMessages.push('Usuário não encontrado ou não autorizado.');
+        } else if (userRole === USER_ROLES.PROFESSOR) {
+            userProfessorName = getProfessorNameByEmail_(userEmail);
+            if (!userProfessorName) {
+                Logger.log(`Warning: Could not retrieve name for professor email ${userEmail}`);
+            }
         }
     } catch (e) {
         userEmail = '[Error]';
@@ -154,7 +160,7 @@ function getInitialData() {
         message = `Falha crítica ao carregar dados iniciais: ${errorMessages.join('; ')}`;
     }
     return createJsonResponse(overallSuccess, message, {
-        user: { role: userRole, email: userEmail },
+        user: { role: userRole, email: userEmail, professorName: userProfessorName },
         professors: professors,
         turmas: turmas,
         disciplines: disciplines
@@ -168,19 +174,7 @@ function include(filename) {
         return `<!-- Error including file: ${filename}.html - ${e.message} -->`;
     }
 }
-// --- Funções Expostas para google.script.run ---
-// As funções de nível superior (que não começam com '_') são automaticamente expostas para chamadas do frontend (google.script.run).
-// getUserRole()
-// getProfessorsList()
-// getTurmasList()
-// getDisciplinesList()
-// getScheduleViewFilters()
-// getFilteredScheduleInstances(turma, weekStartDateString)
-// getAvailableSlots(tipoReserva)
-// bookSlot(jsonBookingDetailsString)
-// getCancellableBookings() // Apenas para Admin via WebApp
-// cancelBookingAdmin(bookingIdToCancel) // Apenas para Admin via WebApp
-// getPublicScheduleInstances(weekStartDateString) // Para a view pública
-// createScheduleInstances() // Pode ser chamada via trigger ou manualmente, ou como parte de outra lógica (cancelamento)
-// cleanOldScheduleInstances() // Pode ser chamada via trigger ou manualmente
-// cleanupExcessVagoSlots() // Pode ser chamada via trigger ou manualmente, ou como parte de outra lógica (agendamento)
+
+
+
+
