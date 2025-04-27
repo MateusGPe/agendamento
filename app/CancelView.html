@@ -10,7 +10,8 @@
     <div class="container">
         <h1>Cancelar Reservas Agendadas</h1>
         <p>Esta página permite que administradores visualizem e cancelem reservas futuras que ainda estão agendadas.</p>
-        <p><a href="<?= ScriptApp.getService().getUrl() ?>">← Voltar para Agendamento Principal</a></p>
+        <a href="https://mateusgpe.github.io/agendamento/">Página inicial</a><span> | </span>
+        <p><a href="<?= ScriptApp.getService().getUrl() ?>">Voltar para Agendamento Principal</a></p>
         <button id="load-bookings-btn" onclick="loadCancellableBookings()">Carregar Reservas Agendadas</button>
         <div id="cancel-list-container" class="cancel-table-container" style="display: none;">
             <table class="cancel-table">
