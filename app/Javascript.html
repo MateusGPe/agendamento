@@ -544,6 +544,7 @@
             countCell.classList.add('summary-count');
             countCell.textContent = count;
             if (count >= DAY_LIMIT_THRESHOLD) {
+                countCell.textContent += '*';
                 countCell.classList.add('limit-reached');
                 countCell.title = `Limite de ${DAY_LIMIT_THRESHOLD} aulas (Fixas+Agendadas) atingido/excedido para este dia.`;
             }

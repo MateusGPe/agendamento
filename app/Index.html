@@ -11,6 +11,7 @@
     <h1>Agendamento e Visualização de Horários</h1>
     <p>Usuário: <a id="user-email" href="#">Carregando...</a> | Papel: <strong id="user-role">Carregando...</strong></p>
     <p>
+      <a href="https://mateusgpe.github.io/agendamento/">Página inicial</a><span> | </span>
       <a href="<?= ScriptApp.getService().getUrl() ?>?page=public">Visualizar Agendamentos</a><span> | </span>
       <a href="<?= ScriptApp.getService().getUrl() ?>?page=cancel">Cancelar Agendamentos</a>
     </p>
@@ -30,6 +31,7 @@
     <div id="schedule-container" class="schedule-container">
       <p class="info-message">Selecione a Turma e a Semana e clique em "Buscar Horário".</p>
     </div>
+    <p>* Este é o limite de 10 horas-aula presenciais por dia estabelecido pelo <strong class="attention">Art. 26 § 3º da organização didática do IFSP</strong>.</p>
     <div id="loading" class="loading" style="display: none;">Carregando... Isso demora um pouco!!!</div>
     <div id="message" class="message"></div>
     <hr>

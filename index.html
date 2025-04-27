@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistema de Horários IFSP - Página Principal</title>
     <style>
-        /* Conteúdo do Stylesheet.html inserido aqui */
         body {
             font-family: 'Roboto', sans-serif;
             margin: 0;
@@ -473,31 +472,22 @@
             color: #174ea6;
             font-weight: bold;
         }
-        /* Original .loading spinner, keeping its keyframes */
-        .loading {
-            /* styles hidden by position: fixed; inset: 0; background: rgba(255, 255, 255, 0.85); display: flex; justify-content: center; align-items: center; */
-            /* We won't use the .loading container directly here, but keep its ::before style definition pattern */
-        }
-        /* The original animated spinner pseudo-element */
         .loading::before {
-             content: ''; /* Needs content for pseudo-element */
-             display: block; /* Needs display other than inline */
-             width: 30px; /* Example size */
-             height: 30px; /* Example size */
-             margin-right: 12px; /* Example spacing */
-             border-radius: 50%;
-             border: 4px solid #e9ecef;
-             border-top-color: #1a73e8;
-             animation: spinner 0.75s linear infinite; /* This uses 'spinner' */
+            content: '';
+            display: block;
+            width: 30px;
+            height: 30px;
+            margin-right: 12px;
+            border-radius: 50%;
+            border: 4px solid #e9ecef;
+            border-top-color: #1a73e8;
+            animation: spinner 0.75s linear infinite;
         }
-
-        /* Keyframes defined once, used by any element/pseudo-element */
-        @keyframes spinner { /* Defined using 'spinner' */
+        @keyframes spinner {
             to {
                 transform: rotate(360deg);
             }
         }
-
         .message {
             margin-top: 20px;
             padding: 12px 18px;
@@ -697,18 +687,16 @@
                 height: 40px;
             }
         }
-
-        /* Styles specific for this main page */
         .container h1 {
             text-align: center;
             margin-bottom: 30px;
             padding-bottom: 15px;
-            border-bottom: 2px solid #1a73e8; /* Slightly thicker border for main title */
+            border-bottom: 2px solid #1a73e8;
         }
         .container h2 {
             margin-top: 30px;
             margin-bottom: 15px;
-            color: #3c4043; /* Darker grey for section headings */
+            color: #3c4043;
         }
         .main-nav-list {
             list-style: none;
@@ -724,84 +712,74 @@
             transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out;
         }
         .main-nav-list li:hover {
-             background-color: #e8f0fe;
-             border-color: #1a73e8;
+            background-color: #e8f0fe;
+            border-color: #1a73e8;
         }
         .main-nav-list li a {
-            display: block; /* Make the entire list item clickable via the link */
+            display: block;
             color: #1a73e8;
             font-size: 1.1em;
             font-weight: 500;
-            text-decoration: none; /* Remove underline from links in list items */
+            text-decoration: none;
         }
-         .main-nav-list li a:hover {
-             text-decoration: underline; /* Add underline on hover */
-         }
-         .main-nav-list li a:focus-visible {
-            outline: none; /* Remove default focus outline */
+        .main-nav-list li a:hover {
+            text-decoration: underline;
+        }
+        .main-nav-list li a:focus-visible {
+            outline: none;
             box-shadow: none;
-         }
-         .main-nav-list li:focus-within { /* Apply focus style to the list item */
+        }
+        .main-nav-list li:focus-within {
             outline: 2px solid #1a73e8;
             outline-offset: 2px;
             border-radius: 4px;
-         }
-
-        /* Styles for the Redirect Message */
+        }
         #redirect-message {
-            display: flex; /* Use flexbox for centering */
+            display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             text-align: center;
-            min-height: 60vh; /* Give it some height */
-            padding: 40px 20px; /* More padding */
+            min-height: 60vh;
+            padding: 40px 20px;
             background-color: #ffffff;
-            color: #343a40; /* Darker grey for text */
+            color: #343a40;
         }
-
         #redirect-message h1 {
-            color: #1a73e8; /* Blue from main theme */
+            color: #1a73e8;
             margin-bottom: 20px;
             font-size: 2em;
-            border-bottom: none; /* No border bottom for this H1 */
+            border-bottom: none;
         }
-
         #redirect-message .spinner {
-            border: 4px solid #e8eaed; /* Light grey */
-            border-top: 4px solid #1a73e8; /* Blue from main theme */
+            border: 4px solid #e8eaed;
+            border-top: 4px solid #1a73e8;
             border-radius: 50%;
-            width: 40px; /* Slightly larger spinner */
+            width: 40px;
             height: 40px;
-            animation: spinner 1s linear infinite; /* <-- Using 'spinner' */
+            animation: spinner 1s linear infinite;
             margin: 20px auto;
-            /* Ensure spinner is visible and positioned */
             display: block;
-            box-sizing: border-box; /* Include padding/border in element's total width and height */
+            box-sizing: border-box;
         }
-
         #redirect-message p {
             margin-bottom: 15px;
             font-size: 1.1em;
-            color: #5f6368; /* Google grey */
+            color: #5f6368;
         }
-
         #redirect-message a {
-            color: #1a73e8; /* Blue from main theme */
+            color: #1a73e8;
             font-weight: 500;
         }
-
         #redirect-message .link-destino {
             font-size: 0.9em;
-            color: #888; /* Lighter grey */
+            color: #888;
             word-break: break-all;
             margin-top: 10px;
         }
         #redirect-message .link-destino strong {
-            color: #5f6368; /* Slightly darker grey */
+            color: #5f6368;
         }
-
-        /* Mobile adjustments for redirect message */
         @media screen and (max-width: 480px) {
             #redirect-message h1 {
                 font-size: 1.6em;
@@ -814,116 +792,95 @@
                 height: 30px;
             }
         }
-
     </style>
 </head>
 <body>
     <div id="main-content" class="container">
         <h1>Sistema de Horários IFSP</h1>
-
-        <p>Bem-vindo(a) ao Sistema de Horários do IFSP. Utilize os links abaixo para navegar entre as diferentes áreas do sistema.</p>
-
+        <p>Bem-vindo(a) ao Sistema de Horários do IFSP. Utilize os links abaixo para navegar entre as diferentes áreas
+            do sistema.</p>
         <hr>
-
         <h2>Navegação Principal</h2>
-
         <ul class="main-nav-list main-app-links" role="navigation">
             <li>
                 <!-- Replace '#' with the actual URL/path for the main app page -->
-                <a href="https://script.google.com/a/macros/ifsp.edu.br/s/AKfycbxJCTIDtcU1eBc3RftpYpqy6HykR_hhpBiniYmmSHS1LGd-j-a1YU46zm-OrNflXRFi/exec" data-section-name="Agendamento Principal">
+                <a href="https://script.google.com/a/macros/ifsp.edu.br/s/AKfycbyxzLRKLCZxNX4t8dSxFgpUBt6fyi0jWehw223ShKGn-_aAiaQpbj-wbCfTOmjJKme3/exec"
+                    data-section-name="Agendamento Principal">
                     Página Principal (Agendamento e Visualização)
                 </a>
             </li>
-             <li>
+            <li>
                 <!-- Replace '#' with the actual URL/path for the public view page -->
-                <a href="https://script.google.com/a/macros/ifsp.edu.br/s/YOUR_PUBLIC_VIEW_DEPLOYMENT_ID/exec" data-section-name="Visualização Pública">
-                    Visualização Pública
+                <a href="https://script.google.com/a/macros/ifsp.edu.br/s/AKfycbyxzLRKLCZxNX4t8dSxFgpUBt6fyi0jWehw223ShKGn-_aAiaQpbj-wbCfTOmjJKme3/exec?page=public"
+                    data-section-name="Visualização Pública">
+                    Visualização Pública (<strong>ALUNOS</strong> e Professores)
                 </a>
             </li>
             <li>
-                 <!-- Replace '#' with the actual URL/path for the cancel bookings page -->
-                <a href="https://script.google.com/a/macros/ifsp.edu.br/s/YOUR_CANCEL_PAGE_DEPLOYMENT_ID/exec" data-section-name="Cancelamento de Agendamentos">
+                <!-- Replace '#' with the actual URL/path for the cancel bookings page -->
+                <a href="https://script.google.com/a/macros/ifsp.edu.br/s/AKfycbyxzLRKLCZxNX4t8dSxFgpUBt6fyi0jWehw223ShKGn-_aAiaQpbj-wbCfTOmjJKme3/exec?page=cancel"
+                    data-section-name="Cancelamento de Agendamentos">
                     Cancelar Agendamentos
                 </a>
             </li>
         </ul>
-
         <hr>
-
         <h2>Documentação</h2>
-
-         <ul class="main-nav-list">
+        <ul class="main-nav-list">
             <li>
                 <!-- Link to the Quick Guide HTML file -->
                 <a href="/agendamento/quickguide.html">
-                   Guia Rápido
+                    Guia Rápido
                 </a>
             </li>
             <li>
-                 <!-- Link to the Full Manual HTML file -->
+                <!-- Link to the Full Manual HTML file -->
                 <a href="/agendamento/manual.html">
                     Manual Completo do Usuário
                 </a>
             </li>
         </ul>
-
-        <p style="margin-top: 30px; text-align: center; color: #5f6368;">Em caso de dúvidas, consulte a documentação ou contate a administração.</p>
-
+        <p style="margin-top: 30px; text-align: center; color: #5f6368;">Em caso de dúvidas, consulte a documentação ou
+            contate a administração.</p>
     </div>
-
     <!-- Redirect Message Section (Initially hidden) -->
     <div id="redirect-message" class="container" style="display: none;">
         <h1 id="redirect-title">Redirecionando...</h1>
         <div class="spinner"></div> <!-- Element for the spinner -->
         <p id="redirect-text">Você está sendo redirecionado para o <strong id="section-name">...</strong>.</p>
-         <p class="link-destino">
+        <p class="link-destino">
             <strong>Destino:</strong> <span id="destination-url"></span>
         </p>
-        <p>Se o redirecionamento não ocorrer automaticamente em alguns segundos, por favor, <a id="manual-redirect-link" href="#">clique aqui</a>.</p>
+        <p>Se o redirecionamento não ocorrer automaticamente em alguns segundos, por favor, <a id="manual-redirect-link"
+                href="#">clique aqui</a>.</p>
     </div>
-
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             const mainContent = document.getElementById('main-content');
             const redirectMessage = document.getElementById('redirect-message');
-            // const redirectTitle = document.getElementById('redirect-title'); // Not needed for update
-            // const redirectText = document.getElementById('redirect-text'); // Not needed for update
             const sectionNameSpan = document.getElementById('section-name');
             const destinationUrlSpan = document.getElementById('destination-url');
             const manualRedirectLink = document.getElementById('manual-redirect-link');
-
-            // Target only the links in the "Navegação Principal" section
             const mainAppLinks = document.querySelectorAll('.main-app-links a');
-
             mainAppLinks.forEach(link => {
-                link.addEventListener('click', function(event) {
-                    // Prevent default link navigation
+                link.addEventListener('click', function (event) {
                     event.preventDefault();
-
                     const targetUrl = this.href;
-                    const sectionName = this.getAttribute('data-section-name') || 'página de destino'; // Get section name or default
-                    const redirectDelay = 4000; // 4 seconds
-
-                    // Update redirect message content
+                    const sectionName = this.getAttribute('data-section-name') || 'página de destino';
+                    const redirectDelay = 300;
                     sectionNameSpan.textContent = sectionName;
                     destinationUrlSpan.textContent = targetUrl;
                     manualRedirectLink.href = targetUrl;
-
-                    // Hide main content and show redirect message
                     mainContent.style.display = 'none';
-                    redirectMessage.style.display = 'flex'; // Use flex to center content vertically
-
-                    // Perform the automatic redirect after the delay
-                    setTimeout(function() {
+                    redirectMessage.style.display = 'flex';
+                    setTimeout(function () {
                         window.location.href = targetUrl;
                     }, redirectDelay);
                 });
             });
-
-            // Optional: If you want documentation links to open in a new tab
             const docLinks = document.querySelectorAll('#main-content .main-nav-list:not(.main-app-links) a');
             docLinks.forEach(link => {
-                link.setAttribute('target', '_blank');
+                link.setAttribute('target', '_self');
             });
         });
     </script>
