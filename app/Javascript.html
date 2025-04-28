@@ -420,7 +420,7 @@
                     try {
                         const dateParts = slot.data.split('/');
                         if (dateParts.length === 3) {
-                            slotDate = new Date(parseInt(dateParts[2]), parseInt(dateParts[1]) - 1, parseInt(dateParts[0]));
+                            slotDate = new Date(parseInt(dateParts[2]), parseInt(dateParts[1]) - 1, parseInt(dateParts[0]) - 1);
                         }
                     } catch (e) { logAbsenceDebug("Error parsing slot date:", slot.data, e); }
                     const isFutureSlot = slotDate && slotDate >= today;
