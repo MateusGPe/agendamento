@@ -728,9 +728,7 @@ function getScheduleViewFilters() {
     const { startGenerationDate: firstMondayUTC } = calculateGenerationRange_(numWeeks);
     const weekStartDates = [];
     Logger.log(`Generating ${numWeeks} week start dates (UTC Mondays) for filters starting from: ${firstMondayUTC.toISOString().slice(0, 10)}`);
-    for (let i = 0;
-      i < numWeeks;
-      i++) {
+    for (let i = 0; i < numWeeks; i++) {
       const weekStartDate = new Date(firstMondayUTC.getTime());
       weekStartDate.setUTCDate(firstMondayUTC.getUTCDate() + (i * 7));
       const valueString = Utilities.formatDate(weekStartDate, 'UTC', 'yyyy-MM-dd');
