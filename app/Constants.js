@@ -4,6 +4,7 @@
  */
 const SPREADSHEET_ID = SpreadsheetApp.getActiveSpreadsheet().getId();
 const SCRIPT_LOCK_TIMEOUT_MS = 15000; // Timeout for script lock (15 seconds)
+
 const SHEETS = Object.freeze({
   CONFIG: 'Configuracoes',
   AUTHORIZED_USERS: 'Usuarios Autorizados',
@@ -12,6 +13,7 @@ const SHEETS = Object.freeze({
   BOOKING_DETAILS: 'Reservas Detalhadas',
   DISCIPLINES: 'Disciplinas'
 });
+
 const HEADERS = Object.freeze({
   CONFIG: Object.freeze({ NOME: 0, VALOR: 1 }),
   AUTHORIZED_USERS: Object.freeze({ EMAIL: 0, NOME: 1, PAPEL: 2 }),
@@ -30,26 +32,45 @@ const HEADERS = Object.freeze({
     ID_RESERVA: 0, TIPO_RESERVA: 1, ID_INSTANCIA: 2, PROFESSOR_REAL: 3,
     PROFESSOR_ORIGINAL: 4, ALUNOS: 5, TURMAS_AGENDADA: 6, DISCIPLINA_REAL: 7,
     DATA_HORA_INICIO_EFETIVA: 8, STATUS_RESERVA: 9, DATA_CRIACAO: 10,
-    CRIADO_POR: 11
+    CRIADO_POR: 11, TIPO_AULA_REPOSICAO: 12 // Novo campo para Reposição ou Recuperação
   }),
   DISCIPLINES: Object.freeze({ NOME: 0 })
 });
+
 const STATUS_OCUPACAO = Object.freeze({
   DISPONIVEL: 'Disponivel',
-  REPOSICAO_AGENDADA: 'Reposicao Agendada',
+  REPOSICAO_AGENDADA: 'Reposicao Agendada', // Este status será usado para ambos os tipos de aula
   SUBSTITUICAO_AGENDADA: 'Substituicao Agendada'
 });
+
 const TIPOS_RESERVA = Object.freeze({
-  REPOSICAO: 'Reposicao',
+  REPOSICAO: 'Reposicao', // Usado genericamente para agendamentos em horários VAGOS
   SUBSTITUICAO: 'Substituicao'
 });
+
+// Novo enum para o tipo específico da aula de reposição/recuperação
+const TIPOS_AULA_REPOSICAO = Object.freeze({
+  REPOSICAO: 'Reposição',
+  RECUPERACAO_PARALELA: 'Recuperação Paralela'
+});
+
 const TIPOS_HORARIO = Object.freeze({
   FIXO: 'Fixo',
   VAGO: 'Vago'
 });
+
 const USER_ROLES = Object.freeze({
   ADMIN: 'Admin',
   PROFESSOR: 'Professor'
 });
+
 const ADMIN_COPY_EMAILS = ["cae.itq@ifsp.edu.br", "mtm.itq@ifsp.edu.br"]; // Fixed BCC list
 const EMAIL_SENDER_NAME = 'Sistema de Reservas IFSP';
+
+// Chave para a configuração das disciplinas isentas do alerta de almoço
+const CONFIG_KEYS = Object.freeze({
+  DISCIPLINAS_ISENTAS_ALERTA_ALMOCO: 'Disciplinas Isentas Alerta Almoço'
+});
+
+// Mensagem de Alerta de Almoço
+const LUNCH_ALERT_MESSAGE = "Avise à CAE sobre a necessidade de fornecer almoço e a lista de alunos.";

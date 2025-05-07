@@ -2,9 +2,30 @@
  * Arquivo: Bookings.gs
  * Descrição: Funções para gerenciar a criação e cancelamento de reservas.
  */
+function checkLunchAlertPreBooking(slotHoraInicio, slotTurma, slotData) {
+    Logger.log(`*** checkLunchAlertPreBooking called for Time: ${slotHoraInicio}, Turma: ${slotTurma}, Date: ${slotData} ***`);
+    try {
+        if (!slotHoraInicio || !slotTurma || !slotData) {
+            throw new Error("Parâmetros insuficientes para verificação do alerta de almoço.");
+        }
+        if (!/^\d{2}:\d{2}$/.test(slotHoraInicio)) {
+            throw new Error("Formato de hora inválido para verificação do alerta.");
+        }
+        const bookingDateObjUTC = parseDDMMYYYY(slotData);
+        if (!bookingDateObjUTC) {
+            throw new Error("Formato de data inválido para verificação do alerta.");
+        }
+        const needsAlert = checkLunchAlertNeeded_(slotHoraInicio, slotTurma, slotData, bookingDateObjUTC);
+        Logger.log(`checkLunchAlertPreBooking result: ${needsAlert}`);
+        return createJsonResponse(true, "Verificação do alerta de almoço concluída.", { needsAlert: needsAlert });
+    } catch (e) {
+        Logger.log(`ERROR in checkLunchAlertPreBooking: ${e.message}\nStack: ${e.stack}`);
+        return createJsonResponse(false, `Erro ao verificar alerta: ${e.message}`, { needsAlert: false });
+    }
+}
 function processBooking_(bookingDetails, userEmail, userRole) {
     Logger.log(`processBooking_ started for user ${userEmail} (Role: ${userRole}).`);
-    const { idInstancia, tipoReserva, professorReal, disciplinaReal } = bookingDetails;
+    const { idInstancia, tipoReserva, professorReal, disciplinaReal, tipoAulaReposicao } = bookingDetails;
     const instanceIdToBook = idInstancia;
     const bookingType = tipoReserva;
     const { header: instanceHeader, sheet: instancesSheet } = getSheetData_(SHEETS.SCHEDULE_INSTANCES, HEADERS.SCHEDULE_INSTANCES);
@@ -39,21 +60,26 @@ function processBooking_(bookingDetails, userEmail, userRole) {
     }
     let professorOriginal = '';
     if (bookingType === TIPOS_RESERVA.REPOSICAO) {
-        if (![USER_ROLES.ADMIN, USER_ROLES.PROFESSOR].includes(userRole)) throw new Error(`Seu perfil (${userRole}) não permite agendar Reposições.`);
-        if (originalType !== TIPOS_HORARIO.VAGO) throw new Error(`Reposição só pode ser feita em horários Vagos (este é ${originalType}).`);
+        if (![USER_ROLES.ADMIN, USER_ROLES.PROFESSOR].includes(userRole)) throw new Error(`Seu perfil (${userRole}) não permite agendar Reposições/Recuperações.`);
+        if (originalType !== TIPOS_HORARIO.VAGO) throw new Error(`Reposição/Recuperação só pode ser feita em horários Vagos (este é ${originalType}).`);
         if (currentStatus !== STATUS_OCUPACAO.DISPONIVEL) throw new Error(`Este horário vago (${instanceIdToBook}) não está mais disponível (Status atual: ${currentStatus}). Atualize a lista.`);
-        Logger.log(`Validation OK for Reposicao by ${userRole}`);
+        if (!tipoAulaReposicao || (tipoAulaReposicao !== TIPOS_AULA_REPOSICAO.REPOSICAO && tipoAulaReposicao !== TIPOS_AULA_REPOSICAO.RECUPERACAO_PARALELA)) {
+            throw new Error(`Tipo de aula (Reposição/Recuperação) inválido ou ausente: "${tipoAulaReposicao}".`);
+        }
+        Logger.log(`Validation OK for ${tipoAulaReposicao} (BookingType: ${bookingType}) by ${userRole}`);
     } else if (bookingType === TIPOS_RESERVA.SUBSTITUICAO) {
         if (![USER_ROLES.ADMIN, USER_ROLES.PROFESSOR].includes(userRole)) throw new Error(`Seu perfil (${userRole}) não permite agendar Substituições.`);
         if (originalType !== TIPOS_HORARIO.FIXO) throw new Error(`Substituição só pode ser feita em horários Fixos (este é ${originalType}).`);
         if (!professorPrincipalInstancia) throw new Error(`Erro interno: O horário fixo ${instanceIdToBook} não tem um Professor Principal definido.`);
         professorOriginal = professorPrincipalInstancia;
-        if (currentStatus === STATUS_OCUPACAO.REPOSICAO_AGENDADA) throw new Error(`Este horário fixo (${instanceIdToBook}) já está ocupado por uma Reposição.`);
+        if (currentStatus === STATUS_OCUPACAO.REPOSICAO_AGENDADA) throw new Error(`Este horário fixo (${instanceIdToBook}) já está ocupado por uma Reposição/Recuperação.`);
         if (currentStatus !== STATUS_OCUPACAO.DISPONIVEL && currentStatus !== STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) throw new Error(`Este horário fixo (${instanceIdToBook}) não está disponível para substituição (Status atual: ${currentStatus}). Atualize a lista.`);
         Logger.log(`Validation OK for Substituicao by ${userRole}`);
     }
     const bookingId = Utilities.getUuid();
     const creationTimestamp = new Date();
+    // O status na instância será sempre 'Reposicao Agendada' para simplificar,
+    // o detalhe (Reposição ou Recuperação) fica na planilha de Reservas Detalhadas.
     const newStatus = (bookingType === TIPOS_RESERVA.REPOSICAO) ? STATUS_OCUPACAO.REPOSICAO_AGENDADA : STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA;
     const [hour, minute] = bookingHourString.split(':').map(Number);
     const effectiveStartDateTime = new Date(bookingDateObj.getUTCFullYear(), bookingDateObj.getUTCMonth(), bookingDateObj.getUTCDate(), hour, minute);
@@ -63,10 +89,11 @@ function processBooking_(bookingDetails, userEmail, userRole) {
     updatedInstanceRow[HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR] = '';
     updateSheetRow_(instancesSheet, instanceRowIndex, instanceHeader.length, updatedInstanceRow);
     const bookingHeader = bookingsSheet.getRange(1, 1, 1, bookingsSheet.getLastColumn()).getValues()[0];
-    const numBookingCols = bookingHeader.length;
+    const numBookingCols = Math.max(bookingHeader.length, HEADERS.BOOKING_DETAILS.TIPO_AULA_REPOSICAO + 1); // Garante que a coluna exista
+
     const newBookingRow = new Array(numBookingCols).fill('');
     newBookingRow[HEADERS.BOOKING_DETAILS.ID_RESERVA] = bookingId;
-    newBookingRow[HEADERS.BOOKING_DETAILS.TIPO_RESERVA] = bookingType;
+    newBookingRow[HEADERS.BOOKING_DETAILS.TIPO_RESERVA] = bookingType; // 'Reposicao' ou 'Substituicao'
     newBookingRow[HEADERS.BOOKING_DETAILS.ID_INSTANCIA] = instanceIdToBook;
     newBookingRow[HEADERS.BOOKING_DETAILS.PROFESSOR_REAL] = professorReal;
     newBookingRow[HEADERS.BOOKING_DETAILS.PROFESSOR_ORIGINAL] = professorOriginal;
@@ -77,17 +104,27 @@ function processBooking_(bookingDetails, userEmail, userRole) {
     newBookingRow[HEADERS.BOOKING_DETAILS.STATUS_RESERVA] = 'Agendada';
     newBookingRow[HEADERS.BOOKING_DETAILS.DATA_CRIACAO] = creationTimestamp;
     newBookingRow[HEADERS.BOOKING_DETAILS.CRIADO_POR] = userEmail;
+    // Salva o tipo de aula específico para reposições/recuperações
+    if (bookingType === TIPOS_RESERVA.REPOSICAO) {
+        newBookingRow[HEADERS.BOOKING_DETAILS.TIPO_AULA_REPOSICAO] = tipoAulaReposicao;
+    } else {
+        newBookingRow[HEADERS.BOOKING_DETAILS.TIPO_AULA_REPOSICAO] = ''; // Limpa para substituições
+    }
+
     appendSheetRow_(bookingsSheet, numBookingCols, newBookingRow);
     const guestEmails = getGuestEmailsForBooking_(professorReal, professorPrincipalInstancia);
     Logger.log("processBooking_ completed successfully.");
     return {
         bookingId: bookingId,
         instanceRowIndex: instanceRowIndex,
-        instanceDetails: updatedInstanceRow,
+        instanceDetails: updatedInstanceRow, // updatedInstanceRow contém os dados da instância após a atualização
         professorOriginal: professorOriginal,
         effectiveStartDateTime: effectiveStartDateTime,
         creationTimestamp: creationTimestamp,
-        guestEmails: guestEmails
+        guestEmails: guestEmails,
+        turmaInstancia: turmaInstancia, // Retorna a turma para a verificação de almoço
+        bookingHourString: bookingHourString, // Retorna a hora para a verificação de almoço
+        bookingDateObj: bookingDateObj // Retorna a data para a verificação de almoço
     };
 }
 function getGuestEmailsForBooking_(profReal, professorsPrincipalString) {
@@ -176,12 +213,14 @@ function getCancellableBookings() {
         const bookingIdCol = HEADERS.BOOKING_DETAILS.ID_RESERVA;
         const instanceFkCol = HEADERS.BOOKING_DETAILS.ID_INSTANCIA;
         const statusCol = HEADERS.BOOKING_DETAILS.STATUS_RESERVA;
-        const typeCol = HEADERS.BOOKING_DETAILS.TIPO_RESERVA;
+        const typeCol = HEADERS.BOOKING_DETAILS.TIPO_RESERVA; // 'Reposicao' ou 'Substituicao'
+        const tipoAulaCol = HEADERS.BOOKING_DETAILS.TIPO_AULA_REPOSICAO; // 'Reposição' ou 'Recuperação Paralela'
         const discCol = HEADERS.BOOKING_DETAILS.DISCIPLINA_REAL;
         const profRealCol = HEADERS.BOOKING_DETAILS.PROFESSOR_REAL;
         const profOrigCol = HEADERS.BOOKING_DETAILS.PROFESSOR_ORIGINAL;
         const creatorCol = HEADERS.BOOKING_DETAILS.CRIADO_POR;
-        const reqCols = Math.max(bookingIdCol, instanceFkCol, statusCol, typeCol, discCol, profRealCol, profOrigCol, creatorCol) + 1;
+        const reqCols = Math.max(bookingIdCol, instanceFkCol, statusCol, typeCol, tipoAulaCol, discCol, profRealCol, profOrigCol, creatorCol) + 1;
+
         bookingData.forEach(row => {
             if (!row || row.length < reqCols) return;
             const bookingStatus = String(row[statusCol] || '').trim();
@@ -191,7 +230,14 @@ function getCancellableBookings() {
                 return;
             }
             const bookingId = String(row[bookingIdCol] || '').trim();
-            const bookingType = String(row[typeCol] || '').trim();
+            let displayBookingType = String(row[typeCol] || '').trim(); // e.g., 'Reposicao'
+            const specificAulaType = String(row[tipoAulaCol] || '').trim(); // e.g., 'Recuperação Paralela'
+
+            // Se for uma "Reposicao" genérica e tiver um tipo específico de aula, use o tipo específico.
+            if (displayBookingType === TIPOS_RESERVA.REPOSICAO && specificAulaType) {
+                displayBookingType = specificAulaType; // Muda para "Reposição" ou "Recuperação Paralela"
+            }
+
             const disciplina = String(row[discCol] || '').trim();
             const profReal = String(row[profRealCol] || '').trim();
             const profOrig = String(row[profOrigCol] || '').trim();
@@ -210,7 +256,7 @@ function getCancellableBookings() {
                 cancellableBookings.push({
                     bookingId: bookingId,
                     instanceId: instanceId,
-                    bookingType: bookingType,
+                    bookingType: displayBookingType, // Mostra o tipo de aula mais específico
                     date: Utilities.formatDate(instanceInfo.date, timeZone, 'dd/MM/yyyy'),
                     time: instanceInfo.time || 'N/D',
                     turma: instanceInfo.turma || 'N/D',
@@ -315,13 +361,13 @@ function cancelBookingAdmin(bookingIdToCancel) {
             throw new Error(`Erro de dados: Instância ${instanceId} ligada a esta reserva não foi encontrada. Reserva marcada como cancelada, mas o horário pode não ter sido liberado.`);
         }
         const instanceRowIndex = foundInstanceCells[0].getRow();
-        const instanceDetails = instancesSheet.getRange(instanceRowIndex, 1, 1, instanceHeader.length).getValues()[0];
+        const instanceDetailsFromSheet = instancesSheet.getRange(instanceRowIndex, 1, 1, instanceHeader.length).getValues()[0];
         Logger.log(`Linked Instance ${instanceId} found at row ${instanceRowIndex}.`);
         const instanceStatusCol = HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO;
         const instanceBookingIdCol = HEADERS.SCHEDULE_INSTANCES.ID_RESERVA;
         const instanceEventIdCol = HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR;
-        const existingEventId = String(instanceDetails[instanceEventIdCol] || '').trim();
-        const updatedInstanceRow = [...instanceDetails];
+        const existingEventId = String(instanceDetailsFromSheet[instanceEventIdCol] || '').trim();
+        const updatedInstanceRow = [...instanceDetailsFromSheet];
         updatedInstanceRow[instanceStatusCol] = STATUS_OCUPACAO.DISPONIVEL;
         updatedInstanceRow[instanceBookingIdCol] = '';
         updatedInstanceRow[instanceEventIdCol] = '';
@@ -353,7 +399,7 @@ function cancelBookingAdmin(bookingIdToCancel) {
                 Logger.log(`WARNING: Failed to delete Calendar event ${existingEventId}: ${calError.message}`);
             }
         }
-        createScheduleInstances();
+        createScheduleInstances(); // Isso parece ser um trigger para recriar/verificar instâncias.
         releaseScriptLock_(lock);
         lock = null;
         return createJsonResponse(true, `Reserva ${trimmedBookingId} cancelada com sucesso.`, { cancelledBookingId: trimmedBookingId });
@@ -364,11 +410,13 @@ function cancelBookingAdmin(bookingIdToCancel) {
         releaseScriptLock_(lock);
     }
 }
+
 function bookSlot(jsonBookingDetailsString) {
     Logger.log(`*** bookSlot called ***`);
     let lock = null;
     let bookingId = null;
     let userEmail = '[Unavailable]';
+    let lunchAlertMessage = null; // Para armazenar a mensagem de alerta de almoço
     try {
         userEmail = getActiveUserEmail_();
         Logger.log(`Booking attempt by: ${userEmail}. Details: ${jsonBookingDetailsString}`);
@@ -383,23 +431,48 @@ function bookSlot(jsonBookingDetailsString) {
         } catch (e) {
             throw new Error(`Erro interno ao processar os dados da reserva (JSON inválido): ${e.message}`);
         }
-        const { idInstancia, tipoReserva, professorReal, disciplinaReal } = bookingDetails;
+        // slotHoraInicio, slotTurma, slotData são passados de Javascript.html para o alerta de almoço
+        const { idInstancia, tipoReserva, professorReal, disciplinaReal, tipoAulaReposicao, slotHoraInicio, slotTurma, slotData } = bookingDetails;
+
         const instanceIdToBook = String(idInstancia || '').trim();
-        const bookingType = String(tipoReserva || '').trim();
+        const bookingType = String(tipoReserva || '').trim(); // 'Reposicao' ou 'Substituicao'
         const profRealTrimmed = String(professorReal || '').trim();
         const discRealTrimmed = String(disciplinaReal || '').trim();
+        const tipoAulaReposicaoTrimmed = (bookingType === TIPOS_RESERVA.REPOSICAO) ? String(tipoAulaReposicao || '').trim() : null;
+
         if (!instanceIdToBook) throw new Error('ID da instância de horário ausente ou inválido.');
         if (bookingType !== TIPOS_RESERVA.REPOSICAO && bookingType !== TIPOS_RESERVA.SUBSTITUICAO) throw new Error('Tipo de reserva inválido ou ausente.');
+
+        if (bookingType === TIPOS_RESERVA.REPOSICAO) {
+            if (!tipoAulaReposicaoTrimmed || (tipoAulaReposicaoTrimmed !== TIPOS_AULA_REPOSICAO.REPOSICAO && tipoAulaReposicaoTrimmed !== TIPOS_AULA_REPOSICAO.RECUPERACAO_PARALELA)) {
+                throw new Error(`Para ${bookingType}, o tipo de aula (Reposição/Recuperação Paralela) é obrigatório e deve ser válido.`);
+            }
+            bookingDetails.tipoAulaReposicao = tipoAulaReposicaoTrimmed;
+        }
+
         if (!profRealTrimmed) throw new Error('Professor é obrigatório.');
         if (!discRealTrimmed) throw new Error('Disciplina é obrigatória.');
+
         bookingDetails.professorReal = profRealTrimmed;
         bookingDetails.disciplinaReal = discRealTrimmed;
+
         lock = acquireScriptLock_();
         const processResult = processBooking_(bookingDetails, userEmail, userRole);
         bookingId = processResult.bookingId;
+
+        // Lógica de Alerta de Almoço
+        if (bookingType === TIPOS_RESERVA.REPOSICAO && slotHoraInicio && slotTurma && slotData) {
+            Logger.log(`Verificando alerta de almoço para ${bookingType} (${tipoAulaReposicaoTrimmed}) às ${slotHoraInicio} na turma ${slotTurma} em ${slotData}`);
+            if (checkLunchAlertNeeded_(slotHoraInicio, slotTurma, slotData, processResult.bookingDateObj)) {
+                lunchAlertMessage = LUNCH_ALERT_MESSAGE;
+                Logger.log(`Alerta de almoço ATIVADO para booking ID ${bookingId}.`);
+            }
+        }
+
+
         const calendarResult = handleCalendarIntegration_(
             getConfigValue('ID do Calendario'),
-            bookingDetails,
+            bookingDetails, // bookingDetails já contém tipoAulaReposicao se for o caso
             processResult.instanceDetails,
             processResult.effectiveStartDateTime,
             processResult.guestEmails
@@ -416,9 +489,10 @@ function bookSlot(jsonBookingDetailsString) {
         }
         sendBookingNotificationEmail_(
             bookingId,
-            bookingType,
+            bookingType, // 'Reposicao' ou 'Substituicao'
+            tipoAulaReposicaoTrimmed, // 'Reposição', 'Recuperação Paralela' ou null
             discRealTrimmed,
-            processResult.instanceDetails[HEADERS.SCHEDULE_INSTANCES.TURMA],
+            processResult.turmaInstancia, // Usar a turma da instância do processResult
             profRealTrimmed,
             processResult.professorOriginal,
             processResult.effectiveStartDateTime,
@@ -426,10 +500,12 @@ function bookSlot(jsonBookingDetailsString) {
             userEmail,
             calendarResult.eventId,
             calendarResult.error,
-            processResult.guestEmails
+            processResult.guestEmails,
+            lunchAlertMessage // Passa a mensagem de alerta de almoço para o e-mail
         );
         cleanupExcessVagoSlots();
-        let successMessage = `Reserva ${bookingType} (${bookingId}) agendada com sucesso!`;
+
+        let successMessage = `Reserva ${bookingType === TIPOS_RESERVA.REPOSICAO ? tipoAulaReposicaoTrimmed : bookingType} (${bookingId}) agendada com sucesso!`;
         if (calendarResult.error) {
             successMessage += ` (Aviso: ${calendarResult.error.message || 'Erro ao integrar com Google Calendar.'})`;
         } else if (calendarResult.eventId) {
@@ -437,12 +513,112 @@ function bookSlot(jsonBookingDetailsString) {
         } else {
             successMessage += ` Não foi possível gerar evento no calendário.`;
         }
+        // Não adiciona o alerta de almoço à mensagem de sucesso principal, ele já foi enviado por email se necessário.
+        // Se quiser mostrar no UI também, pode adicionar aqui.
+        // if (lunchAlertMessage) {
+        //     successMessage += ` ${lunchAlertMessage}`;
+        // }
         successMessage += ` Notificação enviada.`;
-        return createJsonResponse(true, successMessage, { bookingId: bookingId, eventId: calendarResult.eventId });
+
+        return createJsonResponse(true, successMessage, {
+            bookingId: bookingId,
+            eventId: calendarResult.eventId,
+            lunchAlert: lunchAlertMessage // Retorna o alerta para o Javascript.html se quiser exibir lá
+        });
+
     } catch (e) {
         Logger.log(`ERROR during bookSlot for user ${userEmail}: ${e.message}\nStack: ${e.stack}`);
         return createJsonResponse(false, `Falha no agendamento: ${e.message}`, { bookingId: bookingId });
     } finally {
         releaseScriptLock_(lock);
     }
+}
+
+function checkLunchAlertNeeded_(bookingTimeStr, bookingTurma, bookingDateStrDDMMYYYY, bookingDateObjUTC) {
+    Logger.log(`checkLunchAlertNeeded_ - Hora: ${bookingTimeStr}, Turma: ${bookingTurma}, Data: ${bookingDateStrDDMMYYYY}`);
+    if (!bookingTimeStr || !bookingTurma || !bookingDateObjUTC) {
+        Logger.log("checkLunchAlertNeeded_ - Dados insuficientes para verificação.");
+        return false;
+    }
+
+    const bookingHour = parseInt(bookingTimeStr.split(':')[0], 10);
+    const bookingMinute = parseInt(bookingTimeStr.split(':')[1], 10);
+
+    // Verifica se o horário é 13:15 ou posterior
+    if (bookingHour < 13 || (bookingHour === 13 && bookingMinute < 15)) {
+        Logger.log("checkLunchAlertNeeded_ - Horário anterior a 13:15. Sem alerta.");
+        return false;
+    }
+    Logger.log("checkLunchAlertNeeded_ - Horário é 13:15 ou posterior.");
+
+    const timeZone = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+    const { data: instanceData } = getSheetData_(SHEETS.SCHEDULE_INSTANCES, HEADERS.SCHEDULE_INSTANCES);
+    const { data: baseData } = getSheetData_(SHEETS.BASE_SCHEDULES);
+    const { data: bookingDetailsData } = getSheetData_(SHEETS.BOOKING_DETAILS);
+
+    const baseScheduleDisciplines = baseData.reduce((map, row) => {
+        const baseId = String(row[HEADERS.BASE_SCHEDULES.ID] || '').trim();
+        const disciplina = String(row[HEADERS.BASE_SCHEDULES.DISCIPLINA_PADRAO] || '').trim();
+        if (baseId && disciplina) map[baseId] = disciplina;
+        return map;
+    }, {});
+
+    const bookedDisciplines = bookingDetailsData.reduce((map, row) => {
+        const instanceFk = String(row[HEADERS.BOOKING_DETAILS.ID_INSTANCIA] || '').trim();
+        const disciplina = String(row[HEADERS.BOOKING_DETAILS.DISCIPLINA_REAL] || '').trim();
+        const statusReserva = String(row[HEADERS.BOOKING_DETAILS.STATUS_RESERVA] || '').trim();
+        if (instanceFk && disciplina && statusReserva === 'Agendada') map[instanceFk] = disciplina;
+        return map;
+    }, {});
+
+    const exemptDisciplinesConfig = getConfigValue(CONFIG_KEYS.DISCIPLINAS_ISENTAS_ALERTA_ALMOCO);
+    const exemptDisciplines = exemptDisciplinesConfig ? exemptDisciplinesConfig.split(',').map(d => d.trim().toLowerCase()) : [];
+    Logger.log(`checkLunchAlertNeeded_ - Disciplinas isentas: [${exemptDisciplines.join(', ')}]`);
+
+    for (const row of instanceData) {
+        const instanceDateUTC = formatValueToDate(row[HEADERS.SCHEDULE_INSTANCES.DATA]);
+        const instanceTurma = String(row[HEADERS.SCHEDULE_INSTANCES.TURMA] || '').trim();
+
+        if (!instanceDateUTC || instanceTurma !== bookingTurma) continue;
+
+        // Compara apenas dia, mês e ano em UTC
+        if (instanceDateUTC.getUTCFullYear() !== bookingDateObjUTC.getUTCFullYear() ||
+            instanceDateUTC.getUTCMonth() !== bookingDateObjUTC.getUTCMonth() ||
+            instanceDateUTC.getUTCDate() !== bookingDateObjUTC.getUTCDate()) {
+            continue;
+        }
+
+        const instanceTimeStr = formatValueToHHMM(row[HEADERS.SCHEDULE_INSTANCES.HORA_INICIO], timeZone);
+        if (!instanceTimeStr) continue;
+
+        const instanceHour = parseInt(instanceTimeStr.split(':')[0], 10);
+        const instanceMinute = parseInt(instanceTimeStr.split(':')[1], 10);
+
+        // Considerar apenas horários após o horário da reserva atual
+        if (instanceHour > bookingHour || (instanceHour === bookingHour && instanceMinute > bookingMinute)) {
+            const instanceStatus = String(row[HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO] || '').trim();
+            const instanceType = String(row[HEADERS.SCHEDULE_INSTANCES.TIPO_ORIGINAL] || '').trim();
+            const instanceId = String(row[HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA] || '').trim();
+            const baseId = String(row[HEADERS.SCHEDULE_INSTANCES.ID_BASE_HORARIO] || '').trim();
+
+            let disciplineToCheck = '';
+
+            if (instanceType === TIPOS_HORARIO.FIXO && instanceStatus === STATUS_OCUPACAO.DISPONIVEL) {
+                disciplineToCheck = baseScheduleDisciplines[baseId] || '';
+            } else if (instanceStatus === STATUS_OCUPACAO.REPOSICAO_AGENDADA || instanceStatus === STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) {
+                disciplineToCheck = bookedDisciplines[instanceId] || '';
+            }
+
+            if (disciplineToCheck && !exemptDisciplines.includes(disciplineToCheck.toLowerCase())) {
+                Logger.log(`checkLunchAlertNeeded_ - Encontrada disciplina NÃO ISENTA "${disciplineToCheck}" às ${instanceTimeStr} para turma ${instanceTurma}. Sem alerta.`);
+                return false; // Encontrou uma aula posterior não isenta, não precisa de alerta
+            } else if (disciplineToCheck) {
+                Logger.log(`checkLunchAlertNeeded_ - Encontrada disciplina ISENTA "${disciplineToCheck}" às ${instanceTimeStr}. Continuando verificação.`);
+            }
+        }
+    }
+
+    // Se chegou aqui, todas as aulas posteriores (se houver) são isentas, ou não há aulas posteriores.
+    Logger.log(`checkLunchAlertNeeded_ - Nenhuma disciplina NÃO ISENTA encontrada após ${bookingTimeStr} para turma ${bookingTurma}. ALERTA NECESSÁRIO.`);
+    return true;
 }

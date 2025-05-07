@@ -61,6 +61,7 @@ function buildDailyTurmaCounts_(instanceData) {
     if (originalType === TIPOS_HORARIO.FIXO) {
       dailyTurmaCounts[dateStringKey][turma].fixedCount++;
     } else if (originalType === TIPOS_HORARIO.VAGO) {
+      // Considera 'Reposicao Agendada' como vago ocupado
       if (instanceStatus === STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
         dailyTurmaCounts[dateStringKey][turma].vagoBookedCount++;
       }
@@ -228,7 +229,8 @@ function getFilteredScheduleInstances(turma, weekStartDateString) {
       const profRealCol = HEADERS.BOOKING_DETAILS.PROFESSOR_REAL;
       const profOrigCol = HEADERS.BOOKING_DETAILS.PROFESSOR_ORIGINAL;
       const statusCol = HEADERS.BOOKING_DETAILS.STATUS_RESERVA;
-      const reqCols = Math.max(idInstCol, discCol, profRealCol, profOrigCol, statusCol) + 1;
+      const tipoAulaCol = HEADERS.BOOKING_DETAILS.TIPO_AULA_REPOSICAO; // Novo: tipo de aula
+      const reqCols = Math.max(idInstCol, discCol, profRealCol, profOrigCol, statusCol, tipoAulaCol) + 1;
       if (row && row.length >= reqCols) {
         const instanceId = String(row[idInstCol] || '').trim();
         const statusReserva = String(row[statusCol] || '').trim();
@@ -236,7 +238,8 @@ function getFilteredScheduleInstances(turma, weekStartDateString) {
           map[instanceId] = {
             disciplinaReal: String(row[discCol] || '').trim(),
             professorReal: String(row[profRealCol] || '').trim(),
-            professorOriginalBooking: String(row[profOrigCol] || '').trim()
+            professorOriginalBooking: String(row[profOrigCol] || '').trim(),
+            tipoAulaReposicao: String(row[tipoAulaCol] || '').trim() // Novo: tipo de aula
           };
         }
       }
@@ -279,6 +282,7 @@ function getFilteredScheduleInstances(turma, weekStartDateString) {
       let disciplinaParaExibir = '';
       let professorParaExibir = '';
       let professorOriginalNaReserva = '';
+      let tipoAulaParaExibir = ''; // Novo: tipo de aula para exibir
       const baseInfo = baseScheduleMap[baseId] || { disciplina: '', professor: '' };
       const bookingDetails = bookingDetailsMap[instanceId];
       if (instanceStatus === STATUS_OCUPACAO.DISPONIVEL) {
@@ -288,6 +292,9 @@ function getFilteredScheduleInstances(turma, weekStartDateString) {
         disciplinaParaExibir = bookingDetails.disciplinaReal;
         professorParaExibir = bookingDetails.professorReal;
         professorOriginalNaReserva = bookingDetails.professorOriginalBooking;
+        if (instanceStatus === STATUS_OCUPACAO.REPOSICAO_AGENDADA) { // Apenas se for uma reposição agendada
+             tipoAulaParaExibir = bookingDetails.tipoAulaReposicao; // Novo: pega o tipo de aula
+        }
       } else {
         Logger.log(`Warning: Instância ${instanceId} (Status: ${instanceStatus}) sem detalhes de reserva 'Agendada'. Usando dados base/instância.`);
         disciplinaParaExibir = baseInfo.disciplina;
@@ -305,7 +312,8 @@ function getFilteredScheduleInstances(turma, weekStartDateString) {
         professorParaExibir: professorParaExibir,
         professorOriginalNaReserva: professorOriginalNaReserva,
         professorPrincipal: professorPrincipalInstance,
-        professoresAusentes: professoresAusentes
+        professoresAusentes: professoresAusentes,
+        tipoAulaReposicao: tipoAulaParaExibir // Novo: adiciona ao objeto do slot
       });
     });
     const dailyCounts = { 'Segunda': 0, 'Terça': 0, 'Quarta': 0, 'Quinta': 0, 'Sexta': 0, 'Sábado': 0 };
@@ -376,14 +384,14 @@ function getAvailableSlots(tipoReserva) {
         return;
       }
       let isMatch = false;
-      if (tipoReserva === TIPOS_RESERVA.REPOSICAO) {
+      if (tipoReserva === TIPOS_RESERVA.REPOSICAO) { // Lógica para Reposição/Recuperação
         if (originalType === TIPOS_HORARIO.VAGO && instanceStatus === STATUS_OCUPACAO.DISPONIVEL) {
           if ([USER_ROLES.ADMIN, USER_ROLES.PROFESSOR].includes(userRole)) {
             isMatch = true;
           }
         }
       } else if (tipoReserva === TIPOS_RESERVA.SUBSTITUICAO) {
-        if (originalType === TIPOS_HORARIO.FIXO && instanceStatus !== STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
+        if (originalType === TIPOS_HORARIO.FIXO && instanceStatus !== STATUS_OCUPACAO.REPOSICAO_AGENDADA) { // Não pode substituir se já tem reposição/recuperação
           if ([USER_ROLES.ADMIN, USER_ROLES.PROFESSOR].includes(userRole)) {
             if (instanceStatus === STATUS_OCUPACAO.DISPONIVEL || instanceStatus === STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) {
               isMatch = true;
@@ -519,10 +527,10 @@ function cleanupExcessVagoSlots() {
       if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
         instanceLocalDate = new Date(rawDate.getFullYear(), rawDate.getMonth(), rawDate.getDate());
         if (instanceLocalDate < today) {
-          return;
+          return; // Não processa slots passados
         }
       } else {
-        return;
+        return; // Data inválida
       }
       const dateStringKey = Utilities.formatDate(instanceUTCDate, 'UTC', 'yyyy-MM-dd');
       if (!groupedData[dateStringKey]) groupedData[dateStringKey] = {};
@@ -533,8 +541,8 @@ function cleanupExcessVagoSlots() {
         groupedData[dateStringKey][turma].fixoCount++;
       } else if (originalType === TIPOS_HORARIO.VAGO) {
         if (instanceStatus === STATUS_OCUPACAO.DISPONIVEL) {
-          groupedData[dateStringKey][turma].availableVagoRowIndices.push(index + 2);
-        } else if (instanceStatus === STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
+          groupedData[dateStringKey][turma].availableVagoRowIndices.push(index + 2); // Armazena o índice da linha da planilha (1-based)
+        } else if (instanceStatus === STATUS_OCUPACAO.REPOSICAO_AGENDADA) { // Considera como ocupado
           groupedData[dateStringKey][turma].vagoBookedCount++;
         }
       }
@@ -553,7 +561,7 @@ function cleanupExcessVagoSlots() {
       Logger.log(`Identified ${rowsToDeleteIndices.size} available Vago slot rows for deletion.`);
       const rowsToKeep = [];
       instanceData.forEach((row, index) => {
-        const currentRowIndex = index + 2;
+        const currentRowIndex = index + 2; // +1 for header, +1 for 0-based to 1-based
         if (!rowsToDeleteIndices.has(currentRowIndex)) {
           rowsToKeep.push(row);
         }
@@ -567,12 +575,21 @@ function cleanupExcessVagoSlots() {
           return paddedRow.slice(0, numCols);
         });
         instancesSheet.clearContents();
-        SpreadsheetApp.flush();
+        SpreadsheetApp.flush(); // Força a limpeza antes de escrever
         if (dataToWrite.length > 0) {
           instancesSheet.getRange(1, 1, dataToWrite.length, numCols).setValues(dataToWrite);
           Logger.log(`Sheet rewritten successfully with ${rowsToKeep.length} data rows.`);
         } else {
-          Logger.log(`Sheet cleared, but no data (including header) was identified to write back.`);
+           // Se dataToWrite estiver vazio, mas o cabeçalho existe, reescreva apenas o cabeçalho.
+           // Isso pode acontecer se todas as linhas de dados forem removidas.
+           // No entanto, se instanceHeader também estiver vazio (improvável com getSheetData_),
+           // a planilha realmente ficaria vazia.
+           if (instanceHeader.length > 0) {
+               instancesSheet.getRange(1, 1, 1, numCols).setValues([instanceHeader.slice(0,numCols)]);
+               Logger.log(`Sheet cleared of data rows, header rewritten.`);
+           } else {
+               Logger.log(`Sheet cleared, and no data (including header) was identified to write back.`);
+           }
         }
         const cache = CacheService.getScriptCache();
         const cacheKey = `SHEET_DATA_${SPREADSHEET_ID}_${SHEETS.SCHEDULE_INSTANCES}`;
@@ -600,11 +617,11 @@ function getPublicScheduleInstances(weekStartDateString) {
     const timeZone = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
     const parts = weekStartDateString.split('-');
     const weekStartDate = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)));
-    if (isNaN(weekStartDate.getTime()) || weekStartDate.getUTCDay() !== 1) {
+    if (isNaN(weekStartDate.getTime()) || weekStartDate.getUTCDay() !== 1) { // Checa se é segunda-feira em UTC
       return createJsonResponse(false, `A data de início (${weekStartDateString}) não é uma Segunda-feira válida para o sistema.`, null);
     }
     const weekEndDate = new Date(weekStartDate.getTime());
-    weekEndDate.setUTCDate(weekEndDate.getUTCDate() + 6);
+    weekEndDate.setUTCDate(weekEndDate.getUTCDate() + 6); // Vai até o final do domingo (UTC)
     Logger.log(`Filtering Public (Fixed/Booked) instances between UTC ${weekStartDate.toISOString().slice(0, 10)} and ${weekEndDate.toISOString().slice(0, 10)}`);
     const { data: instanceData } = getSheetData_(SHEETS.SCHEDULE_INSTANCES, HEADERS.SCHEDULE_INSTANCES);
     const { data: baseData } = getSheetData_(SHEETS.BASE_SCHEDULES);
@@ -619,7 +636,7 @@ function getPublicScheduleInstances(weekStartDateString) {
         if (baseId) {
           map[baseId] = {
             disciplina: String(row[discCol] || '').trim(),
-            professor: String(row[profCol] || '').trim()
+            professor: String(row[profCol] || '').trim() // Pode ter múltiplos, mas para exibição pública, o primeiro é suficiente se não houver substituto.
           };
         }
       } return map;
@@ -630,11 +647,12 @@ function getPublicScheduleInstances(weekStartDateString) {
       const profRealCol = HEADERS.BOOKING_DETAILS.PROFESSOR_REAL;
       const profOrigCol = HEADERS.BOOKING_DETAILS.PROFESSOR_ORIGINAL;
       const statusCol = HEADERS.BOOKING_DETAILS.STATUS_RESERVA;
-      const reqCols = Math.max(idInstCol, discCol, profRealCol, profOrigCol, statusCol) + 1;
+      const tipoAulaCol = HEADERS.BOOKING_DETAILS.TIPO_AULA_REPOSICAO; // Novo: tipo de aula
+      const reqCols = Math.max(idInstCol, discCol, profRealCol, profOrigCol, statusCol, tipoAulaCol) + 1;
       if (row && row.length >= reqCols) {
         const instanceId = String(row[idInstCol] || '').trim();
         const statusReserva = String(row[statusCol] || '').trim();
-        if (instanceId && statusReserva === 'Agendada') map[instanceId] = { disciplinaReal: String(row[discCol] || '').trim(), professorReal: String(row[profRealCol] || '').trim(), professorOriginalBooking: String(row[profOrigCol] || '').trim() };
+        if (instanceId && statusReserva === 'Agendada') map[instanceId] = { disciplinaReal: String(row[discCol] || '').trim(), professorReal: String(row[profRealCol] || '').trim(), professorOriginalBooking: String(row[profOrigCol] || '').trim(), tipoAulaReposicao: String(row[tipoAulaCol] || '').trim() };
       } return map;
     }, {});
     const slotsByTurma = {};
@@ -662,9 +680,9 @@ function getPublicScheduleInstances(weekStartDateString) {
       const instanceStatus = String(row[statusCol] || '').trim();
       const professoresAusentes = String(row[absentCol] || '').trim();
       let includeSlot = false;
-      if (originalType === TIPOS_HORARIO.FIXO) {
+      if (originalType === TIPOS_HORARIO.FIXO) { // Sempre inclui horários FIXOS (Disponível ou com Substituição)
         includeSlot = true;
-      } else if (originalType === TIPOS_HORARIO.VAGO && instanceStatus === STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
+      } else if (originalType === TIPOS_HORARIO.VAGO && instanceStatus === STATUS_OCUPACAO.REPOSICAO_AGENDADA) { // Inclui VAGO apenas se tiver Reposição/Recuperação
         includeSlot = true;
       }
       if (!includeSlot) return;
@@ -673,21 +691,24 @@ function getPublicScheduleInstances(weekStartDateString) {
       let disciplinaParaExibir = '';
       let professorParaExibir = '';
       let professorOriginalNaReserva = '';
+      let tipoAulaParaExibir = ''; // Novo: tipo de aula para exibir
+
       const baseInfo = baseScheduleMap[baseId] || { disciplina: '', professor: '' };
       const bookingDetails = bookingDetailsMap[instanceId];
-      if (instanceStatus === STATUS_OCUPACAO.DISPONIVEL) {
+      if (instanceStatus === STATUS_OCUPACAO.DISPONIVEL && originalType === TIPOS_HORARIO.FIXO) {
         disciplinaParaExibir = baseInfo.disciplina;
-        professorParaExibir = baseInfo.professor;
-        if (!professorParaExibir && originalType === TIPOS_HORARIO.FIXO) {
-          Logger.log(`Warning (Public View): Base Professor not found in map for available Fixed slot ${instanceId} (Base ID: ${baseId}).`);
-          professorParaExibir = 'Prof. N/D';
-        }
-      } else if (bookingDetails) {
+        professorParaExibir = professorPrincipalInstancia || baseInfo.professor;
+      } else if (bookingDetails) { // Se há uma reserva (Substituição ou Reposição/Recuperação)
         disciplinaParaExibir = bookingDetails.disciplinaReal;
         professorParaExibir = bookingDetails.professorReal;
         professorOriginalNaReserva = bookingDetails.professorOriginalBooking;
+        if (instanceStatus === STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
+            tipoAulaParaExibir = bookingDetails.tipoAulaReposicao;
+        }
       } else {
-        Logger.log(`Warning (Public View): Instância ${instanceId} (Status: ${instanceStatus}) sem detalhes de reserva 'Agendada'. Usando dados base.`);
+        // Caso raro: slot FIXO que não está DISPONIVEL e não tem bookingDetails correspondente (pode ser inconsistência ou estado transitório)
+        // Para a visão pública, mostrar dados base.
+        Logger.log(`Warning (Public View): Instância ${instanceId} (Tipo: ${originalType}, Status: ${instanceStatus}) sem detalhes de reserva 'Agendada'. Usando dados base/instância.`);
         disciplinaParaExibir = baseInfo.disciplina;
         professorParaExibir = professorPrincipalInstancia || baseInfo.professor || 'Prof. N/D';
       }
@@ -696,12 +717,13 @@ function getPublicScheduleInstances(weekStartDateString) {
         diaSemana: instanceDiaSemana,
         horaInicio: formattedHoraInicio,
         tipoOriginal: originalType,
-        statusOcupacao: instanceStatus,
+        statusOcupacao: instanceStatus, // Para fins de estilização/lógica no frontend, se necessário
         disciplinaParaExibir: disciplinaParaExibir,
         professorParaExibir: professorParaExibir,
-        professorOriginalNaReserva: professorOriginalNaReserva,
-        professorPrincipal: professorPrincipalInstancia,
-        professoresAusentes: professoresAusentes
+        professorOriginalNaReserva: professorOriginalNaReserva, // Para substituições
+        professorPrincipal: professorPrincipalInstancia, // Professor(es) originais do horário fixo
+        professoresAusentes: professoresAusentes,
+        tipoAulaReposicao: tipoAulaParaExibir // Novo: tipo de aula de reposição/recuperação
       };
       if (!slotsByTurma[instanceTurma]) {
         slotsByTurma[instanceTurma] = [];
@@ -718,14 +740,23 @@ function getPublicScheduleInstances(weekStartDateString) {
 function getScheduleViewFilters() {
   Logger.log('*** getScheduleViewFilters called ***');
   try {
-    getActiveUserEmail_();
+    getActiveUserEmail_(); // Ensure user is active, even if role isn't strictly checked here
     const turmasResponse = JSON.parse(getTurmasList());
     const turmas = turmasResponse.success ? turmasResponse.data : [];
     if (!turmasResponse.success) {
       Logger.log("Warning: Failed to get turmas list for filters: " + turmasResponse.message);
+      // Não retorna erro aqui, pode prosseguir sem turmas se for o caso.
     }
+    // Usa a mesma lógica de `calculateGenerationRange_` para definir o início, mas para filtros
     const numWeeks = parseInt(getConfigValue('Semanas Para Gerar Filtros')) || 12;
-    const { startGenerationDate: firstMondayUTC } = calculateGenerationRange_(numWeeks);
+    // `calculateGenerationRange_` calcula a partir de 2 semanas atrás para `createScheduleInstances`.
+    // Para filtros, queremos a partir da segunda-feira da semana atual ou da próxima,
+    // dependendo do dia atual.
+    const now = new Date();
+    const currentDayUTC = now.getUTCDay(); // Domingo = 0, Segunda = 1, ...
+    let firstMondayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    // Retrocede para a última segunda-feira ou mantém se hoje for segunda
+    firstMondayUTC.setUTCDate(firstMondayUTC.getUTCDate() - (currentDayUTC === 0 ? 6 : currentDayUTC - 1));
     const weekStartDates = [];
     Logger.log(`Generating ${numWeeks} week start dates (UTC Mondays) for filters starting from: ${firstMondayUTC.toISOString().slice(0, 10)}`);
     for (let i = 0; i < numWeeks; i++) {

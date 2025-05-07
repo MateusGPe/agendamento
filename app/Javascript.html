@@ -435,15 +435,22 @@
                     const profOriginalBooking = slot.professorOriginalNaReserva || '';
                     const profPrincipalInstance = slot.professorPrincipal || '';
                     const professoresAusentesString = slot.professoresAusentes || '';
+                    const tipoAulaReposicao = slot.tipoAulaReposicao || ''; // Novo: tipo de aula de reposição
                     const firstWordDiscipline = disciplina.split(' ')[0] || 'Aula';
-                    let slotDate = null;
+                    /*let slotDate = null;
                     try {
                         const dateParts = slot.data.split('/');
                         if (dateParts.length === 3) {
-                            slotDate = new Date(parseInt(dateParts[2]), parseInt(dateParts[1]) - 1, parseInt(dateParts[0]) + 2);
+                            // Adicionado +2 para compensar o bug na conversão para Date
+                            // Para fins de comparação, o dia precisa ser exato.
+                            // A data da instância já vem em UTC, então podemos criar um objeto Date direto
+                            // O new Date(year, month-1, day) cria em local timezone.
+                            // Para consistência, vamos usar Date.UTC para comparar com `today` (que também é UTC midnight)
+                            slotDate = new Date(Date.UTC(parseInt(dateParts[2]), parseInt(dateParts[1]) - 1, parseInt(dateParts[0])));
                         }
-                    } catch (e) { logAbsenceDebug("Error parsing slot date:", slot.data, e); }
-                    const isFutureSlot = slotDate && slotDate >= today;
+                    } catch (e) { logAbsenceDebug("Error parsing slot date:", slot.data, e); }*/
+
+
                     if (slot.statusOcupacao === STATUS_OCUPACAO.DISPONIVEL) {
                         cellClasses.push('slot-available');
                         if (slot.tipoOriginal === TIPOS_HORARIO.VAGO) {
@@ -451,7 +458,7 @@
                             cellClasses.push('slot-vago');
                             if (currentUserRole === 'Admin' || currentUserRole === 'Professor') {
                                 isClickable = true;
-                                possibleBookingType = TIPOS_RESERVA.REPOSICAO;
+                                possibleBookingType = TIPOS_RESERVA.REPOSICAO; // Reposição é o tipo de reserva genérico aqui
                                 cellClasses.push('clickable-slot', 'clickable-reposicao');
                             }
                         } else if (slot.tipoOriginal === TIPOS_HORARIO.FIXO) {
@@ -466,6 +473,10 @@
                         }
                     } else if (slot.statusOcupacao === STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
                         mainContentHtml = `${firstWordDiscipline} - ${professorAtual}`;
+                        // Adiciona o tipo de aula (Reposição/Recuperação)
+                        if (tipoAulaReposicao) {
+                            mainContentHtml += `<br><span class="slot-aula-tipo">(${tipoAulaReposicao})</span>`;
+                        }
                         cellClasses.push('slot-reposicao', 'slot-booked-public');
                     } else if (slot.statusOcupacao === STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) {
                         cellClasses.push('slot-substituicao', 'slot-booked-public');
@@ -484,12 +495,12 @@
                     }
                     cell.classList.add(...new Set(cellClasses));
                     let absenceButtonHtml = '';
-                    if (slot.tipoOriginal === TIPOS_HORARIO.FIXO && isFutureSlot && (currentUserRole === 'Admin' || currentUserRole === 'Professor')) {
+                    if (slot.tipoOriginal === TIPOS_HORARIO.FIXO && (currentUserRole === 'Admin' || currentUserRole === 'Professor')) {
                         const checkType = slot.tipoOriginal; const constType = TIPOS_HORARIO.FIXO;
                         const typeMatch = checkType === constType; const roleMatchAdmin = currentUserRole === 'Admin';
-                        const roleMatchProf = currentUserRole === 'Professor'; const showButtonForAdmin = typeMatch && isFutureSlot && roleMatchAdmin;
-                        const showButtonForProf = typeMatch && isFutureSlot && roleMatchProf;
-                        logAbsenceDebug(`CHECKING Absence Button: ID=${slot.idInstancia}, Date='${slot.data}', isFuture=${isFutureSlot}, Type='${checkType}' (Match: ${typeMatch}), Role='${currentUserRole}', ShowForAdmin=${showButtonForAdmin}, ShowForProf=${showButtonForProf}`);
+                        const roleMatchProf = currentUserRole === 'Professor'; const showButtonForAdmin = typeMatch && roleMatchAdmin;
+                        const showButtonForProf = typeMatch && roleMatchProf;
+                        logAbsenceDebug(`CHECKING Absence Button: ID=${slot.idInstancia}, Date='${slot.data}', Type='${checkType}' (Match: ${typeMatch}), Role='${currentUserRole}', ShowForAdmin=${showButtonForAdmin}, ShowForProf=${showButtonForProf}`);
                         if (showButtonForAdmin || showButtonForProf) {
                             logAbsenceDebug(`-> Preparing Absence Button HTML for Slot ID: ${slot.idInstancia}`);
                             const absenceSlotInfoText = `${slot.data} ${slot.horaInicio} (${slot.diaSemana}) - Turma: ${slot.turma} - Prof(s): ${profPrincipalInstance || 'N/D'}`;
@@ -510,12 +521,14 @@
                     const statusSpanHtml = createStatusSpanHtml(statusTextForDisplay, cellClasses);
                     const mainContentDivHtml = `<div class="slot-main-content">${mainContentHtml}</div>`;
                     cell.innerHTML = `${mainContentDivHtml}${statusSpanHtml}${absenceButtonHtml}`;
+
                     let tooltipText = `Data: ${offsetDDMMYYYY(slot.data, 1)}\nHora: ${slot.horaInicio}\nTurma: ${slot.turma}\nTipo Original: ${slot.tipoOriginal}\nStatus: ${statusTextForDisplay}`;
                     if (disciplina) tooltipText += `\nDisciplina: ${disciplina}`;
                     if (slot.statusOcupacao === STATUS_OCUPACAO.DISPONIVEL && slot.tipoOriginal === TIPOS_HORARIO.FIXO) {
                         tooltipText += `\nProf. Base: ${profPrincipalInstance || 'N/D'}`;
                     } else if (slot.statusOcupacao === STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
-                        tooltipText += `\nProf. Reposição: ${professorAtual || 'N/D'}`;
+                        tooltipText += `\nProf. Aula: ${professorAtual || 'N/D'}`;
+                        if (tipoAulaReposicao) tooltipText += `\nTipo Aula: ${tipoAulaReposicao}`; // Novo: tipo de aula no tooltip
                     } else if (slot.statusOcupacao === STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) {
                         tooltipText += `\nProf. Substituto: ${professorAtual || 'N/D'}`;
                         const originalToShow = profOriginalBooking || profPrincipalInstance;
@@ -530,6 +543,7 @@
                     }
                     tooltipText += `\nID Instância: ${slot.idInstancia}`;
                     cell.title = tooltipText;
+
                     if (isClickable && possibleBookingType) {
                         const currentIdInstancia = String(slot.idInstancia || '');
                         const currentBookingType = possibleBookingType;
@@ -544,7 +558,8 @@
                                 return;
                             }
                             logDebug(`Cell clicked (booking)! Calling selectSlot with ID='${currentIdInstancia}', Type='${currentBookingType}'`);
-                            selectSlot(currentIdInstancia, currentBookingType, bookingSlotInfoText);
+                            // Passar a hora de início para selectSlot para a verificação do almoço
+                            selectSlot(currentIdInstancia, currentBookingType, bookingSlotInfoText, slot.horaInicio, slot.turma, slot.data);
                         });
                     }
                 } else {
@@ -580,8 +595,8 @@
         else if (statusText === STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) statusClass = 'status-substituicao';
         return `<span class="slot-status ${statusClass}">(${statusText})</span>`;
     }
-    function selectSlot(idInstancia, bookingType, slotInfo) {
-        logDebug(`[selectSlot] Function called with: idInstancia='${idInstancia}' (type: ${typeof idInstancia}), bookingType='${bookingType}', currentUserRole='${currentUserRole}'`);
+    function selectSlot(idInstancia, bookingType, slotInfo, slotHoraInicio = null, slotTurma = null, slotData = null) {
+        logDebug(`[selectSlot] Function called with: idInstancia='${idInstancia}' (type: ${typeof idInstancia}), bookingType='${bookingType}', currentUserRole='${currentUserRole}', HoraInicio='${slotHoraInicio}', Turma='${slotTurma}', Data='${slotData}'`);
         displayMessage('');
         cancelAbsenceForm();
         if (!idInstancia || String(idInstancia).trim() === '') {
@@ -637,17 +652,35 @@
         const slotInfoSpan = document.getElementById(formPrefix + '-selected-slot-info');
         const professorSelect = document.getElementById(formPrefix + '-professor-real');
         const disciplinaSelect = document.getElementById(formPrefix + '-disciplina');
+        // Adicionado para o novo campo tipo de aula (Reposição)
+        const tipoAulaSelect = (bookingType === TIPOS_RESERVA.REPOSICAO) ? document.getElementById('reposicao-tipo-aula') : null;
+
         if (otherFormDiv) {
             logDebug(`[selectSlot] Hiding other form: #${otherFormDivId}`);
             otherFormDiv.style.display = 'none';
         } else {
             console.warn(`[selectSlot] Other form element '#${otherFormDivId}' not found.`);
         }
-        if (!formDiv || !slotIdInput || !slotInfoSpan || !professorSelect || !disciplinaSelect) {
-            console.error(`[selectSlot] One or more form elements not found for booking type '${bookingType}'. IDs checked: #${formDivId}, #${formPrefix}-selected-slot-id, #${formPrefix}-selected-slot-info, #${formPrefix}-professor-real, #${formPrefix}-disciplina`);
+
+        let requiredElements = [formDiv, slotIdInput, slotInfoSpan, professorSelect, disciplinaSelect];
+        if (bookingType === TIPOS_RESERVA.REPOSICAO) {
+            requiredElements.push(tipoAulaSelect);
+        }
+
+        if (requiredElements.some(el => !el)) {
+            let missingElementIds = [];
+            if (!formDiv) missingElementIds.push(formDivId);
+            if (!slotIdInput) missingElementIds.push(formPrefix + '-selected-slot-id');
+            if (!slotInfoSpan) missingElementIds.push(formPrefix + '-selected-slot-info');
+            if (!professorSelect) missingElementIds.push(formPrefix + '-professor-real');
+            if (!disciplinaSelect) missingElementIds.push(formPrefix + '-disciplina');
+            if (bookingType === TIPOS_RESERVA.REPOSICAO && !tipoAulaSelect) missingElementIds.push('reposicao-tipo-aula');
+
+            console.error(`[selectSlot] One or more form elements not found for booking type '${bookingType}'. Missing IDs: ${missingElementIds.join(', ')}`);
             displayMessage('Erro interno: Componentes do formulário de agendamento não encontrados.', 'error');
             return;
         }
+
         logDebug(`[selectSlot] All form elements found for type '${bookingType}'.`);
         logDebug(`[selectSlot] Setting hidden input '#${formPrefix}-selected-slot-id' value to: '${idInstancia}'`);
         slotIdInput.value = idInstancia;
@@ -659,6 +692,16 @@
         professorSelect.required = true;
         disciplinaSelect.selectedIndex = 0;
         disciplinaSelect.required = true;
+
+        if (tipoAulaSelect) {
+            tipoAulaSelect.selectedIndex = 0;
+            tipoAulaSelect.required = true;
+            // Passar os dados do slot para o formulário para a verificação do almoço
+            tipoAulaSelect.dataset.slotHoraInicio = slotHoraInicio;
+            tipoAulaSelect.dataset.slotTurma = slotTurma;
+            tipoAulaSelect.dataset.slotData = slotData;
+        }
+
         logDebug(`[selectSlot] Displaying form '#${formDivId}' and scrolling into view.`);
         formDiv.style.display = 'block';
         try {
@@ -682,6 +725,8 @@
                 const disciplinaSelect = document.getElementById(formPrefix + '-disciplina');
                 const slotIdInput = document.getElementById(formPrefix + '-selected-slot-id');
                 const slotInfoSpan = document.getElementById(formPrefix + '-selected-slot-info');
+                const tipoAulaSelect = (type === 'Reposicao') ? document.getElementById('reposicao-tipo-aula') : null;
+
                 if (professorSelect) professorSelect.selectedIndex = 0;
                 if (disciplinaSelect) disciplinaSelect.selectedIndex = 0;
                 if (slotIdInput) {
@@ -689,6 +734,12 @@
                     slotIdInput.value = '';
                 }
                 if (slotInfoSpan) slotInfoSpan.textContent = '';
+                if (tipoAulaSelect) {
+                    tipoAulaSelect.selectedIndex = 0;
+                    delete tipoAulaSelect.dataset.slotHoraInicio;
+                    delete tipoAulaSelect.dataset.slotTurma;
+                    delete tipoAulaSelect.dataset.slotData;
+                }
                 logDebug("Booking Form fields reset.");
             }
         } else {
@@ -707,21 +758,41 @@
         const slotIdInput = document.getElementById(formPrefix + '-selected-slot-id');
         const professorSelect = document.getElementById(formPrefix + '-professor-real');
         const disciplinaSelect = document.getElementById(formPrefix + '-disciplina');
-        if (!slotIdInput || !professorSelect || !disciplinaSelect) {
+        const tipoAulaSelect = (type === 'Reposicao') ? document.getElementById('reposicao-tipo-aula') : null;
+
+        let requiredFormElements = [slotIdInput, professorSelect, disciplinaSelect];
+        if (type === 'Reposicao') {
+            requiredFormElements.push(tipoAulaSelect);
+        }
+
+        if (requiredFormElements.some(el => !el)) {
             console.error(`[bookSlot] Critical Error: One or more form input elements not found for type '${type}'. Aborting.`);
             displayMessage(`Erro interno: Não foi possível encontrar os campos do formulário de ${type}.`, 'error');
             return;
         }
+
         const slotId = slotIdInput.value;
         const professorReal = professorSelect.value;
         const disciplinaReal = disciplinaSelect.value;
+        const tipoAula = (type === 'Reposicao' && tipoAulaSelect) ? tipoAulaSelect.value : null;
+
         logDebug(`[bookSlot] Reading value from hidden input '#${formPrefix}-selected-slot-id': '${slotId}'`);
         logDebug(`[bookSlot] Reading value from professor select: '${professorReal}'`);
         logDebug(`[bookSlot] Reading value from disciplina select: '${disciplinaReal}'`);
+        if (type === 'Reposicao') {
+            logDebug(`[bookSlot] Reading value from tipoAula select: '${tipoAula}'`);
+        }
+
         logDebug("[bookSlot] Performing frontend validation...");
         if (!slotId || slotId.trim() === '') {
             console.error(`[bookSlot] Validation failed: slotId is invalid ('${slotId}').`);
             displayMessage('Erro: Nenhum horário selecionado. Por favor, clique novamente no horário desejado na grade.', 'error');
+            return;
+        }
+        if (type === 'Reposicao' && (!tipoAula || tipoAula === '')) {
+            console.warn(`[bookSlot] Validation failed: Tipo de Aula not selected for Reposicao.`);
+            displayMessage(`Por favor, selecione o Tipo de Aula (Reposição ou Recuperação Paralela).`, 'error');
+            if (tipoAulaSelect) tipoAulaSelect.focus();
             return;
         }
         if (!professorReal || professorReal === '') {
@@ -738,12 +809,22 @@
         }
         logDebug("[bookSlot] Frontend validation passed.");
         showLoading();
+
         const bookingDetails = {
             idInstancia: slotId,
-            tipoReserva: type,
+            tipoReserva: type, // Mantém 'Reposicao' ou 'Substituicao' para lógica de backend
             professorReal: professorReal,
             disciplinaReal: disciplinaReal
         };
+
+        if (type === 'Reposicao') {
+            bookingDetails.tipoAulaReposicao = tipoAula; // Adiciona o tipo específico da aula
+            // Adiciona os dados do slot para a verificação de almoço
+            bookingDetails.slotHoraInicio = tipoAulaSelect.dataset.slotHoraInicio;
+            bookingDetails.slotTurma = tipoAulaSelect.dataset.slotTurma;
+            bookingDetails.slotData = tipoAulaSelect.dataset.slotData;
+        }
+
         const jsonBookingDetailsString = JSON.stringify(bookingDetails);
         logDebug("[bookSlot] Sending booking details to backend:", jsonBookingDetailsString);
         google.script.run
@@ -766,9 +847,12 @@
             return;
         }
         if (response && response.success) {
-            const successMsg = response.message || `Agendamento realizado com sucesso!`;
+            let successMsg = response.message || `Agendamento realizado com sucesso!`;
+            if (response.data && response.data.lunchAlert) { // Verifica se há alerta de almoço
+                successMsg += ` ${response.data.lunchAlert}`; // Adiciona o alerta à mensagem
+            }
             logDebug("Booking successful:", successMsg, response.data);
-            displayMessage(successMsg, 'success');
+            displayMessage(successMsg, 'success'); // Mostra a mensagem combinada
             logDebug("Hiding booking forms after successful booking.");
             cancelBookingForm('Reposicao');
             cancelBookingForm('Substituicao');
@@ -1009,6 +1093,12 @@
                 populateDropdown('substituicao-professor-real', [], '-- Erro --');
                 populateDropdown('reposicao-disciplina', [], '-- Erro --');
                 populateDropdown('substituicao-disciplina', [], '-- Erro --');
+                // Novo: Dropdown de tipo de aula para reposição
+                populateDropdown('reposicao-tipo-aula', [
+                    { value: "Reposição", text: "Reposição" },
+                    { value: "Recuperação Paralela", text: "Recuperação Paralela" }
+                ], '-- Selecione o Tipo de Aula --');
+
                 const filterButton = document.querySelector('.filter-section button');
                 if (filterButton) filterButton.disabled = true;
             } catch (uiError) {
@@ -1022,7 +1112,7 @@
             if (absenceSection) absenceSection.style.display = 'none';
         }
     });
-    logDebug("Defining global constants: STATUS_OCUPACAO, TIPOS_RESERVA, TIPOS_HORARIO");
+    logDebug("Defining global constants: STATUS_OCUPACAO, TIPOS_RESERVA, TIPOS_HORARIO, TIPOS_AULA_REPOSICAO");
     const STATUS_OCUPACAO = Object.freeze({
         DISPONIVEL: 'Disponivel',
         REPOSICAO_AGENDADA: 'Reposicao Agendada',
@@ -1035,5 +1125,10 @@
     const TIPOS_HORARIO = Object.freeze({
         FIXO: 'Fixo',
         VAGO: 'Vago'
+    });
+    // Novo: Constante para tipos de aula de reposição/recuperação no lado do cliente
+    const TIPOS_AULA_REPOSICAO = Object.freeze({
+        REPOSICAO: 'Reposição',
+        RECUPERACAO_PARALELA: 'Recuperação Paralela'
     });
 </script>

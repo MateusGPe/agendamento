@@ -301,8 +301,10 @@
     position: relative;
     line-height: 1.3;
     min-width: 80px;
-    height: 60px;
+    height: 60px; /* Ajustado para melhor visualização com mais texto */
     word-wrap: break-word;
+    vertical-align: top; /* Alinha conteúdo ao topo para melhor leitura com mais linhas */
+    padding-top: 6px; /* Adiciona um pouco de padding no topo */
   }
   .schedule-grid-table tbody tr:nth-child(even) td {
     background-color: #f9f9f9;
@@ -317,6 +319,7 @@
     left: 0;
     z-index: 2;
     padding: 6px 4px;
+    vertical-align: middle; /* Centraliza a hora verticalmente */
   }
   .schedule-grid-table tbody tr:nth-child(odd) td.hour-cell {
     background-color: #e8f0fe;
@@ -329,6 +332,14 @@
   }
   .slot-main-content {
     margin-bottom: 1px;
+  }
+  .slot-aula-tipo { /* Novo estilo para o tipo de aula (Reposição/Recuperação) */
+    display: block;
+    font-size: 0.9em;
+    color: #4a5568; /* Um cinza mais escuro */
+    font-style: normal;
+    font-weight: normal;
+    margin-top: 2px;
   }
   .slot-status {
     display: block;
@@ -358,7 +369,7 @@
   .slot-available.slot-fixo {
     background-color: #e8f0fe;
   }
-  .slot-reposicao {
+  .slot-reposicao { /* Usado para Reposição e Recuperação Agendada */
     background-color: #d4edda;
   }
   .slot-substituicao {
@@ -571,10 +582,11 @@
       word-break: break-word;
     }
     .schedule-grid-table td {
-      min-height: 50px;
+      min-height: 50px; /* Ajustado para acomodar mais texto */
       display: flex;
       flex-direction: column;
-      justify-content: center;
+      justify-content: flex-start; /* Alinha ao topo */
+      padding-top: 6px;
     }
     .schedule-grid-table td.hour-cell {
       width: 50px;
@@ -585,6 +597,7 @@
       position: sticky;
       left: 0;
       z-index: 2;
+      justify-content: center; /* Centraliza hora */
     }
     .schedule-grid-table tbody tr:nth-child(odd) td.hour-cell {
       background-color: #e8f0fe;
@@ -594,6 +607,9 @@
     }
     .slot-status {
       font-size: 0.85em;
+    }
+    .slot-aula-tipo {
+      font-size: 0.9em;
     }
     .schedule-grid-table tfoot th,
     .schedule-grid-table tfoot td {
@@ -654,7 +670,7 @@
       padding: 3px 4px;
     }
     .schedule-grid-table td {
-      min-height: 45px;
+      min-height: 45px; /* Ajustado */
     }
     .schedule-grid-table td.hour-cell {
       width: 40px;
@@ -665,6 +681,9 @@
     }
     .slot-status {
       font-size: 0.8em;
+    }
+    .slot-aula-tipo {
+      font-size: 0.85em;
     }
     .schedule-grid-table tfoot th,
     .schedule-grid-table tfoot td {

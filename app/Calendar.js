@@ -19,21 +19,42 @@ function handleCalendarIntegration_(calendarIdConfig, bookingDetails, instanceDe
         Logger.log(`Accessing calendar "${calendar.getName()}" (ID: ${calendarIdConfig})`);
         let durationMinutes = parseInt(getConfigValue('Duracao Padrao Aula (minutos)')) || 45;
         const endTime = new Date(effectiveStartDateTime.getTime() + durationMinutes * 60 * 1000);
-        const bookingType = String(bookingDetails.tipoReserva || '').trim();
+        
+        // Usa tipoAulaReposicao se existir (para Reposições/Recuperações), senão usa tipoReserva (para Substituições)
+        const eventDisplayType = bookingDetails.tipoAulaReposicao || bookingDetails.tipoReserva;
+        
         const disciplina = String(bookingDetails.disciplinaReal || '').trim();
         const turma = String(instanceDetails[HEADERS.SCHEDULE_INSTANCES.TURMA] || '').trim();
         const profReal = String(bookingDetails.professorReal || '').trim();
-        const profOrig = (bookingType === TIPOS_RESERVA.SUBSTITUICAO)
-            ? String(instanceDetails[HEADERS.BOOKING_DETAILS.PROFESSOR_ORIGINAL] || instanceDetails[HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL] || '').trim()
-            : String(instanceDetails[HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL] || '').trim();
+        
+        // Para Substituição, o professor original é pego da reserva ou da instância.
+        // Para Reposição/Recuperação, não há "professor original" no mesmo sentido, mas podemos pegar da instância se existir.
+        let profOrig = '';
+        if (bookingDetails.tipoReserva === TIPOS_RESERVA.SUBSTITUICAO) {
+             profOrig = String(bookingDetails.professorOriginalNaReserva || instanceDetails[HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL] || '').trim();
+        } else if (bookingDetails.tipoReserva === TIPOS_RESERVA.REPOSICAO) {
+            // Para reposição, o "original" seria o professor base do horário, se houver (geralmente não há para VAGO).
+            // Mas não faz muito sentido exibir no título do evento.
+            // Se a lógica precisar, pode-se pegar de instanceDetails[HEADERS.SCHEDULE_INSTANCES.PROFESSOR_PRINCIPAL]
+        }
+
         const bookingId = String(instanceDetails[HEADERS.SCHEDULE_INSTANCES.ID_RESERVA] || '').trim();
+        // Tenta obter o criador da reserva (CRIADO_POR) que agora está na instância,
+        // ou cai para o usuário ativo se não encontrar.
         const userEmail = String(instanceDetails[HEADERS.BOOKING_DETAILS.CRIADO_POR] || getActiveUserEmail_());
-        const eventTitle = `${bookingType} - ${disciplina} (${turma})`;
+        
+        const eventTitle = `${eventDisplayType} - ${disciplina} (${turma})`;
+        
         let eventDescription = `Reserva ID: ${bookingId}\nProfessor: ${profReal}`;
-        if (bookingType === TIPOS_RESERVA.SUBSTITUICAO && profOrig && profOrig !== profReal) {
+        if (bookingDetails.tipoReserva === TIPOS_RESERVA.SUBSTITUICAO && profOrig && profOrig !== profReal) {
             eventDescription += ` (Original: ${profOrig})`;
         }
+        // Adiciona o tipo de aula para Reposição/Recuperação na descrição, se aplicável
+        if (bookingDetails.tipoReserva === TIPOS_RESERVA.REPOSICAO && bookingDetails.tipoAulaReposicao) {
+            eventDescription += `\nTipo de Aula: ${bookingDetails.tipoAulaReposicao}`;
+        }
         eventDescription += `\nTurma: ${turma}\nAgendado por: ${userEmail}`;
+        
         const existingEventId = String(instanceDetails[HEADERS.SCHEDULE_INSTANCES.ID_EVENTO_CALENDAR] || '').trim();
         let event = null;
         if (existingEventId) {
