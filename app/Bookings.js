@@ -193,7 +193,7 @@ function getCancellableBookings() {
         const timeZone = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
         const { data: bookingData } = getSheetData_(SHEETS.BOOKING_DETAILS, HEADERS.BOOKING_DETAILS);
         const { data: instanceData } = getSheetData_(SHEETS.SCHEDULE_INSTANCES, HEADERS.SCHEDULE_INSTANCES);
-        const today = new Date();
+        const today = new Date(Date.now()-3600*24*1000); // Um dia atrás
         today.setHours(0, 0, 0, 0);
         const instanceMap = instanceData.reduce((map, row) => {
             const idCol = HEADERS.SCHEDULE_INSTANCES.ID_INSTANCIA;
@@ -515,9 +515,9 @@ function bookSlot(jsonBookingDetailsString) {
         }
         // Não adiciona o alerta de almoço à mensagem de sucesso principal, ele já foi enviado por email se necessário.
         // Se quiser mostrar no UI também, pode adicionar aqui.
-        // if (lunchAlertMessage) {
-        //     successMessage += ` ${lunchAlertMessage}`;
-        // }
+        if (lunchAlertMessage) {
+            successMessage += ` ${lunchAlertMessage}`;
+        }
         successMessage += ` Notificação enviada.`;
 
         return createJsonResponse(true, successMessage, {

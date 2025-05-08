@@ -439,15 +439,15 @@
                     const firstWordDiscipline = disciplina.split(' ')[0] || 'Aula';
                     /*let slotDate = null;
                     try {
-                        const dateParts = slot.data.split('/');
-                        if (dateParts.length === 3) {
-                            // Adicionado +2 para compensar o bug na conversão para Date
-                            // Para fins de comparação, o dia precisa ser exato.
-                            // A data da instância já vem em UTC, então podemos criar um objeto Date direto
-                            // O new Date(year, month-1, day) cria em local timezone.
-                            // Para consistência, vamos usar Date.UTC para comparar com `today` (que também é UTC midnight)
-                            slotDate = new Date(Date.UTC(parseInt(dateParts[2]), parseInt(dateParts[1]) - 1, parseInt(dateParts[0])));
-                        }
+                    const dateParts = slot.data.split('/');
+                    if (dateParts.length === 3) {
+                    // Adicionado +2 para compensar o bug na conversão para Date
+                    // Para fins de comparação, o dia precisa ser exato.
+                    // A data da instância já vem em UTC, então podemos criar um objeto Date direto
+                    // O new Date(year, month-1, day) cria em local timezone.
+                    // Para consistência, vamos usar Date.UTC para comparar com `today` (que também é UTC midnight)
+                    slotDate = new Date(Date.UTC(parseInt(dateParts[2]), parseInt(dateParts[1]) - 1, parseInt(dateParts[0])));
+                    }
                     } catch (e) { logAbsenceDebug("Error parsing slot date:", slot.data, e); }*/
 
 
@@ -507,15 +507,15 @@
                             const escapedSlotInfo = absenceSlotInfoText.replace(/"/g, '"').replace(/'/g, '\'');
                             const escapedProfessors = (profPrincipalInstance || '').replace(/"/g, '"').replace(/'/g, '\'');
                             absenceButtonHtml = `
-                                <div style="margin-top: 4px;">
-                                    <button
-                                        type="button"
-                                        class="action-button report-absence-btn"
-                                        title="Informar Ausência de Professor neste Horário"
-                                        onclick="event.stopPropagation(); showAbsenceForm('${slot.idInstancia}', '${escapedSlotInfo}', '${escapedProfessors}');">
-                                        📅❌
-                                    </button>
-                                </div>`;
+<div style="margin-top: 4px;">
+<button
+type="button"
+class="action-button report-absence-btn"
+title="Informar Ausência de Professor neste Horário"
+onclick="event.stopPropagation(); showAbsenceForm('${slot.idInstancia}', '${escapedSlotInfo}', '${escapedProfessors}');">
+📅❌
+</button>
+</div>`;
                         }
                     }
                     const statusSpanHtml = createStatusSpanHtml(statusTextForDisplay, cellClasses);
@@ -819,7 +819,7 @@
 
         if (type === 'Reposicao') {
             bookingDetails.tipoAulaReposicao = tipoAula; // Adiciona o tipo específico da aula
-            // Adiciona os dados do slot para a verificação de almoço
+            // Adiciona os dados do slot para a verificação do almoço
             bookingDetails.slotHoraInicio = tipoAulaSelect.dataset.slotHoraInicio;
             bookingDetails.slotTurma = tipoAulaSelect.dataset.slotTurma;
             bookingDetails.slotData = tipoAulaSelect.dataset.slotData;
@@ -846,13 +846,17 @@
             displayMessage("Erro ao processar a resposta do servidor após agendamento.", 'error');
             return;
         }
+
         if (response && response.success) {
-            let successMsg = response.message || `Agendamento realizado com sucesso!`;
-            if (response.data && response.data.lunchAlert) { // Verifica se há alerta de almoço
-                successMsg += ` ${response.data.lunchAlert}`; // Adiciona o alerta à mensagem
-            }
+            const successMsg = response.message || `Agendamento realizado com sucesso!`;
             logDebug("Booking successful:", successMsg, response.data);
-            displayMessage(successMsg, 'success'); // Mostra a mensagem combinada
+            displayMessage(successMsg, 'success');
+
+            // MODIFICATION: Show alert dialog for lunchAlert
+            if (response.data && response.data.lunchAlert && response.data.lunchAlert.trim() !== '') {
+                alert(response.data.lunchAlert); // Mostra o alerta de almoço em um popup do navegador
+            }
+
             logDebug("Hiding booking forms after successful booking.");
             cancelBookingForm('Reposicao');
             cancelBookingForm('Substituicao');
