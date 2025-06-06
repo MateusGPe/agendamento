@@ -357,7 +357,7 @@
                     cell.classList.add(...cellClasses);
                     cell.innerHTML = formatPublicCellContent(mainContent, statusToDisplay);
 
-                    let tooltipText = `Data: ${offsetDDMMYYYY(slot.data, 0)}\nHora: ${slot.horaInicio}`; // offset 0 para datas já corretas
+                    let tooltipText = `Data: ${offsetDDMMYYYY(slot.data, 1)}\nHora: ${slot.horaInicio}`; // offset 0 para datas já corretas
                     if (disciplina) tooltipText += `\nDisciplina: ${disciplina}`;
                     if (professoresAusentesString) tooltipText += `\nAusente(s): ${professoresAusentesString}`;
                     if (statusToDisplay) tooltipText += `\nStatus: ${statusToDisplay}`;

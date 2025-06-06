@@ -103,13 +103,33 @@
         noBookingsMsg.textContent = 'Falha ao carregar reservas.';
         noBookingsMsg.style.display = 'block';
     }
+    function offsetDDMMYYYY(dateString, offset) { // band-aid for the issue of date being off by 1 day in some cases
+      if (!dateString || typeof dateString !== 'string') return dateString;
+        const parts = dateString.split('/');
+        if (parts.length === 3) {
+            if (!/^\d{2}$/.test(parts[0]) || !/^\d{2}$/.test(parts[1]) || !/^\d{4}$/.test(parts[2])) return dateString;
+            const day = parseInt(parts[0], 10) + offset;
+            const month = parseInt(parts[1], 10);
+            const year = parseInt(parts[2], 10);
+
+            if (year > 1000 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+                const dateObj = new Date(year, month - 1, day);
+                if (!isNaN(dateObj.getTime()) && dateObj.getFullYear() === year && (dateObj.getMonth() + 1) === month && dateObj.getDate() === day) {
+                    const formattedDay = String(day).padStart(2, '0');
+                    const formattedMonth = String(month).padStart(2, '0');
+                    return `${formattedDay}/${formattedMonth}/${year}`;
+                }
+            }
+        }
+        return dateString;
+    }
     function renderBookingsTable(bookings, tbodyElement) {
         bookings.forEach(booking => {
             const row = tbodyElement.insertRow();
             row.id = `booking-row-${booking.bookingId}`;
             row.insertCell().textContent = booking.bookingId || 'N/D';
             row.insertCell().textContent = booking.bookingType || 'N/D';
-            row.insertCell().textContent = booking.date || 'N/D';
+            row.insertCell().textContent = offsetDDMMYYYY(booking.date,1) || 'N/D';
             row.insertCell().textContent = booking.time || 'N/D';
             row.insertCell().textContent = booking.turma || 'N/D';
             row.insertCell().textContent = booking.disciplina || 'N/D';
