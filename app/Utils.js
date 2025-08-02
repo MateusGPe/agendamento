@@ -85,9 +85,10 @@ function formatValueToHHMM(rawValue, timeZone) {
     }
     if (rawValue instanceof Date && !isNaN(rawValue.getTime())) {
       if (rawValue.getFullYear() === 1899 && rawValue.getMonth() === 11 && rawValue.getDate() === 30) {
-        if (rawValue.getHours() !== 0 || rawValue.getMinutes() !== 0 || rawValue.getSeconds() !== 0 || rawValue.getMilliseconds() !== 0) {
+        if (rawValue.getHours() !== 0 || rawValue.getMinutes() !== 0 || rawValue.getSeconds() !== 0) {
           return Utilities.formatDate(rawValue, timeZone, 'HH:mm');
         } else {
+          Logger.log(`Error in formatValueToHHMM for value "${rawValue}" (Type: ${typeof rawValue}): ${e.message}`)
           return null;
         }
       }
@@ -115,6 +116,7 @@ function formatValueToHHMM(rawValue, timeZone) {
         return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
       }
     }
+    Logger.log(`Error in formatValueToHHMM for value "${rawValue}" (Type: ${typeof rawValue}): ${e.message}`);
     return null;
   } catch (e) {
     Logger.log(`Error in formatValueToHHMM for value "${rawValue}" (Type: ${typeof rawValue}): ${e.message}`);
