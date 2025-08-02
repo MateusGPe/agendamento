@@ -19,12 +19,12 @@ function showReportDialog() {
     try {
         const ui = SpreadsheetApp.getUi();
         const sheet = SpreadsheetApp.getActiveSheet();
-        const startDate = sheet.getRange('A1').getDisplayValue();
-        const endDate = sheet.getRange('B1').getDisplayValue();
-        const folderId = sheet.getRange('C1').getDisplayValue();
-        const titlePrefix = sheet.getRange('D1').getDisplayValue();
+        const startDate = sheet.getRange('A1').getValue();
+        const endDate = sheet.getRange('B1').getValue();
+        const folderId = sheet.getRange('C1').getValue();
+        const titlePrefix = sheet.getRange('D1').getValue();
         if (!startDate || !endDate) {
-            ui.alert("Por favor, insira as datas de início e fim (formato dd/MM/yyyy) nas células A1 e B1.");
+            ui.alert("Por favor, insira as datas de início e fim nas células A1 e B1. As células devem conter uma data válida.");
             return;
         }
         ui.alert("Gerando relatório... Isso pode demorar um pouco. Por favor, aguarde.");
@@ -50,14 +50,15 @@ const REPORT_DEFAULTS = {
     COLOR_TABLE_HEADER_BG: '#F5F5F5',
     ERROR_MSG_NO_EVENTS_ACTIVE: "Nenhuma ausência, reposição ou substituição ativa encontrada para o período selecionado.",
     ERROR_MSG_NO_EVENTS_CANCELLED: "Nenhuma reserva foi cancelada no período selecionado.",
+    ERROR_MSG_NO_EVENTS_OVERALL: "Nenhum evento (ausência, reposição, substituição ou cancelamento) foi encontrado para o período selecionado.",
     HEADER_ACTIVE_EVENTS: "EVENTOS ATIVOS (AUSÊNCIAS / REPOSIÇÕES / SUBSTITUIÇÕES)",
     HEADER_CANCELLED_EVENTS: "RESERVAS CANCELADAS",
     TABLE_HEADERS_ACTIVE: ['Data', 'Hora', 'Disciplina', 'Tipo', 'Detalhes'],
     TABLE_HEADERS_CANCELLED: ['Data', 'Hora', 'Turma', 'Tipo', 'Disciplina', 'Detalhes']
 };
-function generateScheduleReport(startDateString, endDateString, targetFolderId = null, reportTitlePrefix = null) {
+function generateScheduleReport(startDateInput, endDateInput, targetFolderId = null, reportTitlePrefix = null) {
     const effectiveTitlePrefix = reportTitlePrefix || REPORT_DEFAULTS.TITLE_PREFIX;
-    Logger.log(`Iniciando generateScheduleReport de ${startDateString} a ${endDateString}. Folder ID: ${targetFolderId}, Título: ${effectiveTitlePrefix}`);
+    Logger.log(`Iniciando generateScheduleReport com input de ${startDateInput} a ${endDateInput}. Folder ID: ${targetFolderId}, Título: ${effectiveTitlePrefix}`);
     try {
         invalidateSheetCache_(SHEETS.SCHEDULE_INSTANCES);
         invalidateSheetCache_(SHEETS.BOOKING_DETAILS);
@@ -66,7 +67,7 @@ function generateScheduleReport(startDateString, endDateString, targetFolderId =
         Logger.log(`Warning: Error invalidating cache: ${e.message}`);
     }
     try {
-        const { startDate, endDate, nextDayAfterEnd, formattedStartDate, formattedEndDate, timeZone } = parseAndValidateDates_(startDateString, endDateString);
+        const { startDate, endDate, nextDayAfterEnd, formattedStartDate, formattedEndDate, timeZone } = parseAndValidateDates_(startDateInput, endDateInput);
         Logger.log(`Datas validadas. Período: ${formattedStartDate} a ${formattedEndDate}. TimeZone: ${timeZone}`);
         Logger.log("Buscando e mapeando dados...");
         const { instanceDetailsMap, bookingMap, bookingData } = fetchAndMapData_();
@@ -77,16 +78,23 @@ function generateScheduleReport(startDateString, endDateString, targetFolderId =
         Logger.log("Processando eventos cancelados...");
         const cancelledEventsList = processCancelledEvents_(bookingData, instanceDetailsMap, startDate, nextDayAfterEnd, timeZone);
         Logger.log(`Eventos cancelados processados: ${cancelledEventsList.length}.`);
+        const hasActiveEvents = Object.keys(reportDataActive).length > 0;
+        const hasCancelledEvents = cancelledEventsList.length > 0;
         Logger.log("Aplicando estilos e criando doc...");
         const styles = applyStyles_();
         const { doc, body } = createReportDocument_(effectiveTitlePrefix, formattedStartDate, formattedEndDate, timeZone, styles);
         Logger.log(`Documento criado: ${doc.getId()}`);
         Logger.log("Escrevendo cabeçalho...");
         writeReportHeader_(body, effectiveTitlePrefix, formattedStartDate, formattedEndDate, timeZone, styles);
-        Logger.log("Escrevendo seção ativos...");
-        writeActiveEventsSection_(body, reportDataActive, timeZone, styles);
-        Logger.log("Escrevendo seção cancelados...");
-        writeCancelledEventsSection_(body, cancelledEventsList, timeZone, styles);
+        if (!hasActiveEvents && !hasCancelledEvents) {
+            body.appendParagraph(REPORT_DEFAULTS.ERROR_MSG_NO_EVENTS_OVERALL).setAttributes(styles.noEventsMessage);
+            Logger.log("Nenhum evento ativo ou cancelado encontrado. Finalizando relatório simplificado.");
+        } else {
+            Logger.log("Escrevendo seção de eventos ativos...");
+            writeActiveEventsSection_(body, reportDataActive, timeZone, styles);
+            Logger.log("Escrevendo seção de eventos cancelados...");
+            writeCancelledEventsSection_(body, cancelledEventsList, timeZone, styles);
+        }
         Logger.log("Salvando/movendo doc...");
         const saveResult = saveAndMoveDoc_(doc, targetFolderId);
         Logger.log(`Resultado final: ${JSON.stringify(saveResult)}`);
@@ -96,11 +104,18 @@ function generateScheduleReport(startDateString, endDateString, targetFolderId =
         return { success: false, message: `Erro ao gerar relatório: ${e.message}` };
     }
 }
-function parseAndValidateDates_(startDateString, endDateString) {
-    const startDate = parseDDMMYYYY(startDateString);
-    const endDate = parseDDMMYYYY(endDateString);
-    if (!startDate || !endDate) throw new Error("Datas inválidas. Use dd/MM/yyyy.");
-    if (endDate.getTime() < startDate.getTime()) throw new Error("Data final anterior à inicial.");
+function parseAndValidateDates_(startDateInput, endDateInput) {
+    const startDate = parseDDMMYYYY(startDateInput);
+    if (!startDate) {
+        throw new Error("Data de início inválida. Verifique o valor na célula A1. Use um formato de data reconhecido pelo Google Sheets ou texto no formato dd/MM/yyyy.");
+    }
+    const endDate = parseDDMMYYYY(endDateInput);
+    if (!endDate) {
+        throw new Error("Data de fim inválida. Verifique o valor na célula B1. Use um formato de data reconhecido pelo Google Sheets ou texto no formato dd/MM/yyyy.");
+    }
+    if (endDate.getTime() < startDate.getTime()) {
+        throw new Error("A data final não pode ser anterior à data inicial.");
+    }
     const nextDayAfterEnd = new Date(endDate.getTime());
     nextDayAfterEnd.setUTCDate(endDate.getUTCDate() + 1);
     const timeZone = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
@@ -130,16 +145,12 @@ function fetchAndMapData_() {
     const i_statusCol = HEADERS.SCHEDULE_INSTANCES.STATUS_OCUPACAO;
     const i_absentCol = HEADERS.SCHEDULE_INSTANCES.PROFESSORES_AUSENTES;
     const i_maxIndexNeeded = Math.max(i_instanceIdCol, i_dateCol, i_hourCol, i_turmaCol, i_profPrincCol, i_typeCol, i_statusCol, i_absentCol);
-    const problematicInstanceId = "11a465f9-660a-4ef9-bfb8-b1109c5a86db";
     instanceData.forEach((r, rowIndex) => {
         if (!r || r.length <= i_maxIndexNeeded) return;
         const id = String(r[i_instanceIdCol] || '').trim();
         if (id) {
             const rawDateValue = r[i_dateCol];
             const parsedDate = formatValueToDate(rawDateValue);
-            if (id === problematicInstanceId) {
-                Logger.log(`DEBUG MAP: Instância ${id} (Linha ${rowIndex + 2}) lida. Valor Bruto Data: ${rawDateValue} (Tipo: ${typeof rawDateValue}). Parsed Date: ${parsedDate ? parsedDate.toISOString() : 'null/inválida'}`);
-            }
             instanceDetailsMap[id] = {
                 date: parsedDate,
                 hora: formatValueToHHMM(r[i_hourCol], Session.getScriptTimeZone()) || 'HH:MM?',
@@ -157,7 +168,8 @@ function fetchAndMapData_() {
     const b_profRealCol = HEADERS.BOOKING_DETAILS.PROFESSOR_REAL;
     const b_discRealCol = HEADERS.BOOKING_DETAILS.DISCIPLINA_REAL;
     const b_profOrigCol = HEADERS.BOOKING_DETAILS.PROFESSOR_ORIGINAL;
-    const b_maxIndexNeeded = Math.max(b_instanceFkCol, b_statusCol, b_profRealCol, b_discRealCol, b_profOrigCol);
+    const b_tipoAulaCol = HEADERS.BOOKING_DETAILS.TIPO_AULA_REPOSICAO;
+    const b_maxIndexNeeded = Math.max(b_instanceFkCol, b_statusCol, b_profRealCol, b_discRealCol, b_profOrigCol, b_tipoAulaCol);
     bookingData.forEach((r) => {
         if (!r || r.length <= b_maxIndexNeeded) return;
         const id = String(r[b_instanceFkCol] || '').trim();
@@ -166,7 +178,8 @@ function fetchAndMapData_() {
             bookingMap[id] = {
                 professorReal: String(r[b_profRealCol] || '').trim(),
                 disciplinaReal: String(r[b_discRealCol] || '').trim(),
-                professorOriginalBooking: String(r[b_profOrigCol] || '').trim()
+                professorOriginalBooking: String(r[b_profOrigCol] || '').trim(),
+                tipoAulaReposicao: String(r[b_tipoAulaCol] || '').trim()
             };
         }
     });
@@ -184,20 +197,21 @@ function processActiveEvents_(instanceDetailsMap, bookingMap, startDate, nextDay
         let disciplina = "N/D";
         const bookingInfo = bookingMap[instanceId];
         if (instance.status === STATUS_OCUPACAO.REPOSICAO_AGENDADA) {
-            eventType = "Reposição";
+            eventType = (bookingInfo && bookingInfo.tipoAulaReposicao) ? bookingInfo.tipoAulaReposicao : "Reposição/Recuperação";
             if (bookingInfo) {
                 details = `Professor: ${bookingInfo.professorReal || 'N/D'}`;
                 disciplina = bookingInfo.disciplinaReal || 'N/D';
             } else {
-                details = "ERRO: Reserva ativa ('Agendada') não encontrada.";
-                Logger.log(`Aviso: Instância ${instanceId} (Reposição Agendada) sem reserva ativa no mapa.`);
+                details = "Detalhes da reserva não encontrados.";
+                disciplina = "Indisponível";
+                Logger.log(`Aviso: Instância ${instanceId} (Reposição/Recuperação) sem reserva 'Agendada' correspondente.`);
             }
         } else if (instance.status === STATUS_OCUPACAO.SUBSTITUICAO_AGENDADA) {
             eventType = "Substituição";
             if (bookingInfo) {
-                let originalBase = instance.profPrincipal || 'N/D';
-                let original = bookingInfo.professorOriginalBooking || originalBase;
-                details = `Substituto: ${bookingInfo.professorReal || 'N/D'} (Prof. Fixo: ${original})`;
+                const substituto = bookingInfo.professorReal || 'N/D';
+                const original = bookingInfo.professorOriginalBooking || instance.profPrincipal || 'N/D';
+                details = `Substituto: ${substituto} (Prof. Fixo: ${original})`;
                 disciplina = bookingInfo.disciplinaReal || 'N/D';
                 if (instance.ausentes) {
                     const ausentesList = instance.ausentes.split(',').map(p => p.trim()).filter(Boolean);
@@ -209,11 +223,13 @@ function processActiveEvents_(instanceDetailsMap, bookingMap, startDate, nextDay
                     }
                 }
             } else {
-                details = "ERRO: Reserva ativa ('Agendada') não encontrada.";
-                Logger.log(`Aviso: Instância ${instanceId} (Substituição Agendada) sem reserva ativa no mapa.`);
+                details = "Detalhes da reserva não encontrados.";
+                disciplina = "Indisponível";
+                Logger.log(`Aviso: Instância ${instanceId} (Substituição) sem reserva 'Agendada' correspondente.`);
             }
         } else if (instance.tipoOriginal === TIPOS_HORARIO.FIXO && instance.ausentes) {
             eventType = "Ausência";
+            disciplina = "Aula Regular";
             const ausentesList = instance.ausentes.split(',').map(p => p.trim()).filter(Boolean);
             details = `Ausente(s): ${ausentesList.join(', ')}`;
             if (professoresPrincipais.length > 0) {
@@ -239,8 +255,8 @@ function processActiveEvents_(instanceDetailsMap, bookingMap, startDate, nextDay
             let groupKey = "[Sem Professor Fixo Associado]";
             if (professoresPrincipais.length > 0) {
                 groupKey = professoresPrincipais.join(', ');
-            } else if (eventType === "Reposição" && bookingInfo && bookingInfo.professorReal) {
-                groupKey = `[Reposição por: ${bookingInfo.professorReal}]`;
+            } else if (eventType.startsWith("Reposição") && bookingInfo && bookingInfo.professorReal) {
+                groupKey = `[Agendado por: ${bookingInfo.professorReal}]`;
             }
             if (!reportDataActive[groupKey]) reportDataActive[groupKey] = {};
             if (!reportDataActive[groupKey][instance.turma]) reportDataActive[groupKey][instance.turma] = [];
@@ -257,7 +273,8 @@ function processCancelledEvents_(bookingData, instanceDetailsMap, startDate, nex
     const b_discRealCol = HEADERS.BOOKING_DETAILS.DISCIPLINA_REAL;
     const b_profOrigCol = HEADERS.BOOKING_DETAILS.PROFESSOR_ORIGINAL;
     const b_typeCol = HEADERS.BOOKING_DETAILS.TIPO_RESERVA;
-    const b_maxIndexNeeded = Math.max(b_instanceFkCol, b_statusCol, b_profRealCol, b_discRealCol, b_profOrigCol, b_typeCol);
+    const b_tipoAulaRepoCol = HEADERS.BOOKING_DETAILS.TIPO_AULA_REPOSICAO;
+    const b_maxIndexNeeded = Math.max(b_instanceFkCol, b_statusCol, b_profRealCol, b_discRealCol, b_profOrigCol, b_typeCol, b_tipoAulaRepoCol);
     Logger.log(`Processando ${bookingData.length} registros de reserva para cancelamentos...`);
     bookingData.forEach((row, index) => {
         if (!row || row.length <= b_maxIndexNeeded) return;
@@ -276,15 +293,18 @@ function processCancelledEvents_(bookingData, instanceDetailsMap, startDate, nex
         }
         if (instance.date >= startDate && instance.date < nextDayAfterEnd) {
             const formattedDateForReport = Utilities.formatDate(instance.date, 'UTC', 'dd/MM/yyyy');
+            const bookingType = String(row[b_typeCol] || 'N/D');
+            const specificType = String(row[b_tipoAulaRepoCol] || '').trim();
+            const displayType = (bookingType === TIPOS_RESERVA.REPOSICAO && specificType) ? specificType : bookingType;
             Logger.log(`DEBUG CANCELLED: Adicionando evento cancelado ao relatório. Instancia ID: ${instanceId}, Data da Instância (UTC): ${instance.date.toISOString()}, Data Formatada p/ Relatório: ${formattedDateForReport}, Hora: ${instance.hora}, Turma: ${instance.turma}`);
             cancelledEventsList.push({
                 date: instance.date,
                 formattedDate: formattedDateForReport,
                 hora: instance.hora,
                 turma: instance.turma,
-                eventType: `Cancelada (${String(row[b_typeCol] || 'N/D')})`,
+                eventType: `Cancelada (${displayType})`,
                 disciplina: String(row[b_discRealCol] || 'N/D'),
-                details: `Prof. Subst.: ${String(row[b_profRealCol] || 'N/D')}${String(row[b_profOrigCol] || '').trim() ? ` (Prof. Fixo: ${String(row[b_profOrigCol]).trim()})` : ''}`
+                details: `Prof. Agendado: ${String(row[b_profRealCol] || 'N/D')}${String(row[b_profOrigCol] || '').trim() ? ` (Prof. Fixo: ${String(row[b_profOrigCol]).trim()})` : ''}`
             });
         }
     });
